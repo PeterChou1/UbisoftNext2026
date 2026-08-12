@@ -1,4 +1,17 @@
-#Ubi Contest API for Mac & Windows
+# Contest Submission for Ubisoft 2026 (Programming category)
+
+Top 5 contest submission for ubisoft 2026 next programming contest
+
+[![](https://markdown-videos-api.jorgenkh.no/youtube/HWnY8v94AxY)](https://youtu.be/HWnY8v94AxY)
+
+
+## Features
+
+- Entity Component System
+- 3D renderer multithreaded cpu based renderer 
+- Physics System (2D)
+- AI System
+- Immediate mode gui library
 
 ## Dependencies
 
@@ -22,21 +35,14 @@
 ## To build
 
 ### Windows
-* Run generate-windows.bat script in DAU-NEXT-API directory
+* Run generate-windows.bat script in directory
 * open visual studio solution in build/win64
 * build and run from visual studio
 
 ### MacOS
-* Run ./generate-macos.sh script in DAU-NEXT-API directory
+* Run ./generate-macos.sh script in directory
 * go to build/macos directory
     * run [make all] in macos terminal to build the program
     * run [make run] to run the game
         * Note that the application can't be closed in the window. use cmd + Q to quit the program
 * If using VSCode, commands can be run from the VSCode terminal
-
-## To add code to project
-* Add new code files in src/Game subdirectory
-* Re-run the generate-windows or generate-macos script
-
-## Useful Notes
-* When run using the generated projects, the game will run in the DAU-NEXT-API directory, which is useful for referencing data files.
