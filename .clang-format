@@ -1,0 +1,80 @@
+# ------------------------------------------------------------------
+# Clang-Format configuration for C++ game / engine style
+# ------------------------------------------------------------------
+
+BasedOnStyle: LLVM
+Language: Cpp
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 8
+
+# Line length
+ColumnLimit: 100
+
+# Braces
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterFunction: true
+  AfterControlStatement: true
+  AfterEnum: true
+  AfterNamespace: true
+  BeforeElse: true
+  BeforeCatch: true
+  IndentBraces: false
+
+# One-line rules
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortBlocksOnASingleLine: false
+
+# Spacing
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpaceBeforeAssignmentOperators: true
+
+# Pointer / reference alignment
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Includes
+SortIncludes: true
+IncludeBlocks: Regroup
+
+# Namespaces
+NamespaceIndentation: All
+FixNamespaceComments: true
+ShortNamespaceLines: 1
+
+# Alignment
+AlignOperands: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# Function parameters
+BinPackParameters: false
+BinPackArguments: false
+
+# Templates
+AlwaysBreakTemplateDeclarations: Yes
+
+# Constructor initializers
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+
+# Comments
+ReflowComments: true
+
+# Preprocessor
+IndentPPDirectives: AfterHash
+
+# Misc
+Cpp11BracedListStyle: true
+EmptyLineBeforeAccessModifier: Always
