@@ -10,6 +10,10 @@
 #pragma comment(linker, "/include:wWinMain")
 
 //---------------------------------------------------------------------------------
+// Keep <windows.h> from defining min / max macros (they break std::min / std::max)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h> 
 #endif //BUILD_PLATFORM_WINDOWS
 

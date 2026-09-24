@@ -14,4 +14,6 @@
 #endif
 
 // TODO: reference additional headers your program requires here
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif

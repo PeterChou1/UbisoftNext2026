@@ -33,6 +33,13 @@ target_compile_definitions(Common INTERFACE
 	GL_SILENCE_DEPRECATION
 )
 
+# <windows.h> defines min / max as macros, which breaks std::min / std::max
+# (and members called min / max) in every file that includes app.h. Define
+# NOMINMAX for all targets instead of relying on the include order
+if (CMAKE_SYSTEM_NAME MATCHES Windows)
+	target_compile_definitions(Common INTERFACE NOMINMAX)
+endif()
+
 #homebrew installs to /usr/local on intel macs and /opt/homebrew on apple chip macs
 #This sets it up to find SDL3 and link it
 if (CMAKE_SYSTEM_NAME MATCHES Apple)
