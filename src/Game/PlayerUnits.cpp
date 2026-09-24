@@ -154,16 +154,9 @@ struct WaitForTarget : Node
     Entity UnitId;
 };
 
-Entity CreateSoldierUnits(float x, float y, int health, int battalionId)
+void AttachSoldierBehaviour(Entity Unit)
 {
     std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
-    Entity Unit = CreateMeshEntity({x, 0, y}, SoldierUnitAsset);
-    auto rigidbody = RigidBody(0.30, 0.30);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<PlayerControlUnit>(Unit, {battalionId, health, false});
-    ECS.AddComponent<RigidBody>(Unit, rigidbody);
-    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
 
     auto SoldierBehavior = std::make_unique<ConcurrentNode>();
     auto ShootEnemy = std::make_shared<ShootEnemyUnitsNearby>(Unit);
@@ -179,20 +172,26 @@ Entity CreateSoldierUnits(float x, float y, int health, int battalionId)
     SoldierBehavior->AddChild(FollowTargetSequence);
 
     Board->AddBehaviouralTree(Unit, std::move(SoldierBehavior));
-
-    return Unit;
 }
 
-Entity CreateSupportUnits(float x, float y, int health, int battalionId)
+Entity CreateSoldierUnits(float x, float y, int health, int battalionId)
 {
-    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
-    Entity Unit = CreateMeshEntity({x, 0, y}, SupportUnitAsset);
+    Entity Unit = CreateMeshEntity({x, 0, y}, SoldierUnitAsset);
     auto rigidbody = RigidBody(0.30, 0.30);
     rigidbody.Category = UnitCollider;
 
     ECS.AddComponent<PlayerControlUnit>(Unit, {battalionId, health, false});
     ECS.AddComponent<RigidBody>(Unit, rigidbody);
     ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
+
+    AttachSoldierBehaviour(Unit);
+
+    return Unit;
+}
+
+void AttachSupportBehaviour(Entity Unit)
+{
+    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
 
     auto SupportBehavior = std::make_unique<ConcurrentNode>();
     auto MineCrystalAction = std::make_shared<MineCrystal>(Unit);
@@ -205,6 +204,19 @@ Entity CreateSupportUnits(float x, float y, int health, int battalionId)
     SupportBehavior->AddChild(MineCrystalAction);
     SupportBehavior->AddChild(FollowTargetSequence);
     Board->AddBehaviouralTree(Unit, std::move(SupportBehavior));
+}
+
+Entity CreateSupportUnits(float x, float y, int health, int battalionId)
+{
+    Entity Unit = CreateMeshEntity({x, 0, y}, SupportUnitAsset);
+    auto rigidbody = RigidBody(0.30, 0.30);
+    rigidbody.Category = UnitCollider;
+
+    ECS.AddComponent<PlayerControlUnit>(Unit, {battalionId, health, false});
+    ECS.AddComponent<RigidBody>(Unit, rigidbody);
+    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
+
+    AttachSupportBehaviour(Unit);
 
     return Unit;
 }
@@ -246,7 +258,6 @@ void CreateTank(float x, float y, int battalionId)
 {
 
     Vec3 Location = {x, 0, y};
-    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
 
     Entity TankEntity = ECS.CreateEntity();
     Transform T = Transform(Location, Quat());
@@ -263,6 +274,13 @@ void CreateTank(float x, float y, int battalionId)
     ECS.GetComponent<Transform>(TankBaseEntity).SetParentEntity(TankEntity, TankBaseEntity);
     Entity TankCannonEntity = CreateMeshEntity({0, 0, 0}, CannonTank, Quat(), {3, 3, 3});
     ECS.GetComponent<Transform>(TankCannonEntity).SetParentEntity(TankEntity, TankCannonEntity);
+
+    AttachPlayerTankBehaviour(TankEntity, TankCannonEntity);
+}
+
+void AttachPlayerTankBehaviour(Entity TankEntity, Entity TankCannonEntity)
+{
+    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
 
     // --- AI ---
     // See documentation for full visualization and explanation of this Tree

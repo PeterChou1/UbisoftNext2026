@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Entity.h"
+
 struct PlayerControlUnit
 {
     int battalionId;
@@ -14,3 +16,11 @@ void CreateSoldierBattalion(float x, float y, int health, int unitcount, int bat
 void CreateSupportBattalion(float x, float y, int health, int unitcount, int battlionId);
 
 void CreateTank(float x, float y, int battalionId);
+
+// Behaviour tree setup, split from the Create functions so the AI can be
+// reattached to units restored from a save file
+void AttachSoldierBehaviour(Entity Unit);
+
+void AttachSupportBehaviour(Entity Unit);
+
+void AttachPlayerTankBehaviour(Entity TankEntity, Entity TankCannonEntity);

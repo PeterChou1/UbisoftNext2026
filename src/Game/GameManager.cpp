@@ -12,13 +12,24 @@
 #include "Lighting.h"
 #include "PixelBuffer.h"
 #include "RenderConstants.h"
+#include "Serialization/GameSerialization.h"
+#include "Serialization/WorldSerializer.h"
 #include "Tiles.h"
 #include "VertexBuffer.h"
+#include "app.h"
 #include "stdafx.h"
 
 // Initialized at the start of the Game
 extern ECSManager ECS;
 // User defined function to Register Scenes
+
+namespace
+{
+    // Metadata key storing the scene a save belongs to
+    constexpr const char* SAVE_SCENE_KEY = "Scene";
+    // How long save / load messages stay on screen (ms)
+    constexpr float STATUS_DISPLAY_TIME = 2500.0f;
+} // namespace
 
 void GameManager::Setup()
 {
@@ -67,6 +78,11 @@ void GameManager::Setup()
 
 void GameManager::Update(float deltaTime)
 {
+    // Save / load between frames, before any system touches the world
+    ProcessSaveRequests();
+    if (m_StatusTimer > 0.0f)
+        m_StatusTimer -= deltaTime;
+
     assert(m_SceneMap.count(m_ActiveScene) > 0 && "Active Scene Name Not registered");
     // ECS.GetResource<SpriteManager>()->Update(deltaTime);
     // m_DebugCamera->Update(deltaTime);
@@ -96,6 +112,8 @@ void GameManager::Render()
     // m_DebugCamera->Render();
     // m_DebugPhysicsRender->Render();
     m_SceneMap[m_ActiveScene]->Render();
+    if (m_StatusTimer > 0.0f)
+        App::Print(20.0f, APP_VIRTUAL_HEIGHT - 40.0f, m_StatusMessage.c_str(), 1.0f, 1.0f, 0.0f);
     // Debug AI System
     // m_BlackBoardSync->Render();
     // Clear Render Pipeline to get ready for next render pass
@@ -120,4 +138,81 @@ void GameManager::SetActiveScene(const std::string& sceneName)
     m_ActiveScene = sceneName;
     assert(m_SceneMap.count(sceneName) > 0 && "Scene name does not exist");
     m_SceneMap[m_ActiveScene]->Setup();
+}
+
+bool GameManager::SaveGame(const std::string& path, std::string& error)
+{
+    Serialization::WorldSerializer serializer(Serialization::GetGameSerializationRegistry());
+    Serialization::SaveResult result =
+            serializer.SaveToFile(ECS, path, {{SAVE_SCENE_KEY, m_ActiveScene}});
+    if (!result)
+        error = result.Error;
+    return result.Success;
+}
+
+bool GameManager::LoadGame(const std::string& path, std::string& error)
+{
+    Serialization::WorldSerializer serializer(Serialization::GetGameSerializationRegistry());
+
+    // 1. Read + validate everything before touching the running game
+    std::vector<std::uint8_t> bytes;
+    if (!Serialization::WorldSerializer::ReadFile(path, bytes, error))
+        return false;
+    Serialization::WorldSnapshot snapshot;
+    Serialization::LoadResult parsed = serializer.Parse(bytes, snapshot);
+    if (!parsed)
+    {
+        error = parsed.Error;
+        return false;
+    }
+    auto sceneEntry = parsed.Metadata.find(SAVE_SCENE_KEY);
+    if (sceneEntry == parsed.Metadata.end() || m_SceneMap.count(sceneEntry->second) == 0)
+    {
+        error = "Save file does not belong to a known scene";
+        return false;
+    }
+
+    // 2. Set the scene up exactly like a normal scene switch (assets, lights,
+    //    camera, collision callbacks, systems ...)
+    SetActiveScene(sceneEntry->second);
+
+    // 3. Replace the freshly created world with the saved one
+    serializer.Apply(ECS, snapshot);
+
+    // 4. Rebuild runtime only state (behaviour trees, AI grids ...)
+    m_SceneMap[m_ActiveScene]->OnWorldRestored();
+    return true;
+}
+
+void GameManager::RequestSave(const std::string& path)
+{
+    m_PendingSave = path;
+}
+
+void GameManager::RequestLoad(const std::string& path)
+{
+    m_PendingLoad = path;
+}
+
+void GameManager::ProcessSaveRequests()
+{
+    std::string error;
+    if (!m_PendingSave.empty())
+    {
+        std::string path = m_PendingSave;
+        m_PendingSave.clear();
+        ShowStatus(SaveGame(path, error) ? "Game saved" : "Save failed: " + error);
+    }
+    if (!m_PendingLoad.empty())
+    {
+        std::string path = m_PendingLoad;
+        m_PendingLoad.clear();
+        ShowStatus(LoadGame(path, error) ? "Game loaded" : "Load failed: " + error);
+    }
+}
+
+void GameManager::ShowStatus(const std::string& message)
+{
+    m_StatusMessage = message;
+    m_StatusTimer = STATUS_DISPLAY_TIME;
 }

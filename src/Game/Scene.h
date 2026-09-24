@@ -36,4 +36,11 @@ class Scene
      *        custom graphics you need
      */
     virtual void Render() {}
+
+    /**
+     * \brief Called after a save file replaced the world of this scene
+     *        (Setup has already run). Use this to rebuild runtime only state
+     *        that is not stored in save files (behaviour trees, caches ...)
+     */
+    virtual void OnWorldRestored() {}
 };

@@ -56,7 +56,47 @@ class GameManager
      */
     void SetActiveScene(const std::string& sceneName);
 
+    const std::string& GetActiveScene() const { return m_ActiveScene; }
+
+    // ---------------------------------------------------------------------
+    // Save system
+    // ---------------------------------------------------------------------
+
+    // Default slot used by the quick save / quick load keys
+    static constexpr const char* QUICK_SAVE_PATH = "saves/quicksave.ubsave";
+
+    /**
+     * \brief Save the current scene and complete world state to a file
+     * \return true on success, otherwise error describes the problem
+     */
+    bool SaveGame(const std::string& path, std::string& error);
+
+    /**
+     * \brief Load a save file: switches to the saved scene, replaces its world
+     *        with the saved one and lets the scene rebuild its runtime state.
+     *        The file is fully validated first, a bad file leaves the game as is
+     * \return true on success, otherwise error describes the problem
+     */
+    bool LoadGame(const std::string& path, std::string& error);
+
+    /**
+     * \brief Queue a save / load. Requests are processed at the start of the
+     *        next Update so they never happen in the middle of a frame (safe to
+     *        call from inside scene / system code)
+     */
+    void RequestSave(const std::string& path = QUICK_SAVE_PATH);
+
+    void RequestLoad(const std::string& path = QUICK_SAVE_PATH);
+
   private:
+    void ProcessSaveRequests();
+
+    void ShowStatus(const std::string& message);
+
+    std::string m_PendingSave;
+    std::string m_PendingLoad;
+    std::string m_StatusMessage;
+    float m_StatusTimer = 0.0f;
     std::string m_ActiveScene;
     std::unordered_map<std::string, std::unique_ptr<Scene>> m_SceneMap;
     std::unique_ptr<ParticleSystem> m_ParticleSystem;

@@ -92,6 +92,9 @@ class RigidBody
     float DynamicFriction{};
 
   private:
+    // Grants the save system access to private state (see EngineSerialization.h)
+    friend struct SerializationAccess;
+
     // immutable states
     float m_InvInertia{};
     float m_InvMass{};

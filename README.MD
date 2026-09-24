@@ -12,6 +12,7 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 - Physics System (2D)
 - AI System
 - Immediate mode gui library
+- Save system: binary, versioned serialization of the whole game state (see [changes/](changes/README.md))
 
 ## Dependencies
 
@@ -46,3 +47,21 @@ Top 5 contest submission for ubisoft 2026 next programming contest
     * run [make run] to run the game
         * Note that the application can't be closed in the window. use cmd + Q to quit the program
 * If using VSCode, commands can be run from the VSCode terminal
+
+## Save / Load
+
+In the main level press **4** to quick save and **5** to quick load (`saves/quicksave.ubsave`).
+From code use `GameSceneManager.SaveGame(path, error)` / `GameSceneManager.LoadGame(path, error)`.
+See [changes/](changes/README.md) for the full design.
+
+## Unit tests
+
+The save system tests are headless (no OpenGL/GLUT/SDL needed) and run on any platform:
+
+```
+cmake -S tests -B build/tests
+cmake --build build/tests
+ctest --test-dir build/tests --output-on-failure
+```
+
+They can also be built from the root project with `-DBUILD_SERIALIZATION_TESTS=ON`.

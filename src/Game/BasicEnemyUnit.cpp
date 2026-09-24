@@ -140,7 +140,6 @@ struct FindTargetForEnemyTank : Node
 Entity CreateEnemyTank(float x, float y, int health)
 {
     Vec3 Location = {x, 0, y};
-    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
 
     Entity TankEntity = ECS.CreateEntity();
     Transform T = Transform(Location, Quat());
@@ -157,6 +156,15 @@ Entity CreateEnemyTank(float x, float y, int health)
     ECS.GetComponent<Transform>(TankBaseEntity).SetParentEntity(TankEntity, TankBaseEntity);
     Entity TankCannonEntity = CreateMeshEntity({0, 0, 0}, CannonTank, Quat(), {3, 3, 3});
     ECS.GetComponent<Transform>(TankCannonEntity).SetParentEntity(TankEntity, TankCannonEntity);
+
+    AttachEnemyTankBehaviour(TankEntity, TankCannonEntity);
+
+    return TankEntity;
+}
+
+void AttachEnemyTankBehaviour(Entity TankEntity, Entity TankCannonEntity)
+{
+    std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
 
     // --- AI ---
     // See documentation for full visualization and explanation of this Tree
@@ -184,22 +192,11 @@ Entity CreateEnemyTank(float x, float y, int health)
 
     Board->AddBehaviouralTree(TankEntity, std::move(TankEnemyBehavior));
     Board->AddBehaviouralTree(TankCannonEntity, std::move(TurretRootBehaviour));
-
-    return TankEntity;
 }
 
-Entity CreateShootEnemyUnit(float x, float y, int health, float speed)
+void AttachShootEnemyBehaviour(Entity Unit, float speed)
 {
     std::shared_ptr<BlackBoard> Board = ECS.GetResource<BlackBoard>();
-    // All enemy are programmed to walk towards enemy base
-    Entity PlayerBase = *ECS.Visit<PlayerBaseComponent>().begin();
-    Entity Unit = CreateMeshEntity({x, 0, y}, BasicEnemy);
-    auto rigidbody = RigidBody(0.30, 0.30);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<BasicEnemyUnit>(Unit, {100});
-    ECS.AddComponent<RigidBody>(Unit, rigidbody);
-    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
 
     auto ShootEnemyBehavior = std::make_unique<PrioritySelectorNode>();
     auto ShootUnitsNode = std::make_shared<ShootPlayerUnitsNearby>(Unit);
@@ -211,6 +208,20 @@ Entity CreateShootEnemyUnit(float x, float y, int health, float speed)
     ShootEnemyBehavior->AddChild(ShootUnitsNode);
     ShootEnemyBehavior->AddChild(WalkToTarget);
     Board->AddBehaviouralTree(Unit, std::move(ShootEnemyBehavior));
+}
+
+Entity CreateShootEnemyUnit(float x, float y, int health, float speed)
+{
+    // All enemy are programmed to walk towards enemy base
+    Entity Unit = CreateMeshEntity({x, 0, y}, BasicEnemy);
+    auto rigidbody = RigidBody(0.30, 0.30);
+    rigidbody.Category = UnitCollider;
+
+    ECS.AddComponent<BasicEnemyUnit>(Unit, {100, speed});
+    ECS.AddComponent<RigidBody>(Unit, rigidbody);
+    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
+
+    AttachShootEnemyBehaviour(Unit, speed);
 
     return Unit;
 }

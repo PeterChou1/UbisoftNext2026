@@ -2,9 +2,16 @@
 
 #include "BulletColliders.h"
 #include "CreateMainLevel.h"
+#include "GameManager.h"
 #include "MainLevelUI.h"
+#include "app.h"
 
 extern ECSManager ECS;
+extern GameManager GameSceneManager;
+
+// Quick save / quick load keys
+constexpr App::Key QUICK_SAVE_KEY = App::KEY_4;
+constexpr App::Key QUICK_LOAD_KEY = App::KEY_5;
 
 void MainLevel::Setup()
 {
@@ -41,6 +48,7 @@ void MainLevel::Setup()
 
 void MainLevel::Update(float deltaTime)
 {
+    HandleSaveKeys();
     m_LevelUI->Update();
     m_CameraController->Update(deltaTime);
     m_UnitControl->Update();
@@ -53,4 +61,22 @@ void MainLevel::Update(float deltaTime)
 void MainLevel::Render()
 {
     m_LevelUI->Render();
+}
+
+void MainLevel::OnWorldRestored()
+{
+    RestoreMainLevelRuntimeState();
+}
+
+void MainLevel::HandleSaveKeys()
+{
+    bool saveDown = App::IsKeyPressed(QUICK_SAVE_KEY);
+    bool loadDown = App::IsKeyPressed(QUICK_LOAD_KEY);
+    // The actual save / load happens at the start of the next frame
+    if (saveDown && !m_QuickSaveHeld)
+        GameSceneManager.RequestSave();
+    if (loadDown && !m_QuickLoadHeld)
+        GameSceneManager.RequestLoad();
+    m_QuickSaveHeld = saveDown;
+    m_QuickLoadHeld = loadDown;
 }

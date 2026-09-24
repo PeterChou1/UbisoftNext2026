@@ -21,7 +21,16 @@ class MainLevel : public Scene
 
     void Render() override;
 
+    void OnWorldRestored() override;
+
   private:
+    void HandleSaveKeys();
+
+    // Keys are polled every frame, remember the previous state so holding a
+    // key only triggers a single save / load
+    bool m_QuickSaveHeld = false;
+    bool m_QuickLoadHeld = false;
+
     std::shared_ptr<ColliderCallbackSystem> m_ColliderCallback;
     std::shared_ptr<GameOptions> m_GameOptions;
     std::shared_ptr<GameState> m_GameState;

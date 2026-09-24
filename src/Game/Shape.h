@@ -74,5 +74,8 @@ class Shape
     Vec2 Min{};
 
   private:
+    // Grants the save system access to private state (see EngineSerialization.h)
+    friend struct SerializationAccess;
+
     ShapeType m_ShapeEnum{};
 };

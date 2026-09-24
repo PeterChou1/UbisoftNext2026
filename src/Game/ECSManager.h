@@ -24,6 +24,8 @@
 
 #include <memory>
 #include <set>
+#include <typeinfo>
+#include <vector>
 
 class ECSManager
 {
@@ -58,6 +60,47 @@ class ECSManager
         {
             resource->ResetResource();
         }
+    }
+
+    /**
+     * \brief Removes every Entity, Component and Visitor but keeps all Resources
+     *        intact (unlike Reset which also calls ResetResource). Used by the
+     *        save system before restoring a saved world
+     */
+    void ClearWorld()
+    {
+        m_ComponentManager->Clear();
+        m_EntityManager->Clear();
+        m_VisitorManager->Clear();
+    }
+
+    /**
+     * \brief Check whether an Entity is currently alive
+     */
+    bool IsEntityAlive(Entity entity) const { return m_EntityManager->IsAlive(entity); }
+
+    /**
+     * \brief All living Entity in ascending order
+     */
+    std::vector<Entity> GetLivingEntities() const { return m_EntityManager->GetLivingEntities(); }
+
+    /**
+     * \brief Free Entity ids in the order they will be handed out by CreateEntity
+     */
+    std::vector<Entity> GetAvailableEntities() const
+    {
+        return m_EntityManager->GetAvailableEntities();
+    }
+
+    /**
+     * \brief Recreate an exact set of living Entity (without components) and the
+     *        exact free list order. Any existing Entity/Component are removed
+     *        first. Components must be re-added with AddComponent afterwards
+     */
+    void RestoreEntities(const std::vector<Entity>& living, const std::vector<Entity>& available)
+    {
+        ClearWorld();
+        m_EntityManager->Restore(living, available);
     }
 
     /**
@@ -193,6 +236,16 @@ class ECSManager
         assert(m_ResourceToIndex.find(typeName) != m_ResourceToIndex.end() &&
                "Resource Not Registered");
         return std::dynamic_pointer_cast<T>(m_Resources[m_ResourceToIndex[typeName]]);
+    }
+
+    /**
+     * \brief Check whether a Resource T was registered
+     */
+    template <typename T>
+    bool HasResource() const
+    {
+        static_assert(std::is_base_of<Resource, T>::value, "T must derive from resource");
+        return m_ResourceToIndex.find(typeid(T).name()) != m_ResourceToIndex.end();
     }
 
     template <typename... Ts>

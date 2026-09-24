@@ -190,3 +190,17 @@ if (CMAKE_SYSTEM_NAME MATCHES Windows)
 	#Sets the VS startup project to be the Game one. If this is not called then the startup project is ALL_BUILD which results in an error in VS
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Game)
 endif()
+
+###############################################################################
+# Unit tests for the save system (optional)
+# Enable with: cmake -B build/tests-root -DBUILD_SERIALIZATION_TESTS=ON
+# The tests are headless (no OpenGL/GLUT/SDL) and can also be built on their
+# own from the tests/ directory, see tests/CMakeLists.txt
+###############################################################################
+
+option(BUILD_SERIALIZATION_TESTS "Build the save system unit tests" OFF)
+
+if (BUILD_SERIALIZATION_TESTS)
+	enable_testing()
+	add_subdirectory(tests)
+endif()
