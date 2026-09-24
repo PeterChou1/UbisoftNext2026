@@ -108,6 +108,7 @@ const std::string& GetActiveScene() const;
 |---|---|
 | **4** | Quick save to `saves/quicksave.ubsave` |
 | **5** | Quick load from `saves/quicksave.ubsave` |
+| **Tab** | Return to the scene editor (only during a play test started with the editor's **Play**) |
 
 The keys trigger once per press: holding a key does not save every frame.
 Keys 4 and 5 are not used by the game or by the controller emulation in

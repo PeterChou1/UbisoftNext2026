@@ -394,14 +394,12 @@ namespace Fixture
      */
     inline void FreshWorld()
     {
-        static bool registered = false;
-        if (!registered)
-        {
+        if (!ECS.HasResource<GameState>())
             ECS.RegisterResource(GameState());
+        if (!ECS.HasResource<BlackBoard>())
             ECS.RegisterResource(BlackBoard());
+        if (!ECS.HasResource<UIState>())
             ECS.RegisterResource(UIState());
-            registered = true;
-        }
         ECS.Reset();
         // UIState::ResetResource does nothing (same as in the game), reset it here
         // so every test starts from the same interaction mode

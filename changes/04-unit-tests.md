@@ -60,6 +60,9 @@ middle of **round 4's invasion phase**:
 field-by-field comparisons and lists every difference. The tests therefore never
 use the serializer to check the serializer.
 
+The scene editor added 41 more tests (87 in total, 1050 checks); they are
+described in [05-scene-editor.md](05-scene-editor.md).
+
 ## Test list (46 tests, 520 checks)
 
 **Archive**
@@ -140,8 +143,9 @@ structure. Both were fixed by the tests now in the suite.
 
 ## Verified configurations
 
-* GCC 13 (Debug) with AddressSanitizer + UndefinedBehaviorSanitizer: 46/46 pass, no reports
-* Clang 18 (Release): 46/46 pass
+* GCC 13 (Debug) with AddressSanitizer + UndefinedBehaviorSanitizer: all pass, no reports
+  (46/46 at the save system commit, 87/87 with the scene editor)
+* Clang 18 (Release): all pass
 * Root project with CMake 4.4 and `-DBUILD_SERIALIZATION_TESTS=ON`, via `ctest`: pass
 * Whole game (every `src/Game/*.cpp`) syntax-checked with Clang in the MacOS
   configuration (GLUT headers stubbed): no errors

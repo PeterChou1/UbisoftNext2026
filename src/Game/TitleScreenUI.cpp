@@ -25,6 +25,11 @@ void TitleScreenUI::Render()
         GameSceneManager.SetActiveScene("MainLevel");
         return;
     }
+    if (Button(3, MidPointX - 100, MidPointY - 100, *m_state, 200, 50, "Scene Editor"))
+    {
+        GameSceneManager.SetActiveScene("SceneEditor");
+        return;
+    }
     if (Button(2, MidPointX - 100, MidPointY - 200, *m_state, 200, 50, "Game Options"))
     {
         Transform& start = m_cam->CamTransform;

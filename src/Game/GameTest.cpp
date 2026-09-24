@@ -4,6 +4,7 @@
 #include "stdafx.h"
 //------------------------------------------------------------------------
 #include "ECSManager.h"
+#include "Editor/SceneEditorScene.h"
 #include "GameManager.h"
 #include "MainLevel.h"
 #include "TitleScreen.h"
@@ -27,9 +28,11 @@ void Init()
     std::unique_ptr<Scene> titleScreen = std::make_unique<TitleScreen>();
     std::unique_ptr<Scene> mainLevel = std::make_unique<MainLevel>();
     std::unique_ptr<Scene> winScreen = std::make_unique<WinScreen>();
+    std::unique_ptr<Scene> sceneEditor = std::make_unique<SceneEditorScene>();
     GameSceneManager.RegisterScene("MainLevel", std::move(mainLevel));
     GameSceneManager.RegisterScene("TitleScreen", std::move(titleScreen));
     GameSceneManager.RegisterScene("WinScreen", std::move(winScreen));
+    GameSceneManager.RegisterScene("SceneEditor", std::move(sceneEditor));
     GameSceneManager.SetActiveScene("TitleScreen");
 }
 

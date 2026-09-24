@@ -13,6 +13,7 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 - AI System
 - Immediate mode gui library
 - Save system: binary, versioned serialization of the whole game state (see [changes/](changes/README.md))
+- Scene editor: in-game level authoring GUI, scenes saved to `data/scenes/`
 
 ## Dependencies
 
@@ -54,6 +55,14 @@ In the main level press **4** to quick save and **5** to quick load (`saves/quic
 From code use `GameSceneManager.SaveGame(path, error)` / `GameSceneManager.LoadGame(path, error)`.
 See [changes/](changes/README.md) for the full design.
 
+## Scene editor
+
+From the title screen choose **Scene Editor**. Pick a prefab (palette or keys 1-7) and click the ground to place it;
+select and drag objects, R rotates, X deletes, U/Y undo/redo, WASD pans, Z/C zooms.
+Save / Load use the scene list (files in `data/scenes/`), **Play** tests the scene in the main level and **Tab** returns
+to the editor. Scenes saved to `data/scenes/` are automatically verified by the unit tests.
+See [changes/05-scene-editor.md](changes/05-scene-editor.md).
+
 ## Unit tests
 
 The save system tests are headless (no OpenGL/GLUT/SDL needed) and run on any platform:
@@ -65,3 +74,4 @@ ctest --test-dir build/tests --output-on-failure
 ```
 
 They can also be built from the root project with `-DBUILD_SERIALIZATION_TESTS=ON`.
+Regenerate the sample scenes in `data/scenes/` with `cmake --build build/tests --target author_scenes`.

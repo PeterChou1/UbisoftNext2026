@@ -87,16 +87,23 @@ void GameManager::Update(float deltaTime)
     // ECS.GetResource<SpriteManager>()->Update(deltaTime);
     // m_DebugCamera->Update(deltaTime);
     // m_DebugMesh->Update(deltaTime);
-    m_PhysicsSystem->Update(deltaTime);
-    m_ParticleSystem->Update(deltaTime);
+    bool simulate = m_SceneMap[m_ActiveScene]->SimulatesWorld();
+    if (simulate)
+    {
+        m_PhysicsSystem->Update(deltaTime);
+        m_ParticleSystem->Update(deltaTime);
+    }
     // m_DebugPhysicsRender->Update(deltaTime);
     // Update the UI State
     m_UIStateManager->Update();
     m_SceneMap[m_ActiveScene]->Update(deltaTime);
     m_ShaderHandler->Update(deltaTime);
     m_MeshHandler->Update();
-    m_BlackBoardSync->Update(deltaTime);
-    m_AISystem->Update();
+    if (simulate)
+    {
+        m_BlackBoardSync->Update(deltaTime);
+        m_AISystem->Update();
+    }
 }
 
 void GameManager::Render()
@@ -134,6 +141,9 @@ void GameManager::RegisterScene(const std::string& sceneName, std::unique_ptr<Sc
 
 void GameManager::SetActiveScene(const std::string& sceneName)
 {
+    // A play test only lasts while its scene (the main level) is running
+    if (sceneName != "MainLevel")
+        m_PlaytestReturnScene.clear();
     ECS.Reset();
     m_ActiveScene = sceneName;
     assert(m_SceneMap.count(sceneName) > 0 && "Scene name does not exist");
@@ -194,8 +204,29 @@ void GameManager::RequestLoad(const std::string& path)
     m_PendingLoad = path;
 }
 
+void GameManager::BeginPlaytest(const std::string& path, const std::string& returnScene)
+{
+    m_PlaytestReturnScene = returnScene;
+    RequestLoad(path);
+}
+
+bool GameManager::EndPlaytest()
+{
+    if (m_PlaytestReturnScene.empty())
+        return false;
+    m_PendingSceneSwitch = m_PlaytestReturnScene;
+    return true;
+}
+
 void GameManager::ProcessSaveRequests()
 {
+    if (!m_PendingSceneSwitch.empty())
+    {
+        std::string scene = m_PendingSceneSwitch;
+        m_PendingSceneSwitch.clear();
+        SetActiveScene(scene);
+    }
+
     std::string error;
     if (!m_PendingSave.empty())
     {
@@ -207,7 +238,15 @@ void GameManager::ProcessSaveRequests()
     {
         std::string path = m_PendingLoad;
         m_PendingLoad.clear();
-        ShowStatus(LoadGame(path, error) ? "Game loaded" : "Load failed: " + error);
+        if (!LoadGame(path, error))
+        {
+            m_PlaytestReturnScene.clear();
+            ShowStatus("Load failed: " + error);
+        }
+        else if (IsPlaytesting())
+            ShowStatus("Play test - press TAB to return to the editor");
+        else
+            ShowStatus("Game loaded");
     }
 }
 

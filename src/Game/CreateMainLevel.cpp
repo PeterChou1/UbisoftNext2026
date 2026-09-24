@@ -11,17 +11,16 @@
 #include "Mesh.h"
 #include "PlayerBase.h"
 #include "PlayerUnits.h"
+#include "Prefabs.h"
 #include "RigidBody.h"
 #include "UITarget.h"
 #include "stdafx.h"
 
 extern ECSManager ECS;
 
-void CreateMainLevel()
+void LoadMainLevelAssets()
 {
-    Vec3 worldOrigin = {0, 0, 0};
     auto& server = AssetServer::GetInstance();
-    auto Board = ECS.GetResource<BlackBoard>();
     server.LoadLevelAssets({Ground,
                             PlayerBase,
                             SoldierUnitAsset,
@@ -35,23 +34,22 @@ void CreateMainLevel()
                             Bullet,
                             ExplosionBall,
                             ObstacleWall});
+}
+
+void CreateMainLevel()
+{
+    Vec3 worldOrigin = {0, 0, 0};
+    auto Board = ECS.GetResource<BlackBoard>();
+    LoadMainLevelAssets();
     // Add Ground Plane
-    CreateMeshEntity(worldOrigin, Ground);
+    Prefabs::SpawnGround();
     // Add Base
-    Entity Base = CreateMeshEntity(worldOrigin, PlayerBase);
-    auto rigidbody = RigidBody(2.5f, 2.5f);
-    rigidbody.SetStatic();
-    rigidbody.Category = UnitCollider;
-    ECS.AddComponent<RigidBody>(Base, rigidbody);
-    ECS.AddComponent<PlayerBaseComponent>(Base, {1000});
-    ECS.AddComponent<FragShaderTag>(Base, FragShaderTag(BlinnPhongID));
-    ECS.AddComponent<AIObstacle>(Base, {3, 3});
+    Prefabs::SpawnPlayerBase(worldOrigin);
 
     // Add Selector Target
-    Entity Selector = CreateMeshEntity({2, 2, 0}, TargetUISelector);
+    Entity Selector = Prefabs::SpawnUnitSelector({2, 2, 0});
     auto Obstacles = ECS.Visit<AIObstacle>();
 
-    ECS.AddComponent<UITarget>(Selector, {false});
     Board->UnitTarget = Selector;
     // Setup Vector Field
     Board->UnitVectorField.HalfWidth = 25.0;
@@ -70,18 +68,6 @@ namespace
     bool HasMesh(Entity E, ObjAsset Asset)
     {
         return ECS.HasComponent<Mesh>(E) && ECS.GetComponent<Mesh>(E).MeshType == Asset;
-    }
-
-    Entity FindChildWithMesh(Entity Parent, ObjAsset Asset)
-    {
-        if (!ECS.HasComponent<Transform>(Parent))
-            return NULL_ENTITY;
-        for (Entity Child : ECS.GetComponent<Transform>(Parent).Children)
-        {
-            if (ECS.IsEntityAlive(Child) && HasMesh(Child, Asset))
-                return Child;
-        }
-        return NULL_ENTITY;
     }
 } // namespace
 
@@ -118,7 +104,7 @@ void RestoreMainLevelRuntimeState()
         const PlayerControlUnit& Control = ECS.GetComponent<PlayerControlUnit>(Unit);
         if (Control.isTank)
         {
-            Entity Cannon = FindChildWithMesh(Unit, CannonTank);
+            Entity Cannon = Prefabs::FindChildWithMesh(Unit, CannonTank);
             if (Cannon != NULL_ENTITY)
                 AttachPlayerTankBehaviour(Unit, Cannon);
         }
@@ -138,7 +124,7 @@ void RestoreMainLevelRuntimeState()
             AttachShootEnemyBehaviour(Unit, Speed > 0.0f ? Speed : DefaultEnemySpeed);
             continue;
         }
-        Entity Cannon = FindChildWithMesh(Unit, CannonTank);
+        Entity Cannon = Prefabs::FindChildWithMesh(Unit, CannonTank);
         if (Cannon != NULL_ENTITY)
             AttachEnemyTankBehaviour(Unit, Cannon);
     }

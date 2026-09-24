@@ -12,6 +12,8 @@ extern GameManager GameSceneManager;
 // Quick save / quick load keys
 constexpr App::Key QUICK_SAVE_KEY = App::KEY_4;
 constexpr App::Key QUICK_LOAD_KEY = App::KEY_5;
+// Leaves a play test started from the scene editor
+constexpr App::Key RETURN_TO_EDITOR_KEY = App::KEY_TAB;
 
 void MainLevel::Setup()
 {
@@ -79,4 +81,10 @@ void MainLevel::HandleSaveKeys()
         GameSceneManager.RequestLoad();
     m_QuickSaveHeld = saveDown;
     m_QuickLoadHeld = loadDown;
+
+    bool returnDown = App::IsKeyPressed(RETURN_TO_EDITOR_KEY);
+    bool returnPressed = returnDown && !m_ReturnHeld;
+    m_ReturnHeld = returnDown;
+    if (returnPressed && GameSceneManager.IsPlaytesting())
+        GameSceneManager.EndPlaytest();
 }

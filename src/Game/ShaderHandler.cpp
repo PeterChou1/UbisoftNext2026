@@ -64,19 +64,24 @@ void ShaderHandler::Update(float deltaTime)
 
 void ShaderHandler::HandleShaderDelete()
 {
-    auto EntToFragType = m_Constants->EntityToFragShaderType;
-    auto EntToVertType = m_Constants->EntityToVertShaderType;
+    // References: the erase below must update the shared maps, not copies
+    auto& EntToFragType = m_Constants->EntityToFragShaderType;
+    auto& EntToVertType = m_Constants->EntityToVertShaderType;
     AssetServer& Server = AssetServer::GetInstance();
     for (const auto e : ECS.VisitDeleted<FragShaderTag>())
     {
-        assert(EntToFragType.count(e) > 0);
+        // An entity can be destroyed before its shader was ever initialized
+        // (e.g. created and deleted in the same frame by the scene editor)
+        if (EntToFragType.count(e) == 0)
+            continue;
         EntToFragType.erase(e);
         Server.RemoveFragShader(e);
     }
 
     for (const auto e : ECS.VisitDeleted<VertShaderTag>())
     {
-        assert(EntToVertType.count(e) > 0);
+        if (EntToVertType.count(e) == 0)
+            continue;
         EntToVertType.erase(e);
         Server.RemoveVertShader(e);
     }

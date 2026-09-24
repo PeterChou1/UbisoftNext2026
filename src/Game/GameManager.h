@@ -88,11 +88,28 @@ class GameManager
 
     void RequestLoad(const std::string& path = QUICK_SAVE_PATH);
 
+    /**
+     * \brief Load a save to play test it and remember which scene to return to
+     *        (used by the scene editor's Play button)
+     */
+    void BeginPlaytest(const std::string& path, const std::string& returnScene);
+
+    bool IsPlaytesting() const { return !m_PlaytestReturnScene.empty(); }
+
+    /**
+     * \brief Leave a play test and go back to the scene that started it (at the
+     *        start of the next frame, like save / load requests)
+     * \return false if no play test is running
+     */
+    bool EndPlaytest();
+
   private:
     void ProcessSaveRequests();
 
     void ShowStatus(const std::string& message);
 
+    std::string m_PlaytestReturnScene;
+    std::string m_PendingSceneSwitch;
     std::string m_PendingSave;
     std::string m_PendingLoad;
     std::string m_StatusMessage;

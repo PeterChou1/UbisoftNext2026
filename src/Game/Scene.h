@@ -43,4 +43,11 @@ class Scene
      *        that is not stored in save files (behaviour trees, caches ...)
      */
     virtual void OnWorldRestored() {}
+
+    /**
+     * \brief Whether the gameplay simulation (physics, particles, AI) runs
+     *        while this scene is active. Editors return false to keep the
+     *        authored world frozen; rendering and UI always run
+     */
+    virtual bool SimulatesWorld() const { return true; }
 };

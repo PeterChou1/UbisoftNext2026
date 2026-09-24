@@ -21,6 +21,12 @@ void TextLabel(float x, float y, float width, float height, std::string label, C
 
 void DrawContainer(int x, int y, float width, float height);
 
+/**
+ * \brief Filled rectangle with a border, cheaper than DrawContainer for large
+ *        areas (fills every other scanline)
+ */
+void DrawPanel(float x, float y, float width, float height, Color fill, Color border);
+
 int Button(int id,
            float x,
            float y,

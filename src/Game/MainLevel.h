@@ -30,6 +30,7 @@ class MainLevel : public Scene
     // key only triggers a single save / load
     bool m_QuickSaveHeld = false;
     bool m_QuickLoadHeld = false;
+    bool m_ReturnHeld = false;
 
     std::shared_ptr<ColliderCallbackSystem> m_ColliderCallback;
     std::shared_ptr<GameOptions> m_GameOptions;

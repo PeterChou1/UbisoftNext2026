@@ -9,6 +9,7 @@
 #include "GameState.h"
 #include "GameUtils.h"
 #include "Laser.h"
+#include "Prefabs.h"
 #include "RigidBody.h"
 #include "UITarget.h"
 #include "app.h"
@@ -176,14 +177,7 @@ void AttachSoldierBehaviour(Entity Unit)
 
 Entity CreateSoldierUnits(float x, float y, int health, int battalionId)
 {
-    Entity Unit = CreateMeshEntity({x, 0, y}, SoldierUnitAsset);
-    auto rigidbody = RigidBody(0.30, 0.30);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<PlayerControlUnit>(Unit, {battalionId, health, false});
-    ECS.AddComponent<RigidBody>(Unit, rigidbody);
-    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
-
+    Entity Unit = Prefabs::SpawnSoldier({x, 0, y}, health, battalionId);
     AttachSoldierBehaviour(Unit);
 
     return Unit;
@@ -208,14 +202,7 @@ void AttachSupportBehaviour(Entity Unit)
 
 Entity CreateSupportUnits(float x, float y, int health, int battalionId)
 {
-    Entity Unit = CreateMeshEntity({x, 0, y}, SupportUnitAsset);
-    auto rigidbody = RigidBody(0.30, 0.30);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<PlayerControlUnit>(Unit, {battalionId, health, false});
-    ECS.AddComponent<RigidBody>(Unit, rigidbody);
-    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
-
+    Entity Unit = Prefabs::SpawnSupport({x, 0, y}, health, battalionId);
     AttachSupportBehaviour(Unit);
 
     return Unit;
@@ -256,25 +243,8 @@ struct FindTargetForTank : Node
 
 void CreateTank(float x, float y, int battalionId)
 {
-
-    Vec3 Location = {x, 0, y};
-
-    Entity TankEntity = ECS.CreateEntity();
-    Transform T = Transform(Location, Quat());
-    T.Plane = XZ;
-    ECS.AddComponent<Transform>(TankEntity, T);
-    auto rigidbody = RigidBody(0.5f, 0.5f);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<RigidBody>(TankEntity, rigidbody);
-    ECS.AddComponent<PlayerControlUnit>(TankEntity, {battalionId, 200, false, true});
-    ECS.AddComponent<FragShaderTag>(TankEntity, FragShaderTag(BlinnPhongID));
-
-    Entity TankBaseEntity = CreateMeshEntity({0, 0, 0}, BaseTank, Quat(), {3, 3, 3});
-    ECS.GetComponent<Transform>(TankBaseEntity).SetParentEntity(TankEntity, TankBaseEntity);
-    Entity TankCannonEntity = CreateMeshEntity({0, 0, 0}, CannonTank, Quat(), {3, 3, 3});
-    ECS.GetComponent<Transform>(TankCannonEntity).SetParentEntity(TankEntity, TankCannonEntity);
-
+    Entity TankEntity = Prefabs::SpawnPlayerTank({x, 0, y}, battalionId);
+    Entity TankCannonEntity = Prefabs::FindChildWithMesh(TankEntity, CannonTank);
     AttachPlayerTankBehaviour(TankEntity, TankCannonEntity);
 }
 

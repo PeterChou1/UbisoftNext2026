@@ -8,6 +8,7 @@
 #include "Laser.h"
 #include "PlayerBase.h"
 #include "PlayerUnits.h"
+#include "Prefabs.h"
 #include "RigidBody.h"
 
 extern ECSManager ECS;
@@ -139,24 +140,9 @@ struct FindTargetForEnemyTank : Node
 
 Entity CreateEnemyTank(float x, float y, int health)
 {
-    Vec3 Location = {x, 0, y};
-
-    Entity TankEntity = ECS.CreateEntity();
-    Transform T = Transform(Location, Quat());
-    T.Plane = XZ;
-    ECS.AddComponent<Transform>(TankEntity, T);
-    auto rigidbody = RigidBody(0.5f, 0.5f);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<RigidBody>(TankEntity, rigidbody);
-    ECS.AddComponent<BasicEnemyUnit>(TankEntity, {200});
-    ECS.AddComponent<FragShaderTag>(TankEntity, FragShaderTag(BlinnPhongID));
-
-    Entity TankBaseEntity = CreateMeshEntity({0, 0, 0}, BaseTank, Quat(), {3, 3, 3});
-    ECS.GetComponent<Transform>(TankBaseEntity).SetParentEntity(TankEntity, TankBaseEntity);
-    Entity TankCannonEntity = CreateMeshEntity({0, 0, 0}, CannonTank, Quat(), {3, 3, 3});
-    ECS.GetComponent<Transform>(TankCannonEntity).SetParentEntity(TankEntity, TankCannonEntity);
-
+    // Enemy tanks always start with 200 health
+    Entity TankEntity = Prefabs::SpawnEnemyTank({x, 0, y});
+    Entity TankCannonEntity = Prefabs::FindChildWithMesh(TankEntity, CannonTank);
     AttachEnemyTankBehaviour(TankEntity, TankCannonEntity);
 
     return TankEntity;
@@ -213,13 +199,8 @@ void AttachShootEnemyBehaviour(Entity Unit, float speed)
 Entity CreateShootEnemyUnit(float x, float y, int health, float speed)
 {
     // All enemy are programmed to walk towards enemy base
-    Entity Unit = CreateMeshEntity({x, 0, y}, BasicEnemy);
-    auto rigidbody = RigidBody(0.30, 0.30);
-    rigidbody.Category = UnitCollider;
-
-    ECS.AddComponent<BasicEnemyUnit>(Unit, {100, speed});
-    ECS.AddComponent<RigidBody>(Unit, rigidbody);
-    ECS.AddComponent<FragShaderTag>(Unit, FragShaderTag(BlinnPhongID));
+    // (enemy soldiers always start with 100 health)
+    Entity Unit = Prefabs::SpawnEnemySoldier({x, 0, y}, 100, speed);
 
     AttachShootEnemyBehaviour(Unit, speed);
 

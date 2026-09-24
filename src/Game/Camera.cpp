@@ -121,19 +121,22 @@ Vec3 RayCastPlane(Vec3 rayPoint, Vec3 rayDirection, Vec3& planePt, Vec3& planeNo
 
 Vec3 Camera::ScreenSpaceToWorldPoint(float x, float y, Vec3& planePt, Vec3& planeNormal)
 {
-    Vec3 right = Up.Cross(Backward).Normalize();
-    const float y_scale = tanf(Fov * 0.5f * 3.1415926f / 180.0f) * Nearplane;
-    const float x_scale = AspectRatio * y_scale;
+    // Exact inverse of WorldPointToScreenSpace: un-project two points of the
+    // pixel's ray (near and far plane) through the same projection matrix and
+    // camera transform the renderer uses, then intersect the ray with the plane
+    float ndcX = x / ScreenWidth * 2.0f - 1.0f;
+    float ndcY = y / ScreenHeight * 2.0f - 1.0f;
+    Mat4 inverseProj = Proj.Inverse();
+    Vec4 nearPoint = inverseProj * Vec4(ndcX, ndcY, -1.0f, 1.0f);
+    Vec4 farPoint = inverseProj * Vec4(ndcX, ndcY, 1.0f, 1.0f);
+    Vec3 nearCamera(nearPoint.X / nearPoint.W, nearPoint.Y / nearPoint.W, nearPoint.Z / nearPoint.W);
+    Vec3 farCamera(farPoint.X / farPoint.W, farPoint.Y / farPoint.W, farPoint.Z / farPoint.W);
+    Vec3 nearWorld = CameraToWorld(nearCamera);
+    Vec3 farWorld = CameraToWorld(farCamera);
 
-    float clipX = x / ScreenWidth * 2.0f - 1.0f;
-    float clipY = y / ScreenHeight * 2.0f - 1.0f;
+    Vec3 cameraRayDir = (farWorld - nearWorld).Normalize();
 
-    Vec3 pixelPoint =
-            Position - Backward * Nearplane + right * (x_scale * clipX) + Up * (y_scale * clipY);
-
-    Vec3 cameraRayDir = (pixelPoint - Position).Normalize();
-
-    return RayCastPlane(Position, cameraRayDir, planePt, planeNormal);
+    return RayCastPlane(nearWorld, cameraRayDir, planePt, planeNormal);
 }
 
 Vec2 Camera::WorldPointToScreenSpace(Vec3 point)

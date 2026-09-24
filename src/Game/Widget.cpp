@@ -21,6 +21,16 @@ void DrawContainer(int x, int y, float width, float height)
     DrawRect(x + offset, y + offset, width, height, 0.2f, 0.2f, 0.2f);
 }
 
+void DrawPanel(float x, float y, float width, float height, Color fill, Color border)
+{
+    for (float scanY = 0.0f; scanY <= height; scanY += 2.0f)
+        App::DrawLine(x, y + scanY, x + width, y + scanY, fill.R, fill.G, fill.B);
+    App::DrawLine(x, y, x + width, y, border.R, border.G, border.B);
+    App::DrawLine(x + width, y, x + width, y + height, border.R, border.G, border.B);
+    App::DrawLine(x + width, y + height, x, y + height, border.R, border.G, border.B);
+    App::DrawLine(x, y + height, x, y, border.R, border.G, border.B);
+}
+
 int Button(int id, float x, float y, UIState& uiState, float width, float height, std::string label)
 {
     float shadowOffsetX = 2.0f;
