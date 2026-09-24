@@ -8,12 +8,29 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 ## Features
 
 - Entity Component System
-- 3D renderer multithreaded cpu based renderer 
+- 3D renderer multithreaded cpu based renderer
 - Physics System (2D)
-- AI System
 - Immediate mode gui library
-- Save system: binary, versioned serialization of the whole game state
-- Scene editor: in-game level authoring GUI, scenes saved to `data/scenes/`
+- Save system: binary, versioned serialization of the whole world
+- **SceneEditor**: a separate program to author scenes from basic 2D shapes (rectangle, circle, triangle,
+  polygon) and 3D models placed on a field, with physics bodies, tags and C++ scripts
+- **Game**: a separate program that plays the authored scenes, driven by C++ scripts
+  (per object scripts and scene scripts, running on top of the ECS)
+
+See [CHANGELOG.md](CHANGELOG.md) for how the editor, the scenes and the scripts work with the ECS.
+
+## Project layout
+
+| Directory | Target | What |
+|---|---|---|
+| `src/ContestAPI` | `ContestAPI` | window, input, drawing (unchanged) |
+| `src/Engine` | `Engine` (library) | ECS, renderer, physics, UI, serialization, scene objects, scripting |
+| `src/Game/Scripts` + `GameScripts.*` | `GameScripts` (library) | the C++ scripts, shared by the editor and the game |
+| `src/Editor` | `SceneEditor` (program) | the scene editor |
+| `src/Game` | `Game` (program) | scene menu + scene player |
+| `data/scenes` | | authored scenes (`*.ubsave`) |
+| `data/models` | | `.obj` / `.mtl` models usable in scenes |
+| `tests` | `EngineTests`, `AuthorScenes` | headless unit tests and the sample scene generator |
 
 ## Dependencies
 
@@ -39,31 +56,55 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 ### Windows
 * Run generate-windows.bat script in directory
 * open visual studio solution in build/win64
-* build and run from visual studio
+* build and run from visual studio: `Game` is the startup project, set `SceneEditor` as startup project
+  (right click > Set as Startup Project) to run the editor
 
 ### MacOS
 * Run ./generate-macos.sh script in directory
 * go to build/macos directory
-    * run [make all] in macos terminal to build the program
+    * run [make all] in macos terminal to build both programs
     * run [make run] to run the game
+    * run [make run_editor] to run the scene editor
         * Note that the application can't be closed in the window. use cmd + Q to quit the program
 * If using VSCode, commands can be run from the VSCode terminal
 
-## Save / Load
-
-In the main level press **4** to quick save and **5** to quick load (`saves/quicksave.ubsave`).
-From code use `GameSceneManager.SaveGame(path, error)` / `GameSceneManager.LoadGame(path, error)`.
+Both programs must run from the repository root (the build does this) to find `data/`.
 
 ## Scene editor
 
-From the title screen choose **Scene Editor**. Pick a prefab (palette or keys 1-7) and click the ground to place it;
-select and drag objects, R rotates, X deletes, U/Y undo/redo, WASD pans, Z/C zooms.
-Save / Load use the scene list (files in `data/scenes/`), **Play** tests the scene in the main level and **Tab** returns
-to the editor. Scenes saved to `data/scenes/` are automatically verified by the unit tests.
+* Pick a shape in the palette (or keys **1-5**), set the brush (size, sides, rotation, body, tag, model, colour) and
+  click the field to place it. Right click stops placing.
+* Click an object to select it, drag to move it. The inspector edits its shape, colour, body
+  (None / Static / Dynamic / Trigger), tag and **script** with its parameters.
+* The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
+* Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
+* Choose a scene in the list (top left) and **Save** / **Load** it (`data/scenes/<name>.ubsave`).
+* **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
+
+## Game
+
+The game lists the scenes of `data/scenes`: click one to play it. **Esc** goes back to the menu, **Tab** switches
+between the hardware and the software renderer. `level_1` and `level_2` are small `CollectGame` levels (WASD / arrows:
+collect every pickup, avoid hazards), `sandbox` shows every object type.
+
+## Scripts
+
+Scripts are C++ classes in `src/Game/Scripts`, registered by name in `src/Game/GameScripts.cpp`:
+
+```cpp
+class Spinner : public Script
+{
+    void OnUpdate(float dt) override { SetYaw(Yaw() + Param("Speed") * dt); }
+};
+// RegisterGameScripts():
+r.Register<Spinner>("Spinner", "Spins the object", {{"Speed", 90.0f, 15.0f}});
+```
+
+Derive from `SceneScript` for a script that drives a whole scene. Both programs pick new scripts up after a rebuild.
 
 ## Unit tests
 
-The save system tests are headless (no OpenGL/GLUT/SDL needed) and run on any platform:
+The tests are headless (no OpenGL/GLUT/SDL needed) and run the real engine, editor and scripts on any platform:
 
 ```
 cmake -S tests -B build/tests
@@ -71,5 +112,6 @@ cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 ```
 
-They can also be built from the root project with `-DBUILD_SERIALIZATION_TESTS=ON`.
-Regenerate the sample scenes in `data/scenes/` with `cmake --build build/tests --target author_scenes`.
+They can also be built from the root project with `-DBUILD_TESTS=ON`.
+Regenerate the sample scenes in `data/scenes/` with `cmake --build build/tests --target author_scenes`
+(`SceneFileTests` checks the committed files match `tests/scenes/SampleScenes.cpp`).

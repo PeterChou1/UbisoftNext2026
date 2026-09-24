@@ -1,0 +1,163 @@
+#include "ColliderCallbackSystem.h"
+
+#include "stdafx.h"
+
+extern ECSManager ECS;
+
+void ColliderCallbackSystem::RegisterCallback(const std::shared_ptr<Collider>& callback)
+{
+    m_CallBackMap[callback->GetCollisionPair()] = callback;
+}
+
+void ColliderCallbackSystem::ResetResource()
+{
+    m_CallBackMap.clear();
+    m_Contacts.clear();
+    m_PrevContacts.clear();
+    m_ContactEvents.clear();
+}
+
+void ColliderCallbackSystem::SubmitContact(Entity A, Entity B)
+{
+    // Store every pair in one orientation (smallest id first)
+    m_Contacts.insert(A < B ? std::make_pair(A, B) : std::make_pair(B, A));
+}
+
+std::vector<ContactEvent> ColliderCallbackSystem::TakeContactEvents()
+{
+    std::vector<ContactEvent> events;
+    std::swap(events, m_ContactEvents);
+    return events;
+}
+
+void ColliderCallbackSystem::UpdateContacts()
+{
+    for (const auto& pair : m_Contacts)
+    {
+        if (m_PrevContacts.count(pair) == 0)
+            m_ContactEvents.push_back({ContactEvent::Enter, pair.first, pair.second});
+    }
+    for (const auto& pair : m_PrevContacts)
+    {
+        if (m_Contacts.count(pair) == 0)
+            m_ContactEvents.push_back({ContactEvent::Exit, pair.first, pair.second});
+    }
+    m_PrevContacts = m_Contacts;
+    m_Contacts.clear();
+}
+
+bool ColliderCallbackSystem::HasRegisterCallback(CollisionPair pair)
+{
+    if (m_CallBackMap.find(pair) != m_CallBackMap.end())
+        return true;
+
+    std::swap(pair.first, pair.second);
+
+    return m_CallBackMap.find(pair) != m_CallBackMap.end();
+}
+
+void ColliderCallbackSystem::SubmitForCallback(Entity A, Entity B)
+{
+    if (m_CollidePairs.find({A, B}) != m_CollidePairs.end() ||
+        m_CollidePairs.find({B, A}) != m_CollidePairs.end())
+        return;
+
+    m_CollidePairs.insert({A, B});
+}
+
+void ColliderCallbackSystem::Update()
+{
+    UpdateContacts();
+
+    std::set<Entity> deleteEntity = ECS.VisitDeleted<RigidBody>();
+
+    for (auto& entityPair : m_CollidePairs)
+    {
+        Entity e1 = entityPair.first;
+        Entity e2 = entityPair.second;
+        if (deleteEntity.find(e1) != deleteEntity.end() ||
+            deleteEntity.find(e2) != deleteEntity.end())
+            continue;
+
+        assert(ECS.HasComponent<RigidBody>(e1) && "Not Possible");
+        assert(ECS.HasComponent<RigidBody>(e2) && "Not Possible");
+
+        RigidBody& A = ECS.GetComponent<RigidBody>(e1);
+        RigidBody& B = ECS.GetComponent<RigidBody>(e2);
+
+        CollisionPair pairA = {A.Category, B.Category};
+        CollisionPair pairB = {B.Category, A.Category};
+
+        if (m_CallBackMap.find(pairA) != m_CallBackMap.end())
+        {
+            if (m_PrevCollidePairs.find(entityPair) != m_PrevCollidePairs.end())
+            {
+                m_CallBackMap[pairA]->OnCollide(e1, e2, A, B);
+            }
+            else
+            {
+                m_CallBackMap[pairA]->OnCollideEnter(e1, e2, A, B);
+            }
+        }
+        else if (m_CallBackMap.find(pairB) != m_CallBackMap.end())
+        {
+            if (m_PrevCollidePairs.find(entityPair) != m_PrevCollidePairs.end())
+            {
+                m_CallBackMap[pairB]->OnCollide(e2, e1, B, A);
+            }
+            else
+            {
+                m_CallBackMap[pairB]->OnCollideEnter(e2, e1, B, A);
+            }
+        }
+        deleteEntity = ECS.VisitDeleted<RigidBody>();
+    }
+
+    for (auto& entityPair : m_PrevCollidePairs)
+    {
+        Entity e1 = entityPair.first;
+        Entity e2 = entityPair.second;
+
+        if (deleteEntity.find(e1) != deleteEntity.end() ||
+            deleteEntity.find(e2) != deleteEntity.end())
+            continue;
+
+        if (!ECS.HasComponent<RigidBody>(e1) || !ECS.HasComponent<RigidBody>(e2))
+            continue;
+
+        RigidBody& A = ECS.GetComponent<RigidBody>(e1);
+        RigidBody& B = ECS.GetComponent<RigidBody>(e2);
+
+        CollisionPair pairA = {A.Category, B.Category};
+        CollisionPair pairB = {B.Category, A.Category};
+
+        if (m_CallBackMap.find(pairA) != m_CallBackMap.end() &&
+            m_CollidePairs.find(entityPair) == m_CollidePairs.end())
+        {
+            m_CallBackMap[pairA]->OnCollideExit(e1, e2, A, B);
+        }
+        else if (m_CallBackMap.find(pairB) != m_CallBackMap.end() &&
+                 m_CollidePairs.find(entityPair) == m_CollidePairs.end())
+        {
+            m_CallBackMap[pairB]->OnCollideExit(e2, e1, B, A);
+        }
+        deleteEntity = ECS.VisitDeleted<RigidBody>();
+    }
+
+    for (auto it = m_CollidePairs.begin(); it != m_CollidePairs.end();)
+    {
+        if (deleteEntity.find(it->first) != deleteEntity.end() ||
+            deleteEntity.find(it->second) != deleteEntity.end())
+        {
+            it = m_CollidePairs.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // Resolve all collider callback clear for next loop
+    m_PrevCollidePairs = m_CollidePairs;
+    m_CollidePairs.clear();
+}

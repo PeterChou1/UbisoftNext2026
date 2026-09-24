@@ -1,149 +1,149 @@
 #include "SampleScenes.h"
 
-#include "BlackBoard.h"
-#include "ECSManager.h"
-#include "GameState.h"
-#include "UIState.h"
+#include "Scripts/ScriptNames.h"
 
-extern ECSManager ECS;
-
-using Editor::PrefabSettings;
-using Editor::PrefabType;
+using Editor::ObjectKind;
+using Editor::PlaceSettings;
 using Editor::SceneEditor;
+using SceneObjects::BodyType;
 
 namespace
 {
-    // Place a rows x cols block of units centred on (x, z) like the game's
-    // Create*Battalion functions (0.5 spacing)
-    void PlaceBlock(SceneEditor& editor,
-                    PrefabType type,
-                    float x,
-                    float z,
-                    int rows,
-                    int cols,
-                    const PrefabSettings& settings)
+    const Vec3 BLUE = {0.30f, 0.50f, 0.90f};
+    const Vec3 YELLOW = {0.95f, 0.85f, 0.30f};
+    const Vec3 RED = {0.90f, 0.30f, 0.25f};
+    const Vec3 GREY = {0.85f, 0.85f, 0.85f};
+    const Vec3 GREEN = {0.35f, 0.75f, 0.35f};
+    const Vec3 PURPLE = {0.60f, 0.40f, 0.85f};
+    const Vec3 TEAL = {0.25f, 0.70f, 0.70f};
+
+    PlaceSettings Brush(float w, float h, const Vec3& color, BodyType body, const std::string& tag = "")
     {
-        const float spacing = 0.5f;
-        for (int row = 0; row < rows; ++row)
+        PlaceSettings s;
+        s.Width = w;
+        s.Height = h;
+        s.Color = color;
+        s.Body = body;
+        s.Tag = tag;
+        return s;
+    }
+
+    Entity PlacePlayer(SceneEditor& editor, const Vec3& at)
+    {
+        Entity player = editor.Place(ObjectKind::Circle, at, Brush(1.0f, 1.0f, BLUE, BodyType::Dynamic, "Player"));
+        editor.SetScript(player, ScriptNames::PlayerController);
+        return player;
+    }
+
+    void PlacePickup(SceneEditor& editor, const Vec3& at)
+    {
+        PlaceSettings s = Brush(0.8f, 0.8f, YELLOW, BodyType::Trigger, "Pickup");
+        s.Sides = 5;
+        Entity pickup = editor.Place(ObjectKind::Polygon, at, s);
+        editor.SetScript(pickup, ScriptNames::Collectible);
+    }
+
+    // Walls along the border of a W x H field
+    void PlaceBorder(SceneEditor& editor, float w, float h)
+    {
+        PlaceSettings side = Brush(w, 0.6f, GREY, BodyType::Static, "Wall");
+        side.Thickness = 0.8f;
+        editor.Place(ObjectKind::Rectangle, {0, 0, h * 0.5f}, side);
+        editor.Place(ObjectKind::Rectangle, {0, 0, -h * 0.5f}, side);
+        side.YawDegrees = 90.0f;
+        side.Width = h;
+        editor.Place(ObjectKind::Rectangle, {w * 0.5f, 0, 0}, side);
+        editor.Place(ObjectKind::Rectangle, {-w * 0.5f, 0, 0}, side);
+    }
+
+    void Empty(SceneEditor& editor)
+    {
+        editor.NewScene();
+    }
+
+    void Level1(SceneEditor& editor)
+    {
+        editor.NewScene();
+        editor.SetFieldSize(24.0f, 18.0f);
+        PlaceBorder(editor, 24.0f, 18.0f);
+        PlacePlayer(editor, {0, 0, -6});
+        // An inner wall to walk around
+        PlaceSettings wall = Brush(8.0f, 0.6f, GREY, BodyType::Static, "Wall");
+        wall.Thickness = 0.8f;
+        editor.Place(ObjectKind::Rectangle, {0, 0, 0}, wall);
+        const Vec3 pickups[] = {{-8, 0, -5}, {8, 0, -5}, {-8, 0, 5}, {8, 0, 5}, {0, 0, 4}, {-3, 0, 6}};
+        for (const Vec3& p : pickups)
+            PlacePickup(editor, p);
+        editor.SetSceneScript(ScriptNames::CollectGame);
+        editor.SetSceneParam("Level", 1.0f);
+        editor.SetSceneParam("Lives", 3.0f);
+        editor.SetGameCamera({0, 0, -1}, 24.0f);
+    }
+
+    void Level2(SceneEditor& editor)
+    {
+        editor.NewScene();
+        editor.SetFieldSize(28.0f, 20.0f);
+        PlaceBorder(editor, 28.0f, 20.0f);
+        PlacePlayer(editor, {0, 0, -8});
+        // Two patrolling hazards crossing the field
+        for (float z : {-2.0f, 3.0f})
         {
-            for (int col = 0; col < cols; ++col)
-            {
-                float offsetX = (col - (cols - 1) * 0.5f) * spacing;
-                float offsetZ = (row - (rows - 1) * 0.5f) * spacing;
-                editor.Place(type, {x + offsetX, 0, z + offsetZ}, settings);
-            }
+            PlaceSettings hazard = Brush(1.2f, 1.2f, RED, BodyType::Trigger, "Hazard");
+            hazard.YawDegrees = 90.0f;
+            Entity h = editor.Place(ObjectKind::Rectangle, {0, 0, z}, hazard);
+            editor.SetScript(h, ScriptNames::MovingHazard);
+            editor.SetScriptParam(h, "Distance", 9.0f);
+            editor.SetScriptParam(h, "Speed", z < 0 ? 4.0f : 3.0f);
         }
+        // A turret in the corner firing along the field
+        PlaceSettings turret = Brush(1.4f, 1.4f, PURPLE, BodyType::Static, "Spawner");
+        turret.YawDegrees = 90.0f;
+        Entity t = editor.Place(ObjectKind::Triangle, {-12, 0, 7}, turret);
+        editor.SetScript(t, ScriptNames::Spawner);
+        editor.SetScriptParam(t, "Interval", 1.5f);
+        const Vec3 pickups[] = {{-10, 0, -6}, {10, 0, -6}, {-10, 0, 7}, {10, 0, 7}, {0, 0, 8}, {5, 0, 0}, {-5, 0, 0}};
+        for (const Vec3& p : pickups)
+            PlacePickup(editor, p);
+        editor.SetSceneScript(ScriptNames::CollectGame);
+        editor.SetSceneParam("Level", 2.0f);
+        editor.SetSceneParam("Lives", 3.0f);
+        editor.SetGameCamera({0, 0, -1}, 27.0f);
     }
 
-    PrefabSettings Unit(int health, int battalion)
-    {
-        PrefabSettings s;
-        s.Health = health;
-        s.Battalion = battalion;
-        return s;
-    }
-
-    PrefabSettings Enemy(int health, float speed)
-    {
-        PrefabSettings s;
-        s.Health = health;
-        s.EnemySpeed = speed;
-        return s;
-    }
-
-    PrefabSettings CrystalOf(int amount)
-    {
-        PrefabSettings s;
-        s.CrystalAmount = amount;
-        return s;
-    }
-
-    PrefabSettings Rotated(float degrees)
-    {
-        PrefabSettings s;
-        s.YawDegrees = degrees;
-        return s;
-    }
-
-    //-----------------------------------------------------------------------------
-
-    void EmptyArena(SceneEditor& editor)
+    void Sandbox(SceneEditor& editor)
     {
         editor.NewScene();
-    }
-
-    void FirstContact(SceneEditor& editor)
-    {
-        editor.NewScene();
-        PlaceBlock(editor, PrefabType::Soldier, 4.0f, -4.0f, 3, 3, Unit(100, 1));
-        PlaceBlock(editor, PrefabType::Support, -4.0f, -3.0f, 1, 2, Unit(60, 2));
-        editor.Place(PrefabType::Crystal, {-9.0f, 0, -6.0f}, CrystalOf(30));
-        editor.Place(PrefabType::Crystal, {-12.0f, 0, 2.0f}, CrystalOf(30));
-        editor.Place(PrefabType::Crystal, {10.0f, 0, -11.0f}, CrystalOf(20));
-        PlaceBlock(editor, PrefabType::EnemySoldier, 16.0f, 15.0f, 2, 3, Enemy(100, 0.0012f));
-        editor.SetStartingCrystals(25);
-    }
-
-    void Fortress(SceneEditor& editor)
-    {
-        editor.NewScene();
-        // Wall ring around the base with an opening to the south
-        editor.Place(PrefabType::Wall, {0.0f, 0, 6.0f}, Rotated(90.0f));
-        editor.Place(PrefabType::Wall, {6.0f, 0, 0.0f});
-        editor.Place(PrefabType::Wall, {-6.0f, 0, 0.0f});
-        editor.Place(PrefabType::Wall, {-4.0f, 0, -6.0f}, Rotated(90.0f));
-        Entity tank = editor.Place(PrefabType::PlayerTank, {0.0f, 0, -8.0f}, Unit(200, 3));
-        editor.SetYaw(tank, 180.0f);
-        PlaceBlock(editor, PrefabType::Soldier, 3.0f, -3.0f, 2, 2, Unit(100, 1));
-        PlaceBlock(editor, PrefabType::Support, -3.0f, 3.0f, 1, 3, Unit(60, 2));
-        editor.Place(PrefabType::Crystal, {-2.0f, 0, 3.5f}, CrystalOf(45));
-        editor.Place(PrefabType::Crystal, {2.5f, 0, 3.5f}, CrystalOf(45));
-        editor.SetStartingCrystals(60);
-        editor.SetSpawnVolume(4);
-    }
-
-    void TankBattle(SceneEditor& editor)
-    {
-        editor.NewScene();
-        Entity left = editor.Place(PrefabType::PlayerTank, {-5.0f, 0, -5.0f}, Unit(200, 3));
-        Entity right = editor.Place(PrefabType::PlayerTank, {5.0f, 0, -5.0f}, Unit(250, 4));
-        editor.SetYaw(left, 45.0f);
-        editor.SetYaw(right, 315.0f);
-        editor.Place(PrefabType::EnemyTank, {-12.0f, 0, 14.0f}, Unit(200, 0));
-        editor.Place(PrefabType::EnemyTank, {0.0f, 0, 18.0f}, Unit(300, 0));
-        editor.Place(PrefabType::EnemyTank, {12.0f, 0, 14.0f}, Unit(200, 0));
-        PlaceBlock(editor, PrefabType::EnemySoldier, 0.0f, 12.0f, 2, 4, Enemy(120, 0.0015f));
-        editor.SetRoundNumber(3);
-        editor.SetSpawnVolume(5);
-        editor.SetStartingCrystals(40);
-    }
-
-    void CrystalRush(SceneEditor& editor)
-    {
-        editor.NewScene();
-        const float positions[][2] = {
-                {-15, -15}, {-10, 12}, {14, -9}, {18, 6}, {-18, 3}, {7, 17}, {-3, -18}};
-        int amount = 10;
-        for (const auto& p : positions)
+        PlacePlayer(editor, {0, 0, -8});
+        // One of every shape, spinning
+        const ObjectKind kinds[] = {ObjectKind::Rectangle, ObjectKind::Circle, ObjectKind::Triangle, ObjectKind::Polygon};
+        const Vec3 colors[] = {RED, GREEN, PURPLE, TEAL};
+        for (int i = 0; i < 4; ++i)
         {
-            editor.Place(PrefabType::Crystal, {p[0], 0, p[1]}, CrystalOf(amount));
-            amount += 10;
+            PlaceSettings s = Brush(2.0f, 1.2f, colors[i], BodyType::Static);
+            s.Sides = 8;
+            s.Thickness = 0.5f;
+            Entity e = editor.Place(kinds[i], {-9.0f + 6.0f * i, 0, 6}, s);
+            editor.SetScript(e, ScriptNames::Rotator);
+            editor.SetScriptParam(e, "Speed", 30.0f + 30.0f * i);
         }
-        PlaceBlock(editor, PrefabType::Support, -6.0f, -6.0f, 2, 3, Unit(60, 2));
-
-        // Exercise the editing workflow: place, change, move, undo, redo
-        Entity scout = editor.Place(PrefabType::Soldier, {3.0f, 0, 3.0f}, Unit(100, 1));
-        editor.SetHealth(scout, 150);
-        editor.Move(scout, {5.5f, 0, 2.0f});
-        Entity mistake = editor.Place(PrefabType::EnemyTank, {1.0f, 0, 1.0f});
-        (void)mistake;
-        editor.Undo(); // remove the misplaced enemy tank
-        editor.Undo(); // move the scout back
-        editor.Redo(); // ... and to its final spot again
-
-        Entity fast = editor.Place(PrefabType::EnemySoldier, {20.0f, 0, 20.0f}, Enemy(80, 0.001f));
-        editor.SetEnemySpeed(fast, 0.0025f);
-        editor.SetStartingCrystals(10);
+        // Crates to push around (dynamic bodies, no script)
+        for (int i = 0; i < 3; ++i)
+            editor.Place(ObjectKind::Rectangle, {-3.0f + 3.0f * i, 0, -2}, Brush(1.0f, 1.0f, GREY, BodyType::Dynamic));
+        // Something that chases the player
+        Entity chaser = editor.Place(ObjectKind::Triangle, {10, 0, -10}, Brush(1.0f, 1.2f, RED, BodyType::Trigger, "Enemy"));
+        editor.SetScript(chaser, ScriptNames::Follower);
+        editor.SetScriptParam(chaser, "Range", 12.0f);
+        // 3D models from data/models on the same field
+        PlaceSettings model;
+        model.Model = "Box";
+        model.Width = 1.5f;
+        editor.Place(ObjectKind::Model, {12, 0, 0}, model);
+        model.Model = "GolfBall";
+        model.Width = 1.0f;
+        Entity ball = editor.Place(ObjectKind::Model, {-12, 0, 0}, model);
+        editor.SetScript(ball, ScriptNames::Rotator);
+        editor.SetGameCamera({0, 0, -1}, 30.0f);
     }
 } // namespace
 
@@ -152,28 +152,11 @@ namespace SampleScenes
     const std::vector<SampleScene>& All()
     {
         static const std::vector<SampleScene> scenes = {
-                {"empty_arena", "Minimal playable scene: ground, base and selector", EmptyArena},
-                {"first_contact",
-                 "Soldier battalion, miners, crystals and a raiding party",
-                 FirstContact},
-                {"fortress",
-                 "Base walled in (both wall orientations) with a tank on guard",
-                 Fortress},
-                {"tank_battle", "Player tanks against enemy tanks in round 3", TankBattle},
-                {"crystal_rush",
-                 "Many deposits, authored with undo/redo and property edits",
-                 CrystalRush},
+                {"empty", "Just the field", Empty},
+                {"level_1", "CollectGame level 1: pickups and walls", Level1},
+                {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
+                {"sandbox", "Every shape type, crates, a chaser and 3D models", Sandbox},
         };
         return scenes;
-    }
-
-    void EnsureEditorResources()
-    {
-        if (!ECS.HasResource<GameState>())
-            ECS.RegisterResource(GameState());
-        if (!ECS.HasResource<BlackBoard>())
-            ECS.RegisterResource(BlackBoard());
-        if (!ECS.HasResource<UIState>())
-            ECS.RegisterResource(UIState());
     }
 } // namespace SampleScenes

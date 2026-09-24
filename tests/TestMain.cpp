@@ -1,14 +1,16 @@
 //---------------------------------------------------------------------------------
 // TestMain.cpp
 //---------------------------------------------------------------------------------
-#include "ECSManager.h"
+#include "TestEnvironment.h"
 #include "TestFramework.h"
 
-// The engine sources refer to the global ECS instance (see GameTest.cpp)
-ECSManager ECS;
+#include <filesystem>
 
 int main(int argc, char** argv)
 {
-    ECS.Init();
+    // Models (data/models) and scenes (data/scenes) are found relative to the
+    // repository root, like the programs find them
+    std::filesystem::current_path(REPO_ROOT);
+    TestEnvironment::Init();
     return TestFramework::RunAll(argc, argv);
 }
