@@ -1,6 +1,7 @@
 #pragma once
 #include "BlingPhong.h"
 
+// Blinn-Phong, black near the triangle's edges
 class OutlineScanShaderSIMD : public BlinnPhongSIMD
 {
   public:
@@ -8,7 +9,5 @@ class OutlineScanShaderSIMD : public BlinnPhongSIMD
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-
-    ~OutlineScanShaderSIMD() override = default;
+               DirectionalLight& light) override;
 };

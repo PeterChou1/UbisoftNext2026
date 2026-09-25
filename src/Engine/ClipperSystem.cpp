@@ -7,191 +7,150 @@
 
 #include <cassert>
 
-struct Point
-{
-    Vec4 position{};
-    Vec4 shadowPosition{};
-    Vec3 weights{};
-
-    Point() {}
-
-    Point(const Vec4& point, const Vec4& shadow, const Vec3& weights)
-        : position(point)
-        , shadowPosition(shadow)
-        , weights(weights)
-    {
-    }
-};
-
-constexpr uint8_t LEFT_PLANE = 1 << 0, RIGHT_PLANE = 1 << 1, DOWN_PLANE = 1 << 2, UP_PLANE = 1 << 3,
-                  NEAR_PLANE = 1 << 4, FAR_PLANE = 1 << 5;
-
-float Dot(uint8_t planeId, const Vec4& v)
-{
-    switch (planeId)
-    {
-    case LEFT_PLANE:
-        return v.X + v.W; /* v * (1 0 0 1) left */
-    case RIGHT_PLANE:
-        return -v.X + v.W; /* v * (-1 0 0 1) right */
-    case DOWN_PLANE:
-        return v.Y + v.W; /* v * (0 1 0 1) down*/
-    case UP_PLANE:
-        return -v.Y + v.W; /* v * (0 -1 0 1) up*/
-    case FAR_PLANE:
-        return v.Z + v.W; /* v * (0 0 1 1) far */
-    case NEAR_PLANE:
-        return -v.Z + v.W; /* v * (0 0 -1 1) near */
-    default:
-        assert(false && "unreachable code");
-        return 0.0;
-    }
-}
-
-float PointToPlane(uint8_t planeId, const Vec4& a, const Vec4& b)
-{
-    const float alpha = Dot(planeId, a);
-    const float beta = Dot(planeId, b);
-    return alpha / (alpha - beta);
-}
-
-void Lerp(const Point& a, const Point& b, float alpha, Point& out)
-{
-    float a1 = 1.0f - alpha;
-    out.position = a.position * a1 + b.position * alpha;
-    out.shadowPosition = a.shadowPosition * a1 + b.shadowPosition * alpha;
-    out.weights = a.weights * a1 + b.weights * alpha;
-}
-
-uint8_t OutCode(const Vec4& v)
-{
-    uint8_t outcode = 0;
-
-    if (Dot(LEFT_PLANE, v) < 0)
-        outcode |= LEFT_PLANE;
-    if (Dot(RIGHT_PLANE, v) < 0)
-        outcode |= RIGHT_PLANE;
-    if (Dot(DOWN_PLANE, v) < 0)
-        outcode |= DOWN_PLANE;
-    if (Dot(UP_PLANE, v) < 0)
-        outcode |= UP_PLANE;
-    if (Dot(FAR_PLANE, v) < 0)
-        outcode |= FAR_PLANE;
-    if (Dot(NEAR_PLANE, v) < 0)
-        outcode |= NEAR_PLANE;
-
-    return outcode;
-}
-
-std::vector<Point> ClipPlane(uint32_t planeid, std::vector<Point>& points)
-{
-    std::vector<Point> outPoints;
-
-    for (int i = 0, j = 1; i < points.size(); i++, j++)
-    {
-        if (i == points.size() - 1)
-            j = 0;
-
-        const auto& Apoint = points[i];
-        const auto& Bpoint = points[j];
-
-        float t = PointToPlane(planeid, Apoint.position, Bpoint.position);
-        Point newpoint{};
-        Lerp(points[i], points[j], t, newpoint);
-
-        const auto isInsideA = Dot(planeid, Apoint.position) > 0;
-        const auto isInsideB = Dot(planeid, Bpoint.position) > 0;
-
-        if (isInsideA)
-        {
-            if (isInsideB)
-            {
-                outPoints.push_back(Bpoint);
-            }
-            else
-            {
-                outPoints.push_back(newpoint);
-            }
-        }
-        else if (isInsideB)
-        {
-            outPoints.push_back(newpoint);
-            outPoints.push_back(Bpoint);
-        }
-    }
-
-    return outPoints;
-}
-
-std::vector<Triangle> ClipAgainstPlane(Triangle& clip)
-{
-
-    uint8_t clipcode1 = OutCode(clip.verts[0].Projection);
-    uint8_t clipcode2 = OutCode(clip.verts[1].Projection);
-    uint8_t clipcode3 = OutCode(clip.verts[2].Projection);
-
-    std::vector<Triangle> clipped;
-
-    if (!(clipcode1 | clipcode2 | clipcode3))
-    {
-        // trivial accept
-        clip.PerspectiveDivision();
-        clipped.push_back(clip);
-    }
-    else if (!(clipcode1 & clipcode2 & clipcode3))
-    {
-        Vertex v0 = clip.verts[0];
-        Vertex v1 = clip.verts[1];
-        Vertex v2 = clip.verts[2];
-        std::vector<Point> points = {
-                Point(clip.verts[0].Projection, clip.verts[0].ShadowProjection, {1, 0, 0}),
-                Point(clip.verts[1].Projection, clip.verts[1].ShadowProjection, {0, 1, 0}),
-                Point(clip.verts[2].Projection, clip.verts[2].ShadowProjection, {0, 0, 1})};
-        uint32_t mask = clipcode1 | clipcode2 | clipcode3;
-        if (mask & LEFT_PLANE)
-            points = ClipPlane(LEFT_PLANE, points);
-
-        if (mask & RIGHT_PLANE)
-            points = ClipPlane(RIGHT_PLANE, points);
-
-        if (mask & DOWN_PLANE)
-            points = ClipPlane(DOWN_PLANE, points);
-
-        if (mask & UP_PLANE)
-            points = ClipPlane(UP_PLANE, points);
-
-        if (mask & NEAR_PLANE)
-            points = ClipPlane(NEAR_PLANE, points);
-
-        if (mask & FAR_PLANE)
-            points = ClipPlane(FAR_PLANE, points);
-
-        // triangulate the points
-        for (int j = 2; j < points.size(); j++)
-        {
-            Point& p1 = points[0];
-            Point& p2 = points[j - 1];
-            Point& p3 = points[j];
-
-            Vertex n1 = v0 * p1.weights.X + v1 * p1.weights.Y + v2 * p1.weights.Z;
-            n1.Projection = p1.position;
-            n1.ShadowProjection = p1.shadowPosition;
-            Vertex n2 = v0 * p2.weights.X + v1 * p2.weights.Y + v2 * p2.weights.Z;
-            n2.Projection = p2.position;
-            n2.ShadowProjection = p2.shadowPosition;
-            Vertex n3 = v0 * p3.weights.X + v1 * p3.weights.Y + v2 * p3.weights.Z;
-            n3.Projection = p3.position;
-            n3.ShadowProjection = p3.shadowPosition;
-            Triangle newtri = Triangle(n1, n2, n3);
-            newtri.PerspectiveDivision();
-            clipped.push_back(newtri);
-        }
-    }
-    // o/w trivial reject
-    return clipped;
-}
-
 extern ECSManager ECS;
+
+namespace
+{
+    // A corner of the polygon being clipped: its clip space positions and its
+    // weights of the triangle's three vertices
+    struct Point
+    {
+        Vec4 position{};
+        Vec4 shadowPosition{};
+        Vec3 weights{};
+    };
+
+    constexpr uint8_t LEFT_PLANE = 1 << 0, RIGHT_PLANE = 1 << 1, DOWN_PLANE = 1 << 2,
+                      UP_PLANE = 1 << 3, NEAR_PLANE = 1 << 4, FAR_PLANE = 1 << 5;
+    // The order the planes are clipped against
+    constexpr uint8_t CLIP_PLANES[] = {
+            LEFT_PLANE, RIGHT_PLANE, DOWN_PLANE, UP_PLANE, NEAR_PLANE, FAR_PLANE};
+
+    // Signed distance of v to a plane of the clip volume (inside when > 0)
+    float Dot(uint8_t planeId, const Vec4& v)
+    {
+        switch (planeId)
+        {
+        case LEFT_PLANE:
+            return v.X + v.W; /* v * (1 0 0 1) left */
+        case RIGHT_PLANE:
+            return -v.X + v.W; /* v * (-1 0 0 1) right */
+        case DOWN_PLANE:
+            return v.Y + v.W; /* v * (0 1 0 1) down*/
+        case UP_PLANE:
+            return -v.Y + v.W; /* v * (0 -1 0 1) up*/
+        case FAR_PLANE:
+            return v.Z + v.W; /* v * (0 0 1 1) far */
+        case NEAR_PLANE:
+            return -v.Z + v.W; /* v * (0 0 -1 1) near */
+        default:
+            assert(false && "unreachable code");
+            return 0.0;
+        }
+    }
+
+    // Where the segment a -> b crosses a plane (0 at a, 1 at b)
+    float PointToPlane(uint8_t planeId, const Vec4& a, const Vec4& b)
+    {
+        const float alpha = Dot(planeId, a);
+        const float beta = Dot(planeId, b);
+        return alpha / (alpha - beta);
+    }
+
+    Point Lerp(const Point& a, const Point& b, float alpha)
+    {
+        float a1 = 1.0f - alpha;
+        return {a.position * a1 + b.position * alpha,
+                a.shadowPosition * a1 + b.shadowPosition * alpha,
+                a.weights * a1 + b.weights * alpha};
+    }
+
+    // The planes v is outside of
+    uint8_t OutCode(const Vec4& v)
+    {
+        uint8_t outcode = 0;
+        for (uint8_t plane : CLIP_PLANES)
+        {
+            if (Dot(plane, v) < 0)
+                outcode |= plane;
+        }
+        return outcode;
+    }
+
+    // Sutherland-Hodgman: the part of the polygon inside the plane
+    std::vector<Point> ClipPlane(uint8_t planeId, const std::vector<Point>& points)
+    {
+        std::vector<Point> outPoints;
+        for (size_t i = 0; i < points.size(); i++)
+        {
+            const Point& a = points[i];
+            const Point& b = points[i + 1 == points.size() ? 0 : i + 1];
+            const Point crossing = Lerp(a, b, PointToPlane(planeId, a.position, b.position));
+            const bool isInsideA = Dot(planeId, a.position) > 0;
+            const bool isInsideB = Dot(planeId, b.position) > 0;
+            if (isInsideA)
+                outPoints.push_back(isInsideB ? b : crossing);
+            else if (isInsideB)
+            {
+                outPoints.push_back(crossing);
+                outPoints.push_back(b);
+            }
+        }
+        return outPoints;
+    }
+
+    /**
+     * \brief The triangles of the part of `clip` inside the clip volume,
+     *        perspective divided. A triangle entirely inside is `clip`
+     *        itself, which is divided in place
+     */
+    std::vector<Triangle> ClipTriangle(Triangle& clip)
+    {
+        const uint8_t clipcode1 = OutCode(clip.verts[0].Projection);
+        const uint8_t clipcode2 = OutCode(clip.verts[1].Projection);
+        const uint8_t clipcode3 = OutCode(clip.verts[2].Projection);
+
+        std::vector<Triangle> clipped;
+        // trivial accept
+        if (!(clipcode1 | clipcode2 | clipcode3))
+        {
+            clip.PerspectiveDivision();
+            clipped.push_back(clip);
+            return clipped;
+        }
+        // trivial reject: all outside of the same plane
+        if (clipcode1 & clipcode2 & clipcode3)
+            return clipped;
+
+        const Vertex& v0 = clip.verts[0];
+        const Vertex& v1 = clip.verts[1];
+        const Vertex& v2 = clip.verts[2];
+        std::vector<Point> points = {{v0.Projection, v0.ShadowProjection, {1, 0, 0}},
+                                     {v1.Projection, v1.ShadowProjection, {0, 1, 0}},
+                                     {v2.Projection, v2.ShadowProjection, {0, 0, 1}}};
+        const uint8_t mask = clipcode1 | clipcode2 | clipcode3;
+        for (uint8_t plane : CLIP_PLANES)
+        {
+            if (mask & plane)
+                points = ClipPlane(plane, points);
+        }
+
+        auto toVertex = [&](const Point& p) {
+            Vertex v = v0 * p.weights.X + v1 * p.weights.Y + v2 * p.weights.Z;
+            v.Projection = p.position;
+            v.ShadowProjection = p.shadowPosition;
+            return v;
+        };
+        // triangulate the points (a fan around the first)
+        for (size_t j = 2; j < points.size(); j++)
+        {
+            Triangle triangle(toVertex(points[0]), toVertex(points[j - 1]), toVertex(points[j]));
+            triangle.PerspectiveDivision();
+            clipped.push_back(triangle);
+        }
+        return clipped;
+    }
+} // namespace
 
 ClipperSystem::ClipperSystem()
 {
@@ -207,78 +166,65 @@ ClipperSystem::ClipperSystem()
 
 void ClipperSystem::Clip()
 {
+    const std::vector<std::uint32_t>& coreIds = m_RenderConstants->CoreIds;
+    const int coreInterval = m_RenderConstants->CoreInterval;
+    const std::vector<Vertex>& vertexBuffer = m_VertexBuffer->Buffer;
+    const std::vector<std::uint32_t>& indexBuffer = m_IndexBuffer->Buffer;
+    DirectionalLight& light = m_Lighting->GetDirectionalLight();
+    const bool shadowMap = m_GameOptions->ShadowsOn();
 
-    std::vector<unsigned int> coreID = m_RenderConstants->CoreIds;
-    int coreInterval = m_RenderConstants->CoreInterval;
-    std::vector<Vertex>& vertexBuffer = m_VertexBuffer->Buffer;
-    std::vector<std::uint32_t> indexBuffer = m_IndexBuffer->Buffer;
-    DirectionalLight& Light = m_Lighting->GetDirectionalLight();
-    bool shadowMap = m_GameOptions->ShadowsOn();
-
-    Concurrent::ForEach(coreID.begin(), coreID.end(), [&](unsigned int threadID) {
+    Concurrent::ForEach(coreIds.begin(), coreIds.end(), [&](unsigned int threadID) {
+        // Clip, move to raster space with toRaster and keep the triangles
+        // that cover a pixel in this thread's bin
+        auto clipInto = [&](Triangle& triangle, std::vector<Triangle>& bin, auto toRaster) {
+            for (Triangle& clip : ClipTriangle(triangle))
+            {
+                toRaster(clip.verts[0].Projection);
+                toRaster(clip.verts[1].Projection);
+                toRaster(clip.verts[2].Projection);
+                if (clip.Setup(static_cast<int>(threadID), static_cast<int>(bin.size())))
+                    bin.push_back(clip);
+            }
+        };
         const int start = static_cast<int>(threadID * coreInterval);
         const int end = static_cast<int>((threadID + 1) * coreInterval);
-        std::vector<Triangle>& binCamProjectedClip =
-                m_ClippedTriangleBuffer->CameraClipBuffer[threadID];
-        std::vector<Triangle>& binLightProjectedClip =
-                m_ClippedTriangleBuffer->LightClipBuffer[threadID];
         for (int i = start; i < end; i++)
         {
-            if (3 * i + 2 > static_cast<int>(m_IndexBuffer->Buffer.size()))
+            if (3 * i + 2 > static_cast<int>(indexBuffer.size()))
                 break;
 
-            assert(m_IndexBuffer->Buffer[3 * i] < vertexBuffer.size());
-            assert(m_IndexBuffer->Buffer[3 * i + 1] < vertexBuffer.size());
-            assert(m_IndexBuffer->Buffer[3 * i + 2] < vertexBuffer.size());
+            assert(indexBuffer[3 * i] < vertexBuffer.size());
+            assert(indexBuffer[3 * i + 1] < vertexBuffer.size());
+            assert(indexBuffer[3 * i + 2] < vertexBuffer.size());
 
-            Vertex v1 = vertexBuffer[indexBuffer[3 * i]];
-            Vertex v2 = vertexBuffer[indexBuffer[3 * i + 1]];
-            Vertex v3 = vertexBuffer[indexBuffer[3 * i + 2]];
-            auto t = Triangle(v1, v2, v3);
+            const Vertex& v1 = vertexBuffer[indexBuffer[3 * i]];
+            const Vertex& v2 = vertexBuffer[indexBuffer[3 * i + 1]];
+            const Vertex& v3 = vertexBuffer[indexBuffer[3 * i + 2]];
+            Triangle t(v1, v2, v3);
             Vec3 normal = (v1.Normal + v2.Normal + v3.Normal) / 3;
             // Back face culling, then clip the triangle from the camera
             if (normal.Dot(v1.Position - m_Cam->Position) < 0.0)
             {
-                std::vector<Triangle> clipped = ClipAgainstPlane(t);
-                // Output projected screenSpacePosition to raster space
-                for (Triangle& clip : clipped)
-                {
-                    m_Cam->ToRasterSpace(clip.verts[0].Projection);
-                    m_Cam->ToRasterSpace(clip.verts[1].Projection);
-                    m_Cam->ToRasterSpace(clip.verts[2].Projection);
-                    if (clip.Setup(static_cast<int>(threadID),
-                                   static_cast<int>(binCamProjectedClip.size())))
-                    {
-                        binCamProjectedClip.push_back(clip);
-                    }
-                }
+                clipInto(t, m_ClippedTriangleBuffer->CameraClipBuffer[threadID], [&](Vec4& point) {
+                    m_Cam->ToRasterSpace(point);
+                });
             }
             if (!shadowMap)
                 continue;
 
             // Clip from the light perspective (parallel light: the faces
             // turned towards it)
-            const bool facesLight = Light.lightType == SpotLight
-                                            ? normal.Dot(v1.Position - Light.Position) < 0.0
-                                            : normal.Dot(Light.Direction) < 0.0;
+            const bool facesLight = light.lightType == SpotLight
+                                            ? normal.Dot(v1.Position - light.Position) < 0.0
+                                            : normal.Dot(light.Direction) < 0.0;
             if (facesLight)
             {
                 t.verts[0].Projection = v1.ShadowProjection;
                 t.verts[1].Projection = v2.ShadowProjection;
                 t.verts[2].Projection = v3.ShadowProjection;
-                std::vector<Triangle> clipped = ClipAgainstPlane(t);
-                // Output projected screenSpacePosition to raster space
-                for (Triangle& clip : clipped)
-                {
-                    m_DepthBuffer->ToShadowSpace(clip.verts[0].Projection);
-                    m_DepthBuffer->ToShadowSpace(clip.verts[1].Projection);
-                    m_DepthBuffer->ToShadowSpace(clip.verts[2].Projection);
-                    if (clip.Setup(static_cast<int>(threadID),
-                                   static_cast<int>(binLightProjectedClip.size())))
-                    {
-                        binLightProjectedClip.push_back(clip);
-                    }
-                }
+                clipInto(t, m_ClippedTriangleBuffer->LightClipBuffer[threadID], [&](Vec4& point) {
+                    m_DepthBuffer->ToShadowSpace(point);
+                });
             }
         }
     });

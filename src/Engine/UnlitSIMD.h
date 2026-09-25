@@ -14,5 +14,5 @@ class UnlitSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
+               DirectionalLight& light) override;
 };

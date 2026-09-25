@@ -43,11 +43,3 @@ class SwayVertexShader : public VertexShader
 
     void Shade(Vertex& v, Camera& cam, DirectionalLight& light) override;
 };
-
-namespace VertexShading
-{
-    /**
-     * \brief Project a world position (the DefaultVertexShader's work)
-     */
-    void Project(Vertex& v, Vec3 world, Camera& cam, DirectionalLight& light, bool shadows);
-} // namespace VertexShading

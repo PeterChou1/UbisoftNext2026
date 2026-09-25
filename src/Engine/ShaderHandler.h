@@ -2,9 +2,9 @@
 // ShaderHandler.h
 //---------------------------------------------------------------------------------
 //
-// System to update all Shaders
+// Gives entities with a FragShaderTag / VertShaderTag their shader instances
+// and advances every shader's time
 //
-
 #pragma once
 #include "GameOptions.h"
 #include "RenderConstants.h"

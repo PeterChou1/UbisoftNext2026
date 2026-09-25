@@ -6,22 +6,16 @@ void OutlineScanShaderSIMD::Shade(SIMDPixel& pixel,
                                   DepthBuffer& depthBuffer,
                                   Material& texture,
                                   Camera& camera,
-                                  DirectionalLight& Light)
+                                  DirectionalLight& light)
 {
-    BlinnPhongSIMD::Shade(pixel, depthBuffer, texture, camera, Light);
-    SIMDFloat AlphaMask = pixel.Alpha < SIMD::EPSILON;
-    SIMDFloat BetaMask = pixel.Beta < SIMD::EPSILON;
-    SIMDFloat GammaMask = pixel.Gamma < SIMD::EPSILON;
-
-    pixel.Color.X = SIMD::Select(AlphaMask, pixel.Color.X, SIMD::ZERO);
-    pixel.Color.X = SIMD::Select(BetaMask, pixel.Color.X, SIMD::ZERO);
-    pixel.Color.X = SIMD::Select(GammaMask, pixel.Color.X, SIMD::ZERO);
-
-    pixel.Color.Y = SIMD::Select(AlphaMask, pixel.Color.Y, SIMD::ZERO);
-    pixel.Color.Y = SIMD::Select(BetaMask, pixel.Color.Y, SIMD::ZERO);
-    pixel.Color.Y = SIMD::Select(GammaMask, pixel.Color.Y, SIMD::ZERO);
-
-    pixel.Color.Z = SIMD::Select(AlphaMask, pixel.Color.Z, SIMD::ZERO);
-    pixel.Color.Z = SIMD::Select(BetaMask, pixel.Color.Z, SIMD::ZERO);
-    pixel.Color.Z = SIMD::Select(GammaMask, pixel.Color.Z, SIMD::ZERO);
+    BlinnPhongSIMD::Shade(pixel, depthBuffer, texture, camera, light);
+    const SIMDFloat nearEdgeA = pixel.Alpha < SIMD::EPSILON;
+    const SIMDFloat nearEdgeB = pixel.Beta < SIMD::EPSILON;
+    const SIMDFloat nearEdgeC = pixel.Gamma < SIMD::EPSILON;
+    for (SIMDFloat* channel : {&pixel.Color.X, &pixel.Color.Y, &pixel.Color.Z})
+    {
+        *channel = SIMD::Select(nearEdgeA, *channel, SIMD::ZERO);
+        *channel = SIMD::Select(nearEdgeB, *channel, SIMD::ZERO);
+        *channel = SIMD::Select(nearEdgeC, *channel, SIMD::ZERO);
+    }
 }

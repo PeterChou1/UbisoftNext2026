@@ -31,9 +31,8 @@ class SIMDPixel
     /**
      * \brief Get the texture/normal based on barycentric
      *        values computed during rasterization
-     * \param t
      */
-    void Interpolate(Triangle& t)
+    void Interpolate(const Triangle& t)
     {
         auto t1 = SIMDVec2(t.verts[0].UV);
         auto t2 = SIMDVec2(t.verts[1].UV);
@@ -53,8 +52,7 @@ class SIMDPixel
         VertexColor = t.verts[0].Color;
     }
 
-    // static variables to tell the renderer how to screenSpacePosition each set
-    // of 8 pixels
+    // Layout of the 8 pixels on the screen (4 x 2) and their offsets from the first
     static constexpr int PIXEL_WIDTH = 4;
     static constexpr int PIXEL_HEIGHT = 2;
     static SIMDFloat PixelOffsetX;
@@ -63,7 +61,6 @@ class SIMDPixel
     SIMDFloat Mask;
     SIMDVec2 ScreenSpacePosition{}, TextureCoord{};
     SIMDVec3 WorldSpacePosition{};
-    SIMDVec3 ShadowSpacePosition{};
     SIMDVec3 Normal{};
     SIMDVec3 Color{};
     SIMDVec3 VertexColor{};

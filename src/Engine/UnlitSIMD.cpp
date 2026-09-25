@@ -2,11 +2,7 @@
 
 #include "stdafx.h"
 
-void UnlitSIMD::Shade(SIMDPixel& pixel,
-                      DepthBuffer& depthBuffer,
-                      Material& texture,
-                      Camera& cam,
-                      DirectionalLight& Light)
+void UnlitSIMD::Shade(SIMDPixel& pixel, DepthBuffer&, Material& texture, Camera&, DirectionalLight&)
 {
     SIMDFloat r, g, b;
     texture.SampleSIMD(r, g, b);

@@ -11,20 +11,21 @@
 class Tiles : public Resource
 {
   public:
-    Tiles(int width, int height, int widthS, int heightS);
+    // The camera's tiles cover width x height, the shadow map's
+    // shadowWidth x shadowHeight
+    Tiles(int width, int height, int shadowWidth, int shadowHeight);
 
     void ResetResource() override
     {
-        for (int i = 0; i < TilesArray.size(); i++)
-            TilesArray[i].Clear();
-        for (int i = 0; i < ShadowTilesArray.size(); i++)
-            ShadowTilesArray[i].Clear();
+        for (Tile& tile : TilesArray)
+            tile.Clear();
+        for (Tile& tile : ShadowTilesArray)
+            tile.Clear();
     }
 
     std::vector<Tile> TilesArray;
     std::vector<Tile> ShadowTilesArray;
-    int TILE_COUNT_X;
-    int TILE_COUNT_Y;
-    int TILE_S_COUNT_X;
-    int TILE_S_COUNT_Y;
+    // Tiles per row
+    int TileCountX;
+    int ShadowTileCountX;
 };

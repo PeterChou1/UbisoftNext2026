@@ -4,20 +4,6 @@
 
 #include <cmath>
 
-namespace VertexShading
-{
-    void Project(Vertex& v, Vec3 world, Camera& cam, DirectionalLight& light, bool shadows)
-    {
-        v.PositionCamera = cam.WorldToCamera(world);
-        v.Projection = cam.Proj * Vec4(v.PositionCamera);
-        if (shadows)
-        {
-            Vec3 lightSpace = light.WorldToLightSpace(world);
-            v.ShadowProjection = light.Proj * Vec4(lightSpace);
-        }
-    }
-} // namespace VertexShading
-
 Vec3 WaveVertexShader::Displace(const Vertex& v, float t)
 {
     const Vec3& p = v.Position;
@@ -27,7 +13,7 @@ Vec3 WaveVertexShader::Displace(const Vertex& v, float t)
 
 void WaveVertexShader::Shade(Vertex& v, Camera& cam, DirectionalLight& light)
 {
-    VertexShading::Project(v, Displace(v, DeltaTime), cam, light, ShadowMapping);
+    Project(v, Displace(v, DeltaTime), cam, light);
 }
 
 Vec3 SwayVertexShader::Displace(const Vertex& v, float t)
@@ -43,5 +29,5 @@ Vec3 SwayVertexShader::Displace(const Vertex& v, float t)
 
 void SwayVertexShader::Shade(Vertex& v, Camera& cam, DirectionalLight& light)
 {
-    VertexShading::Project(v, Displace(v, DeltaTime), cam, light, ShadowMapping);
+    Project(v, Displace(v, DeltaTime), cam, light);
 }

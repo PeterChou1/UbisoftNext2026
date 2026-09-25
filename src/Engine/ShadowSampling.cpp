@@ -7,7 +7,10 @@
 
 namespace ShadowSampling
 {
-    float Visibility(const Vec3& position, const Vec3& normal, const DepthBuffer& depthBuffer, DirectionalLight& light)
+    float Visibility(const Vec3& position,
+                     const Vec3& normal,
+                     const DepthBuffer& depthBuffer,
+                     DirectionalLight& light)
     {
         const bool parallel = light.lightType == ParallelLight;
         // One texel of the shadow map, in world units, at this point
@@ -52,7 +55,8 @@ namespace ShadowSampling
             ndc = projected * own;
         }
         // Outside the light's view: nothing was drawn there
-        if (ndc.X < -1.0f || ndc.X > 1.0f || ndc.Y < -1.0f || ndc.Y > 1.0f || ndc.Z < -1.0f || ndc.Z > 1.0f)
+        if (ndc.X < -1.0f || ndc.X > 1.0f || ndc.Y < -1.0f || ndc.Y > 1.0f || ndc.Z < -1.0f ||
+            ndc.Z > 1.0f)
             return 1.0f;
 
         // Shadow map texels sample integer positions (like the rasterizer)
@@ -68,23 +72,26 @@ namespace ShadowSampling
         float ty = v - fv;
 
         // Something closer to the light than this point at texel (x, y)?
-        const float threshold = parallel ? own + (PARALLEL_BIAS + slopeBias) * light.DepthPerUnit
-                                         : own * (1.0f + SPOT_BIAS + slopeBias / std::max(1.0f / own, 1e-3f));
+        const float threshold =
+                parallel ? own + (PARALLEL_BIAS + slopeBias) * light.DepthPerUnit
+                         : own * (1.0f + SPOT_BIAS + slopeBias / std::max(1.0f / own, 1e-3f));
         auto shadowed = [&](int x, int y) {
             // Off the map: nothing there
             if (x < 0 || y < 0 || x >= width || y >= height)
                 return 0.0f;
-            return depthBuffer.GetBufferSingle(x, y, true) > threshold ? 1.0f : 0.0f;
+            return depthBuffer.ShadowDepth(x, y) > threshold ? 1.0f : 0.0f;
         };
         float s00 = shadowed(x0, y0);
         float s10 = shadowed(x0 + 1, y0);
         float s01 = shadowed(x0, y0 + 1);
         float s11 = shadowed(x0 + 1, y0 + 1);
-        float shadow = (s00 * (1.0f - tx) + s10 * tx) * (1.0f - ty) + (s01 * (1.0f - tx) + s11 * tx) * ty;
+        float shadow =
+                (s00 * (1.0f - tx) + s10 * tx) * (1.0f - ty) + (s01 * (1.0f - tx) + s11 * tx) * ty;
         return 1.0f - shadow;
     }
 
-    SIMDFloat Visibility(const SIMDPixel& pixel, const DepthBuffer& depthBuffer, DirectionalLight& light)
+    SIMDFloat
+    Visibility(const SIMDPixel& pixel, const DepthBuffer& depthBuffer, DirectionalLight& light)
     {
         SIMDFloat visible = SIMD::ONE;
         for (int i = 0; i < SIMDPixel::PIXEL_WIDTH * SIMDPixel::PIXEL_HEIGHT; ++i)

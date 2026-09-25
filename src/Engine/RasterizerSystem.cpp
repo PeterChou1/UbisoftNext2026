@@ -5,6 +5,7 @@
 #include "ECSManager.h"
 #include "FragmentShader.h"
 #include "SIMDTriangle.h"
+#include "app.h"
 #include "stdafx.h"
 
 #include <algorithm>
@@ -43,15 +44,19 @@ void RasterizerSystem::RenderLine()
     // blends the corner colours. Every shader (Shape, Lit, Pulse, Rim ...)
     // shows, with per corner detail; the software rasterizer (Tab) shades
     // every pixel and draws shadows
-    std::vector<unsigned int> coreID = m_RenderConstants->CoreIds;
     AssetServer& loader = AssetServer::GetInstance();
     DirectionalLight& light = m_Lighting->GetDirectionalLight();
 
-    std::for_each(coreID.begin(), coreID.end(), [&](unsigned int binID) {
-        std::vector<Triangle>& binnedTriangles = m_ClippedTriangle->CameraClipBuffer[binID];
+    for (auto& binnedTriangles : m_ClippedTriangle->CameraClipBuffer)
+    {
         for (auto& tri : binnedTriangles)
         {
-            SIMDPixel corners(SIMDVec2(0.0f, 0.0f), SIMD::ONE, SIMD::ZERO, SIMD::ZERO, SIMD::ZERO, tri.BinID,
+            SIMDPixel corners(SIMDVec2(0.0f, 0.0f),
+                              SIMD::ONE,
+                              SIMD::ZERO,
+                              SIMD::ZERO,
+                              SIMD::ZERO,
+                              tri.BinID,
                               tri.BinIndex);
             for (int lane = 0; lane < SIMDPixel::PIXEL_WIDTH * SIMDPixel::PIXEL_HEIGHT; ++lane)
             {
@@ -69,9 +74,9 @@ void RasterizerSystem::RenderLine()
                 corners.TextureCoord.Y.V[lane] = v.UV.Y;
             }
             corners.Mask = SIMD::ONE;
-            std::shared_ptr<FragmentShader> shader = loader.GetFragShader(tri.GetShaderID());
             Material& material = loader.GetMaterial(tri.GetTextureID());
-            shader->Shade(corners, *m_DepthBuffer, material, *m_Camera, light);
+            loader.GetFragShader(tri.GetShaderID())
+                    ->Shade(corners, *m_DepthBuffer, material, *m_Camera, light);
 
             Vec3 colors[3];
             for (int i = 0; i < 3; ++i)
@@ -103,7 +108,7 @@ void RasterizerSystem::RenderLine()
                               colors[2].Z,
                               false);
         }
-    });
+    }
 }
 
 void RasterizerSystem::RasterizeTriangle(
@@ -171,29 +176,33 @@ void RasterizerSystem::RasterizeTriangle(
                 }
                 else
                 {
-                    depth = alpha * tri.verts[0].Projection.Z + beta * tri.verts[1].Projection.Z +
-                            gamma * tri.verts[2].Projection.Z;
+                    // (only the parallel light's shadow map is orthographic)
                     // NDC z is -1 (near) .. 1 (far). The depth buffers keep the
                     // largest value and start at 0 ("nothing"): the shadow
                     // map stores (1 - z) / 2, 1 (near) .. 0 (far), so the far
                     // half of a parallel light's box is not lost
-                    if (shadows)
-                        depth = (SIMD::ONE - depth) * 0.5f;
-                    else
-                        depth = depth * -1;
+                    depth = alpha * tri.verts[0].Projection.Z + beta * tri.verts[1].Projection.Z +
+                            gamma * tri.verts[2].Projection.Z;
+                    depth = (SIMD::ONE - depth) * 0.5f;
                 }
 
-                SIMDPixel pixel = SIMDPixel(
-                        SIMDVec2(posX, posY), depth, alpha, beta, gamma, tri.BinID, tri.BinIndex);
                 SIMDFloat visible =
                         m_DepthBuffer->DepthTest(pixelX, pixelY, depth, inTriangle, shadows);
-
                 if (SIMD::Any(visible))
                 {
                     m_DepthBuffer->UpdateBuffer(pixelX, pixelY, visible, depth, shadows);
-                    // We deferred the shading to the fragment shading stage
+                    // The shading is deferred to the fragment shading stage
                     if (!shadows)
+                    {
+                        SIMDPixel pixel(SIMDVec2(posX, posY),
+                                        depth,
+                                        alpha,
+                                        beta,
+                                        gamma,
+                                        tri.BinID,
+                                        tri.BinIndex);
                         m_PixelBuffer->SetBuffer(pixelX, pixelY, pixel, visible);
+                    }
                 }
             }
             deltaXe1 = deltaXe1 + deltaX0;
@@ -217,7 +226,7 @@ void RasterizerSystem::AssignTriangle(Triangle& tri,
     const int endX = (tri.maxX + TILE_SIZE_X - 1) / TILE_SIZE_X;
     const int startY = tri.minY / TILE_SIZE_Y;
     const int endY = (tri.maxY + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
-    int tileCountX = shadow ? m_Tiles->TILE_S_COUNT_X : m_Tiles->TILE_COUNT_X;
+    const int tileCountX = shadow ? m_Tiles->ShadowTileCountX : m_Tiles->TileCountX;
     for (int x = startX; x < endX; x++)
     {
         for (int y = startY; y < endY; y++)
@@ -248,61 +257,36 @@ void RasterizerSystem::AssignTriangle(Triangle& tri,
 
 void RasterizerSystem::AssignTile()
 {
-    std::vector<unsigned int> coreID = m_RenderConstants->CoreIds;
+    const std::vector<std::uint32_t>& coreIds = m_RenderConstants->CoreIds;
     std::vector<Tile>& camTiles = m_Tiles->TilesArray;
     std::vector<Tile>& shadowTiles = m_Tiles->ShadowTilesArray;
     bool shadowMap = m_GameOptions->ShadowsOn();
-    Concurrent::ForEach(coreID.begin(), coreID.end(), [&](unsigned int binID) {
-        std::vector<Triangle>& binCamTriangles = m_ClippedTriangle->CameraClipBuffer[binID];
-        std::vector<Triangle>& binLightTriangles = m_ClippedTriangle->LightClipBuffer[binID];
-        for (auto& tri : binCamTriangles)
-        {
-            // iterate through triangle bounding box
+    Concurrent::ForEach(coreIds.begin(), coreIds.end(), [&](unsigned int binID) {
+        for (auto& tri : m_ClippedTriangle->CameraClipBuffer[binID])
             AssignTriangle(tri, camTiles, binID, false);
-        }
         if (!shadowMap)
             return;
-        for (auto& tri : binLightTriangles)
-        {
+        for (auto& tri : m_ClippedTriangle->LightClipBuffer[binID])
             AssignTriangle(tri, shadowTiles, binID, true);
-        }
     });
 }
 
 void RasterizerSystem::RasterizeTiles()
 {
-    std::vector<Tile>& camTiles = m_Tiles->TilesArray;
-    std::vector<Tile>& shadowTiles = m_Tiles->ShadowTilesArray;
-    bool perspective = m_Lighting->IsPerspective();
-
-    Concurrent::ForEach(camTiles.begin(), camTiles.end(), [&](Tile& tile) {
-        std::vector<std::vector<Triangle>>& binTriangles = tile.GetBinTriangle();
-        Vec2 tileMin = tile.GetMin();
-        Vec2 tileMax = tile.GetMax();
-        for (auto& binTriangle : binTriangles)
-        {
-            /// Perspective Projection
-            /// Hidden Surface is determined by: Depth Buffer Algorithmn
-            for (auto& tri : binTriangle)
+    auto rasterize = [&](std::vector<Tile>& tiles, bool shadows, bool perspective) {
+        Concurrent::ForEach(tiles.begin(), tiles.end(), [&](Tile& tile) {
+            Vec2 tileMin = tile.GetMin();
+            Vec2 tileMax = tile.GetMax();
+            for (auto& binTriangles : tile.GetBinTriangle())
             {
-                RasterizeTriangle(tri, tileMin, tileMax, false, true);
+                for (auto& tri : binTriangles)
+                    RasterizeTriangle(tri, tileMin, tileMax, shadows, perspective);
             }
-        }
-    });
-    if (!m_GameOptions->ShadowsOn())
-        return;
-
-    Concurrent::ForEach(shadowTiles.begin(), shadowTiles.end(), [&](Tile& tile) {
-        std::vector<std::vector<Triangle>>& binTriangles = tile.GetBinTriangle();
-        Vec2 tileMin = tile.GetMin();
-        Vec2 tileMax = tile.GetMax();
-        // Rasterizer Light Camera Perspective
-        for (auto& binTriangle : binTriangles)
-        {
-            for (auto& tri : binTriangle)
-            {
-                RasterizeTriangle(tri, tileMin, tileMax, true, perspective);
-            }
-        }
-    });
+        });
+    };
+    // Camera: perspective, hidden surfaces removed by the depth buffer
+    rasterize(m_Tiles->TilesArray, false, true);
+    // Shadow map: from the light
+    if (m_GameOptions->ShadowsOn())
+        rasterize(m_Tiles->ShadowTilesArray, true, m_Lighting->IsPerspective());
 }

@@ -25,5 +25,4 @@ struct MeshInstance
             v.Normal = t.TransformNormal(v.LocalNormal);
         }
     }
-
 };

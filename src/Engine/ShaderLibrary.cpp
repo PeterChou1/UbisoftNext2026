@@ -24,13 +24,35 @@ namespace ShaderLibrary
             return shaders;
         }
 
+        template <typename Id>
+        std::string NameIn(const std::vector<Entry<Id>>& shaders, Id id)
+        {
+            for (const auto& shader : shaders)
+                if (shader.Value == id)
+                    return shader.Name;
+            return "#" + std::to_string(static_cast<int>(id));
+        }
+
+        template <typename Id>
+        bool FindIn(const std::vector<Entry<Id>>& shaders, const std::string& name, Id& id)
+        {
+            for (const auto& shader : shaders)
+                if (name == shader.Name)
+                {
+                    id = shader.Value;
+                    return true;
+                }
+            return false;
+        }
+
         constexpr std::size_t LISTED_FRAGMENT_SHADERS = 8;
     } // namespace
 
     const std::vector<Entry<FragShaderTypeID>>& FragmentShaders()
     {
-        static const std::vector<Entry<FragShaderTypeID>> listed(
-                AllFragmentShaders().begin(), AllFragmentShaders().begin() + LISTED_FRAGMENT_SHADERS);
+        static const std::vector<Entry<FragShaderTypeID>> listed(AllFragmentShaders().begin(),
+                                                                 AllFragmentShaders().begin() +
+                                                                         LISTED_FRAGMENT_SHADERS);
         return listed;
     }
 
@@ -46,39 +68,21 @@ namespace ShaderLibrary
 
     std::string Name(FragShaderTypeID id)
     {
-        for (const auto& shader : AllFragmentShaders())
-            if (shader.Value == id)
-                return shader.Name;
-        return "#" + std::to_string(static_cast<int>(id));
+        return NameIn(AllFragmentShaders(), id);
     }
 
     std::string Name(VertShaderTypeID id)
     {
-        for (const auto& shader : VertexShaders())
-            if (shader.Value == id)
-                return shader.Name;
-        return "#" + std::to_string(static_cast<int>(id));
+        return NameIn(VertexShaders(), id);
     }
 
     bool Find(const std::string& name, FragShaderTypeID& id)
     {
-        for (const auto& shader : AllFragmentShaders())
-            if (name == shader.Name)
-            {
-                id = shader.Value;
-                return true;
-            }
-        return false;
+        return FindIn(AllFragmentShaders(), name, id);
     }
 
     bool Find(const std::string& name, VertShaderTypeID& id)
     {
-        for (const auto& shader : VertexShaders())
-            if (name == shader.Name)
-            {
-                id = shader.Value;
-                return true;
-            }
-        return false;
+        return FindIn(VertexShaders(), name, id);
     }
 } // namespace ShaderLibrary

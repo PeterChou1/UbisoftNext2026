@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------
-// RedShader.h
+// NormalShaderSIMD.h
 //---------------------------------------------------------------------------------
 //
-// Debug shader that output normal
+// Debug shader that outputs the normal
 //
 #pragma once
 #include "FragmentShader.h"
@@ -14,7 +14,5 @@ class NormalShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-
-    ~NormalShaderSIMD() override = default;
+               DirectionalLight& light) override;
 };

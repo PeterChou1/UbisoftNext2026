@@ -1,6 +1,7 @@
 #pragma once
 #include "FragmentShader.h"
 
+// Particles take their vertex colour, unlit
 class ParticleShaderSIMD : public FragmentShader
 {
   public:
@@ -8,7 +9,5 @@ class ParticleShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-
-    ~ParticleShaderSIMD() override = default;
+               DirectionalLight& light) override;
 };

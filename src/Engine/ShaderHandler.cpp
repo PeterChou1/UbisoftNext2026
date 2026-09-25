@@ -3,6 +3,7 @@
 #include "AssetServer.h"
 #include "ECSManager.h"
 #include "FragShaderTag.h"
+#include "VertShaderTag.h"
 #include "stdafx.h"
 
 extern ECSManager ECS;
@@ -15,74 +16,64 @@ ShaderHandler::ShaderHandler()
 
 void ShaderHandler::Update(float deltaTime)
 {
-    float dt = deltaTime / 1000.0f;
-    AssetServer& Server = AssetServer::GetInstance();
+    const float dt = deltaTime / 1000.0f;
+    const bool shadows = m_Options->ShadowsOn();
+    AssetServer& server = AssetServer::GetInstance();
+    auto advance = [&](auto& shader) {
+        shader.DeltaTime += dt;
+        shader.ShadowMapping = shadows;
+    };
 
-    auto& EntToFragType = m_Constants->EntityToFragShaderType;
-    auto& EntToVertType = m_Constants->EntityToVertShaderType;
+    auto& entityToFragType = m_Constants->EntityToFragShaderType;
     for (auto e : ECS.Visit<FragShaderTag>())
     {
         FragShaderTag& shader = ECS.GetComponent<FragShaderTag>(e);
-        bool ShaderIDChanged = EntToFragType.count(e) > 0 && EntToFragType[e] != shader.FragAssetId;
-
-        // Set Fragment Shader if its not initialized or
-        // The ShaderID changed
-        if (!shader.Initialized || ShaderIDChanged)
+        // A new instance when the tag is new or its shader type changed
+        bool typeChanged =
+                entityToFragType.count(e) > 0 && entityToFragType[e] != shader.FragAssetId;
+        if (!shader.Initialized || typeChanged)
         {
-            Server.SetFragShader(e, shader);
-            EntToFragType[e] = shader.FragAssetId;
+            server.SetFragShader(e, shader);
+            entityToFragType[e] = shader.FragAssetId;
             shader.Initialized = true;
         }
-
-        std::shared_ptr<FragmentShader> AttachedShader = Server.GetFragShader(shader.FragShaderID);
-        AttachedShader->DeltaTime += dt;
-        AttachedShader->ShadowMapping = m_Options->ShadowsOn();
+        advance(*server.GetFragShader(shader.FragShaderID));
     }
 
+    auto& entityToVertType = m_Constants->EntityToVertShaderType;
     for (auto e : ECS.Visit<VertShaderTag>())
     {
         VertShaderTag& shader = ECS.GetComponent<VertShaderTag>(e);
-
-        bool ShaderIDChanged = EntToVertType.count(e) > 0 && EntToVertType[e] != shader.VertAssetId;
-
-        if (!shader.Initialized || ShaderIDChanged)
+        bool typeChanged =
+                entityToVertType.count(e) > 0 && entityToVertType[e] != shader.VertAssetId;
+        if (!shader.Initialized || typeChanged)
         {
-            Server.SetVertShader(e, shader);
-            EntToVertType[e] = shader.VertAssetId;
+            server.SetVertShader(e, shader);
+            entityToVertType[e] = shader.VertAssetId;
             shader.Initialized = true;
         }
-        std::shared_ptr<VertexShader> AttachedShader = Server.GetVertShader(shader.VertShaderID);
-        AttachedShader->DeltaTime += dt;
-        AttachedShader->ShadowMapping = m_Options->ShadowsOn();
+        advance(*server.GetVertShader(shader.VertShaderID));
     }
 
-    Server.defaultFragShader->DeltaTime += dt;
-    Server.defaultFragShader->ShadowMapping = m_Options->ShadowsOn();
-    Server.defaultVertShader->DeltaTime += dt;
-    Server.defaultVertShader->ShadowMapping = m_Options->ShadowsOn();
+    advance(*AssetServer::DefaultFragShader);
+    advance(*AssetServer::DefaultVertShader);
 }
 
 void ShaderHandler::HandleShaderDelete()
 {
-    // References: the erase below must update the shared maps, not copies
-    auto& EntToFragType = m_Constants->EntityToFragShaderType;
-    auto& EntToVertType = m_Constants->EntityToVertShaderType;
-    AssetServer& Server = AssetServer::GetInstance();
+    auto& entityToFragType = m_Constants->EntityToFragShaderType;
+    auto& entityToVertType = m_Constants->EntityToVertShaderType;
+    AssetServer& server = AssetServer::GetInstance();
+    // An entity can be destroyed before its shader was ever initialized
+    // (e.g. created and deleted in the same frame by the scene editor)
     for (const auto e : ECS.VisitDeleted<FragShaderTag>())
     {
-        // An entity can be destroyed before its shader was ever initialized
-        // (e.g. created and deleted in the same frame by the scene editor)
-        if (EntToFragType.count(e) == 0)
-            continue;
-        EntToFragType.erase(e);
-        Server.RemoveFragShader(e);
+        if (entityToFragType.erase(e) > 0)
+            server.RemoveFragShader(e);
     }
-
     for (const auto e : ECS.VisitDeleted<VertShaderTag>())
     {
-        if (EntToVertType.count(e) == 0)
-            continue;
-        EntToVertType.erase(e);
-        Server.RemoveVertShader(e);
+        if (entityToVertType.erase(e) > 0)
+            server.RemoveVertShader(e);
     }
 }

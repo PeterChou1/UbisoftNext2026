@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------
-// Shader.h
+// FragShaderTag.h
 //---------------------------------------------------------------------------------
 //
-// Provides a simple wrapper for users to apply different Meshes
+// Component choosing the fragment shader of an entity's mesh / shape
 //
 
 #pragma once
@@ -13,7 +13,7 @@ struct FragShaderTag
 {
     // Determines what type of Fragment Shader to use
     FragShaderTypeID FragAssetId;
-    // Internal ID to keep track of specific
+    // The entity's shader instance in the AssetServer (0: the default shader)
     size_t FragShaderID = 0;
 
     bool Initialized = false;

@@ -2,18 +2,19 @@
 // RenderConstants.h
 //---------------------------------------------------------------------------------
 //
-// Render Constants is responsible to keeping track with
-// constants related to the rendering process
+// Bookkeeping of the rendering process: where each entity's geometry is in
+// the vertex / index buffers and how the triangles are split between cores
 //
 #pragma once
 #include "Assets.h"
 #include "Entity.h"
 #include "Resource.h"
-#include "Vertex.h"
 
 #include <numeric>
 #include <thread>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 using BufferRange = std::pair<int, int>;
 
@@ -31,15 +32,13 @@ class RenderConstants : public Resource
     {
         EntityToIndexRange.clear();
         EntityToVertexRange.clear();
-        EntityToIndexRange.clear();
         CoreInterval = 0;
         TriangleCount = 0;
     }
 
-    std::unordered_map<Entity, std::vector<BufferRange>> EntityToAnimation;
-
-    // Maps which mesh entity has which vertex shaders attach to it
-    // used to detect changes in vertex/fragment shader
+    // The shader instance IDs of each mesh entity's vertices (MeshHandler)
+    // and the shader types of each entity's tags (ShaderHandler), used to
+    // detect changes
     std::unordered_map<Entity, size_t> EntityToVertShaderID;
     std::unordered_map<Entity, size_t> EntityToFragShaderID;
 
