@@ -32,8 +32,8 @@ bool overlap(const std::pair<float, float>& a, const std::pair<float, float>& b)
 
 bool FindMTVCircle(Vec2& center,
                    float radius,
-                   std::vector<Vec2> poly,
-                   std::vector<Vec2> normals,
+                   const std::vector<Vec2>& poly,
+                   const std::vector<Vec2>& normals,
                    Vec2& collisionNormal,
                    float& overlapAmount)
 {

@@ -83,6 +83,33 @@ Utils::TranslatePoints(const std::vector<Vec2>& points, const float angle, const
     return translatedPolygon;
 }
 
+Mat2 Utils::RotationMatrix(const float angle)
+{
+    return Mat2(Vec2(std::cos(angle), -std::sin(angle)), Vec2(std::sin(angle), std::cos(angle)));
+}
+
+void Utils::TranslatePointsInto(const std::vector<Vec2>& points,
+                                const float angle,
+                                const Vec2& position,
+                                std::vector<Vec2>& out)
+{
+    TranslatePointsInto(points, RotationMatrix(angle), position, out);
+}
+
+void Utils::TranslatePointsInto(const std::vector<Vec2>& points,
+                                Mat2 matrix,
+                                const Vec2& position,
+                                std::vector<Vec2>& out)
+{
+    const std::size_t polySize = points.size();
+    out.resize(polySize);
+    for (std::size_t i = 0; i < polySize; i++)
+    {
+        Vec2 point = points[i];
+        out[i] = matrix * point + position;
+    }
+}
+
 /// Not the cleanest code but it gets the job done
 bool Utils::LoadInstance(std::string filename,
                          MeshInstance& mesh,

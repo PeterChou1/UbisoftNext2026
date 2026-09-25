@@ -27,18 +27,28 @@ class Shape
 
     void RecomputePoints(float angle, Vec2 position)
     {
-        PolygonPoints = Utils::TranslatePoints(LocalSpacePoints, angle, position);
+        // In place: this runs for every body every physics sub step
+        Utils::TranslatePointsInto(LocalSpacePoints, angle, position, PolygonPoints);
+        ComputeEdgeNormals();
+    }
+
+    /**
+     * \brief RecomputePoints with the rotation matrix already built
+     */
+    void RecomputePoints(const Mat2& rotation, Vec2 position)
+    {
+        Utils::TranslatePointsInto(LocalSpacePoints, rotation, position, PolygonPoints);
         ComputeEdgeNormals();
     }
 
     void ComputeEdgeNormals()
     {
-        EdgeNormals.clear();
         size_t polySize = PolygonPoints.size();
+        EdgeNormals.resize(polySize);
         for (size_t i = 0; i < PolygonPoints.size(); i++)
         {
             Vec2 edge = PolygonPoints[i] - PolygonPoints[(i + 1) % polySize];
-            EdgeNormals.push_back(edge.Cross(-1.0).Normalize());
+            EdgeNormals[i] = edge.Cross(-1.0).Normalize();
         }
     }
 

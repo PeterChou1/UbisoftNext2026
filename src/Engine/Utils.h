@@ -36,6 +36,23 @@ namespace Utils
     TranslatePoints(const std::vector<Vec2>& points, float angle, const Vec2& position);
 
     /**
+     * \brief TranslatePoints into an existing vector (no allocation once it
+     *        is big enough; the same arithmetic)
+     */
+    void TranslatePointsInto(const std::vector<Vec2>& points, float angle, const Vec2& position, std::vector<Vec2>& out);
+
+    /**
+     * \brief The same with the rotation matrix already built
+     *        (RotationMatrix(angle))
+     */
+    void TranslatePointsInto(const std::vector<Vec2>& points, Mat2 matrix, const Vec2& position, std::vector<Vec2>& out);
+
+    /**
+     * \brief The rotation TranslatePoints uses
+     */
+    Mat2 RotationMatrix(float angle);
+
+    /**
      * \brief Clamp n between upper and lower floats
      */
     inline float Clamp(float n, float lower, float upper)

@@ -126,7 +126,9 @@ void RigidBody::ForwardTransform(Transform& transform) const
     case XZ: {
         Vec3 Loc = Vec3(Position.X, current.Y, Position.Y);
         transform.SetWorldPosition(Loc);
-        transform.UpdateLocalPitch(AngularDelta);
+        // SyncTransform reads Angular = -pitch on this plane: turning the
+        // transform by +delta made a spinning body turn the other way
+        transform.UpdateLocalPitch(TransformTurn(transform.Plane, AngularDelta));
         break;
     }
     case XY: {
@@ -137,9 +139,58 @@ void RigidBody::ForwardTransform(Transform& transform) const
     }
 }
 
+void RigidBody::ForwardPosition(Transform& transform) const
+{
+    Vec3 current = transform.GetWorldPosition();
+    switch (transform.Plane)
+    {
+    case YZ:
+        transform.SetWorldPosition(Vec3(current.X, Position.X, Position.Y));
+        break;
+    case XZ:
+        transform.SetWorldPosition(Vec3(Position.X, current.Y, Position.Y));
+        break;
+    case XY:
+        transform.SetWorldPosition(Vec3(Position.X, Position.Y, current.Z));
+        break;
+    }
+}
+
+float RigidBody::TransformTurn(SlicePlane plane, float angularDelta)
+{
+    return plane == XZ ? -angularDelta : angularDelta;
+}
+
+Vec3 RigidBody::RotationAxis(SlicePlane plane)
+{
+    // The axes of Transform::UpdateLocalRow / Pitch / Yaw
+    switch (plane)
+    {
+    case YZ:
+        return Vec3(1, 0, 0);
+    case XZ:
+        return Vec3(0, 1, 0);
+    default:
+        return Vec3(0.0f, 0.0f, 1.0);
+    }
+}
+
 void RigidBody::RecomputeAABB()
 {
     RigidBodyAABB.RecomputeAABB(Position, Angular, Shape.GetShapeType());
+}
+
+void RigidBody::RecomputeGeometry()
+{
+    if (Shape.GetShapeType() == CircleShape)
+    {
+        Shape.RecomputePoints(Mat2(), Position);
+        RigidBodyAABB.RecomputeAABB(Position, Mat2(), CircleShape);
+        return;
+    }
+    Mat2 rotation = Utils::RotationMatrix(Angular);
+    Shape.RecomputePoints(rotation, Position);
+    RigidBodyAABB.RecomputeAABB(Position, rotation, PolygonShape);
 }
 
 void RigidBody::ApplyImpulse(const Vec2& impulse)

@@ -34,6 +34,12 @@ class ColliderCallbackSystem : public Resource
 
     bool HasRegisterCallback(CollisionPair pair);
 
+    /**
+     * \brief Any category callback registered (they may read transforms
+     *        between physics sub steps)
+     */
+    bool HasCallbacks() const { return !m_CallBackMap.empty(); }
+
     void SubmitForCallback(Entity A, Entity B);
 
     void Update();
@@ -51,8 +57,11 @@ class ColliderCallbackSystem : public Resource
   private:
     void UpdateContacts();
 
-    std::set<std::pair<Entity, Entity>> m_Contacts;
-    std::set<std::pair<Entity, Entity>> m_PrevContacts;
+    // Pairs touching this sub step (unsorted, may repeat) and last sub step
+    // (sorted, unique): sorted vectors instead of std::set, this runs for
+    // every contact every physics sub step
+    std::vector<std::pair<Entity, Entity>> m_Contacts;
+    std::vector<std::pair<Entity, Entity>> m_PrevContacts;
     std::vector<ContactEvent> m_ContactEvents;
 
     std::set<std::pair<Entity, Entity>> m_CollidePairs;

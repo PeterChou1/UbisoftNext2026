@@ -7,11 +7,13 @@
 //
 
 #pragma once
+#include "Mat2.h"
 #include "Shape.h"
 #include "Utils.h"
 #include "Vec2.h"
 
 #include <cassert>
+#include <cmath>
 #include <vector>
 
 struct AABB
@@ -53,23 +55,52 @@ struct AABB
      */
     void RecomputeAABB(const Vec2& newPosition, float newAngle, ShapeType shapeType)
     {
-        Vec2 topRight = OriginalMax;
-        Vec2 topLeft = Vec2(OriginalMin.X, OriginalMax.Y);
-        Vec2 bottomLeft = OriginalMin;
-        Vec2 bottomRight = Vec2(OriginalMax.X, OriginalMin.Y);
-        std::vector<Vec2> points = {topRight, topLeft, bottomLeft, bottomRight};
+        if (shapeType == CircleShape)
+            RecomputeAABB(newPosition, Mat2(), shapeType);
+        else
+            RecomputeAABB(newPosition, Mat2(Vec2(std::cos(newAngle), -std::sin(newAngle)),
+                                            Vec2(std::sin(newAngle), std::cos(newAngle))),
+                          shapeType);
+    }
+
+    /**
+     * \brief The same with the rotation matrix already built (unused for
+     *        circles)
+     */
+    void RecomputeAABB(const Vec2& newPosition, Mat2 matrix, ShapeType shapeType)
+    {
+        // On the stack (every body, every physics sub step), the same
+        // arithmetic as Utils::TranslatePoints
+        Vec2 points[4] = {OriginalMax,
+                          Vec2(OriginalMin.X, OriginalMax.Y),
+                          OriginalMin,
+                          Vec2(OriginalMax.X, OriginalMin.Y)};
         if (shapeType == CircleShape)
         {
-            points[0] += newPosition;
-            points[1] += newPosition;
-            points[2] += newPosition;
-            points[3] += newPosition;
+            for (Vec2& point : points)
+                point += newPosition;
         }
         else
         {
-            points = Utils::TranslatePoints(points, newAngle, newPosition);
+            for (Vec2& point : points)
+            {
+                Vec2 local = point;
+                point = matrix * local + newPosition;
+            }
         }
-        ComputeMaxPoints(points, Max, Min);
+        Max = points[0];
+        Min = points[0];
+        for (const Vec2& point : points)
+        {
+            if (point.X < Min.X)
+                Min.X = point.X;
+            if (point.Y < Min.Y)
+                Min.Y = point.Y;
+            if (point.X > Max.X)
+                Max.X = point.X;
+            if (point.Y > Max.Y)
+                Max.Y = point.Y;
+        }
     }
 
     static void ComputeMaxPoints(const std::vector<Vec2>& points, Vec2& maxPoint, Vec2& minPoint)

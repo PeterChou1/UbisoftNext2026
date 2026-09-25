@@ -175,6 +175,12 @@ struct Transform
      * \brief Update Rotation around the X-Axis
      * \param row
      */
+    /**
+     * \brief Rebuild Affine / Inverse from LocalPosition, LocalRotation and
+     *        LocalScale (after changing them directly), mark it dirty
+     */
+    void RebuildAffine();
+
     void UpdateLocalRow(float row);
 
     /**

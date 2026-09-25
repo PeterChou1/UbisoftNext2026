@@ -319,10 +319,8 @@ void Transform::SetGlobalRotation(Quat rot)
     Update(Vec3(), invParent * rot);
 }
 
-void Transform::UpdateLocalRow(float row)
+void Transform::RebuildAffine()
 {
-    Quat q = Quat(Vec3(1, 0, 0), row);
-    LocalRotation *= q;
     Mat3 newrot = Mat3::FromQuat(LocalRotation);
     Affine.Rows[0] = {LocalScale.X * newrot[0][0],
                       LocalScale.Y * newrot[0][1],
@@ -340,52 +338,27 @@ void Transform::UpdateLocalRow(float row)
     Inverse = Affine.AffineInverse();
     IsDirty = true;
     UpdateChild(Children);
+}
+
+void Transform::UpdateLocalRow(float row)
+{
+    Quat q = Quat(Vec3(1, 0, 0), row);
+    LocalRotation *= q;
+    RebuildAffine();
 }
 
 void Transform::UpdateLocalPitch(float pitch)
 {
     Quat q = Quat(Vec3(0, 1, 0), pitch);
     LocalRotation *= q;
-    Mat3 newrot = Mat3::FromQuat(LocalRotation);
-    Affine.Rows[0] = {LocalScale.X * newrot[0][0],
-                      LocalScale.Y * newrot[0][1],
-                      LocalScale.Z * newrot[0][2],
-                      LocalPosition.X};
-    Affine.Rows[1] = {LocalScale.X * newrot[1][0],
-                      LocalScale.Y * newrot[1][1],
-                      LocalScale.Z * newrot[1][2],
-                      LocalPosition.Y};
-    Affine.Rows[2] = {LocalScale.X * newrot[2][0],
-                      LocalScale.Y * newrot[2][1],
-                      LocalScale.Z * newrot[2][2],
-                      LocalPosition.Z};
-    Affine.Rows[3] = {0.0, 0.0, 0.0, 1.0};
-    Inverse = Affine.AffineInverse();
-    IsDirty = true;
-    UpdateChild(Children);
+    RebuildAffine();
 }
 
 void Transform::UpdateLocalYaw(float yaw)
 {
     Quat q = Quat(Vec3(0.0f, 0.0f, 1.0), yaw);
     LocalRotation *= q;
-    Mat3 newrot = Mat3::FromQuat(LocalRotation);
-    Affine.Rows[0] = {LocalScale.X * newrot[0][0],
-                      LocalScale.Y * newrot[0][1],
-                      LocalScale.Z * newrot[0][2],
-                      LocalPosition.X};
-    Affine.Rows[1] = {LocalScale.X * newrot[1][0],
-                      LocalScale.Y * newrot[1][1],
-                      LocalScale.Z * newrot[1][2],
-                      LocalPosition.Y};
-    Affine.Rows[2] = {LocalScale.X * newrot[2][0],
-                      LocalScale.Y * newrot[2][1],
-                      LocalScale.Z * newrot[2][2],
-                      LocalPosition.Z};
-    Affine.Rows[3] = {0.0, 0.0, 0.0, 1.0};
-    Inverse = Affine.AffineInverse();
-    IsDirty = true;
-    UpdateChild(Children);
+    RebuildAffine();
 }
 
 void Transform::Update(const Vec3& delta, const Quat& rot)

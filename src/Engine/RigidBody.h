@@ -59,7 +59,30 @@ class RigidBody
 
     void ForwardTransform(Transform& transform) const;
 
+    /**
+     * \brief Write only the position to the transform (the physics system
+     *        adds the rotation separately, see PhysicsSystem::ForwardTransform)
+     */
+    void ForwardPosition(Transform& transform) const;
+
+    /**
+     * \brief Axis the body turns around for a transform plane
+     */
+    static Vec3 RotationAxis(SlicePlane plane);
+
+    /**
+     * \brief How much the transform turns for a change of Angular (the XZ
+     *        plane reads Angular = -pitch, see SyncTransform)
+     */
+    static float TransformTurn(SlicePlane plane, float angularDelta);
+
     void RecomputeAABB();
+
+    /**
+     * \brief Collider points, edge normals and bounding box at the current
+     *        position and angle (one rotation matrix for both)
+     */
+    void RecomputeGeometry();
 
     void ApplyImpulse(const Vec2& impulse);
 

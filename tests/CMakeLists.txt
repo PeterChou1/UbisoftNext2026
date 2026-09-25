@@ -102,3 +102,18 @@ add_custom_target(author_scenes
 	DEPENDS AuthorScenes
 	COMMENT "Authoring sample scenes into data/scenes and prefabs into data/prefabs"
 )
+
+# -- Physics benchmark ------------------------------------------------------------
+# Times the physics system with more and more bodies (see the file's header).
+# Build with -DCMAKE_BUILD_TYPE=Release:
+#   cmake --build build/tests --target physics_benchmark
+
+add_executable(PhysicsBenchmark "${CMAKE_CURRENT_SOURCE_DIR}/tools/PhysicsBenchmark.cpp")
+target_link_libraries(PhysicsBenchmark PRIVATE HeadlessEngine)
+
+add_custom_target(physics_benchmark
+	COMMAND PhysicsBenchmark
+	DEPENDS PhysicsBenchmark
+	WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+	COMMENT "Timing the physics system"
+)

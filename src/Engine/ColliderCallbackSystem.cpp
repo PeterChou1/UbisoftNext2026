@@ -2,6 +2,8 @@
 
 #include "stdafx.h"
 
+#include <algorithm>
+
 extern ECSManager ECS;
 
 void ColliderCallbackSystem::RegisterCallback(const std::shared_ptr<Collider>& callback)
@@ -20,7 +22,7 @@ void ColliderCallbackSystem::ResetResource()
 void ColliderCallbackSystem::SubmitContact(Entity A, Entity B)
 {
     // Store every pair in one orientation (smallest id first)
-    m_Contacts.insert(A < B ? std::make_pair(A, B) : std::make_pair(B, A));
+    m_Contacts.push_back(A < B ? std::make_pair(A, B) : std::make_pair(B, A));
 }
 
 std::vector<ContactEvent> ColliderCallbackSystem::TakeContactEvents()
@@ -32,17 +34,26 @@ std::vector<ContactEvent> ColliderCallbackSystem::TakeContactEvents()
 
 void ColliderCallbackSystem::UpdateContacts()
 {
+    std::sort(m_Contacts.begin(), m_Contacts.end());
+    m_Contacts.erase(std::unique(m_Contacts.begin(), m_Contacts.end()), m_Contacts.end());
+    // New pairs, then pairs that stopped touching, each in pair order
+    auto previous = m_PrevContacts.begin();
     for (const auto& pair : m_Contacts)
     {
-        if (m_PrevContacts.count(pair) == 0)
+        while (previous != m_PrevContacts.end() && *previous < pair)
+            ++previous;
+        if (previous == m_PrevContacts.end() || *previous != pair)
             m_ContactEvents.push_back({ContactEvent::Enter, pair.first, pair.second});
     }
+    auto current = m_Contacts.begin();
     for (const auto& pair : m_PrevContacts)
     {
-        if (m_Contacts.count(pair) == 0)
+        while (current != m_Contacts.end() && *current < pair)
+            ++current;
+        if (current == m_Contacts.end() || *current != pair)
             m_ContactEvents.push_back({ContactEvent::Exit, pair.first, pair.second});
     }
-    m_PrevContacts = m_Contacts;
+    m_PrevContacts.swap(m_Contacts);
     m_Contacts.clear();
 }
 

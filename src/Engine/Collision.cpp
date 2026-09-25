@@ -10,7 +10,9 @@ bool Circle2CircleCollision(const Vec2& aPos, const Vec2& bPos, const Shape& a, 
 {
     float r = a.Radius + b.Radius;
     r *= r;
-    return std::pow(aPos.X - bPos.X, 2.0f) + std::pow(aPos.Y - bPos.Y, 2.0f) <= r;
+    float dx = aPos.X - bPos.X;
+    float dy = aPos.Y - bPos.Y;
+    return dx * dx + dy * dy <= r;
 }
 
 void Circle2Circle(Manifold& m, RigidBody& A, RigidBody& B)
@@ -100,9 +102,20 @@ void FindClosestEdgeToNormal(const Vec2& normal, const std::vector<Vec2>& poly, 
     }
 }
 
-std::vector<Vec2> ClipPoints(Vec2& v1, Vec2& v2, Vec2& n, float o)
+// Up to 3 points, kept on the stack (this runs for every touching pair of
+// polygons, every physics sub step)
+struct ClippedPoints
 {
-    std::vector<Vec2> clippedPoints;
+    Vec2 Points[3];
+    int Count = 0;
+    void push_back(const Vec2& p) { Points[Count++] = p; }
+    std::size_t size() const { return static_cast<std::size_t>(Count); }
+    Vec2& operator[](int i) { return Points[i]; }
+};
+
+ClippedPoints ClipPoints(Vec2& v1, Vec2& v2, Vec2& n, float o)
+{
+    ClippedPoints clippedPoints;
     float d1 = n.Dot(v1) - o;
     float d2 = n.Dot(v2) - o;
 
@@ -191,9 +204,8 @@ void Polygon2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
         ref = BEdge;
         inc = AEdge;
     }
-    std::vector<Vec2> contactPoints;
-    FindContactPoints(ref, inc, contactPoints);
-    m.ContactPoints = contactPoints;
+    m.ContactPoints.clear();
+    FindContactPoints(ref, inc, m.ContactPoints);
 }
 
 void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
@@ -214,6 +226,8 @@ void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
         return;
 
     float minSquaredDistance = std::numeric_limits<float>::infinity();
+    Vec2 closest{};
+    bool found = false;
 
     for (int i = 0; i < poly.size(); i++)
     {
@@ -225,9 +239,12 @@ void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
         if (squaredDistance < minSquaredDistance)
         {
             minSquaredDistance = squaredDistance;
-            m.ContactPoints = {contactPoint};
+            closest = contactPoint;
+            found = true;
         }
     }
+    if (found)
+        m.ContactPoints.assign(1, closest);
 }
 
 void Polygon2Circle(Manifold& m, RigidBody& A, RigidBody& B)

@@ -5,6 +5,7 @@
 #include "RigidBody.h"
 #include "stdafx.h"
 
+#include <cassert>
 #include <iostream>
 
 extern ECSManager ECS;
@@ -65,10 +66,15 @@ void Manifold::ResolveCollisionAngular()
     float staticFriction = (A.StaticFriction + B.StaticFriction) / 2.0f;
     float dynamicFriction = (A.DynamicFriction + B.DynamicFriction) / 2.0f;
 
-    std::vector<Vec2> impulses;
-    std::vector<float> impulseJs;
-    std::vector<Vec2> contactA;
-    std::vector<Vec2> contactB;
+    // At most 2 contact points (a clipped polygon edge, or 1 for circles):
+    // fixed arrays instead of 5 vectors allocated per contact per sub step
+    constexpr int MAX_CONTACTS = 4;
+    assert(ContactPoints.size() <= MAX_CONTACTS);
+    Vec2 impulses[MAX_CONTACTS];
+    float impulseJs[MAX_CONTACTS];
+    Vec2 contactA[MAX_CONTACTS];
+    Vec2 contactB[MAX_CONTACTS];
+    int stored = 0;
 
     for (int i = 0; i < ContactPoints.size(); i++)
     {
@@ -106,10 +112,11 @@ void Manifold::ResolveCollisionAngular()
         j /= static_cast<float>(ContactPoints.size());
 
         Vec2 impulse = Normal * j;
-        impulseJs.push_back(j);
-        impulses.push_back(impulse);
-        contactA.push_back(ra);
-        contactB.push_back(rb);
+        impulseJs[stored] = j;
+        impulses[stored] = impulse;
+        contactA[stored] = ra;
+        contactB[stored] = rb;
+        ++stored;
     }
 
     for (int i = 0; i < ContactPoints.size(); i++)
@@ -119,7 +126,9 @@ void Manifold::ResolveCollisionAngular()
     }
     // Calculate friction
 
-    std::vector<Vec2> frictionImpulses;
+    // Friction impulse of each contact (none where it does not slide)
+    Vec2 frictionImpulses[MAX_CONTACTS];
+    bool hasFriction[MAX_CONTACTS] = {};
 
     for (int i = 0; i < ContactPoints.size(); i++)
     {
@@ -168,11 +177,16 @@ void Manifold::ResolveCollisionAngular()
         {
             frictionImpulse = tangent * -1.0f * impulseJs[i] * dynamicFriction;
         }
-        frictionImpulses.push_back(frictionImpulse);
+        frictionImpulses[i] = frictionImpulse;
+        hasFriction[i] = true;
     }
 
-    for (int i = 0; i < frictionImpulses.size(); i++)
+    // Each friction impulse at its own contact point (it used to be applied
+    // at the wrong one after a contact without friction)
+    for (int i = 0; i < stored; i++)
     {
+        if (!hasFriction[i])
+            continue;
         A.ApplyImpulseAngular(frictionImpulses[i], contactA[i]);
         B.ApplyImpulseAngular(frictionImpulses[i] * -1.0f, contactB[i]);
     }

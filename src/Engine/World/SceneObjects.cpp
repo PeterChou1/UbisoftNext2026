@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 extern ECSManager ECS;
 
@@ -355,12 +356,17 @@ namespace SceneObjects
 
     std::string UniqueName(const std::string& base)
     {
-        if (FindByName(base) == NULL_ENTITY)
+        // Every name in one pass: trying "base 2", "base 3" ... with a scan of
+        // the scene for each made creating n objects O(n^3)
+        std::unordered_set<std::string> names;
+        for (Entity e : ECS.Visit<SceneObject>())
+            names.insert(ECS.GetComponent<SceneObject>(e).Name);
+        if (names.count(base) == 0)
             return base;
         for (int i = 2;; ++i)
         {
             std::string candidate = base + " " + std::to_string(i);
-            if (FindByName(candidate) == NULL_ENTITY)
+            if (names.count(candidate) == 0)
                 return candidate;
         }
     }
