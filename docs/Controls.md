@@ -76,6 +76,7 @@ scene plays.
 |---|---|
 | U / Y | Undo / redo |
 | G | Snap to the 0.5 grid on / off |
+| B | Physics collider outlines: every body / only the selected one (while playing: **Show colliders** in the inspector) |
 | P | Play / stop |
 | H | Show / hide the Controls panel |
 | Esc | Close a menu or the Controls panel, stop placing, cancel a typed value |

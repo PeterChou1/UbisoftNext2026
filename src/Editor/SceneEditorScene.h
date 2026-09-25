@@ -165,6 +165,9 @@ class SceneEditorScene : public Scene
      */
     bool ControlsOpen() const { return m_ShowControls; }
     void ToggleControls() { m_ShowControls = !m_ShowControls; }
+    // Every body's collider outline (the selected object's is always shown)
+    bool CollidersShown() const { return m_ShowColliders; }
+    void ToggleColliders() { m_ShowColliders = !m_ShowColliders; }
     struct Control
     {
         const char* Keys;
@@ -232,6 +235,9 @@ class SceneEditorScene : public Scene
     void DrawCross(Entity entity, const Color& color, float size);
     void DrawCameraGizmo(Entity entity, bool selected);
     void DrawLightGizmo(Entity entity, bool selected);
+    // Physics debug outline of a body's collider (PhysicsGizmos)
+    void DrawColliderGizmo(Entity entity);
+    void DrawColliders();
     void RenderControlsPanel();
 
     // Left panel (EditorLeftPanel.cpp)
@@ -358,6 +364,7 @@ class SceneEditorScene : public Scene
     // While playing, the renderer shows the game camera
     SceneCamera::Follower m_PlayCamera;
     bool m_ShowControls = false;
+    bool m_ShowColliders = false;
 
     // -- Documents ------------------------------------------------------------------------
     std::string m_SceneDirectory;

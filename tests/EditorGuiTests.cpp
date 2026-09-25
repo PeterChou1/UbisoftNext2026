@@ -16,6 +16,7 @@
 #include "Scripting/ScriptSystem.h"
 #include "Scripts/Components/GameComponents.h"
 #include "UIText.h"
+#include "World/PhysicsGizmos.h"
 #include "WorldFixture.h"
 
 #include <cmath>
@@ -1635,4 +1636,86 @@ TEST_CASE("Editor GUI: the light is in the hierarchy, drawn in the view and edit
     REQUIRE(ClickMenu({"Create Light"}));
     CHECK(Core().IsLight(Core().Selected()));
     CHECK_EQ(Core().LightObject(), light);
+}
+
+TEST_CASE("Editor GUI: collider shapes are picked in the RigidBody section and outlined in the view")
+{
+    OpenEditor();
+    auto count = [](const PhysicsGizmos::GizmoColor& c) {
+        std::size_t n = 0;
+        for (const auto& line : AppStub::Get().Lines)
+        {
+            if (Near(line.R, c.R, 0.01f) && Near(line.G, c.G, 0.01f) && Near(line.B, c.B, 0.01f))
+                ++n;
+        }
+        return n;
+    };
+    Editor::PlaceSettings brush;
+    brush.Width = 3.0f;
+    brush.Height = 1.5f;
+    // Tall enough that its upright edges are more than a pixel long
+    brush.Thickness = 2.0f;
+    brush.Body = BodyType::Dynamic;
+    Entity box = Core().Place(Editor::ObjectKind::Rectangle, {-3, 0, 0}, brush);
+    brush.Body = BodyType::Static;
+    Entity wall = Core().Place(Editor::ObjectKind::Rectangle, {4, 0, 0}, brush);
+    Core().Select(NULL_ENTITY);
+    TestEnvironment::RunFrame(FRAME_MS);
+    // Nothing selected: no outlines
+    CHECK_EQ(count(PhysicsGizmos::DYNAMIC_COLOR), 0u);
+    CHECK_EQ(count(PhysicsGizmos::STATIC_COLOR), 0u);
+
+    // The selected body's collider: a box prism (12 lines)
+    Core().Select(box);
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK_EQ(count(PhysicsGizmos::DYNAMIC_COLOR), 12u);
+    CHECK_EQ(count(PhysicsGizmos::STATIC_COLOR), 0u);
+
+    // Its RigidBody section (the others folded to make room): Collider
+    // Auto (Box) -> Box -> Circle
+    for (const char* title : {"- Transform", "- Shape2D", "- Shader", "+ RigidBody"})
+    {
+        if (const auto* t = FindText(title, INSPECTOR_X))
+            Click(t->X + 4.0f, t->Y + 4.0f);
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
+    REQUIRE(FindText("Collider Auto (Box)", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Extent", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickStepper("Collider", +1, INSPECTOR_X));
+    CHECK(SceneObjects::ColliderShapeOf(box).Type == ColliderShapeType::Box);
+    REQUIRE(ClickStepper("Collider", +1, INSPECTOR_X));
+    CHECK(SceneObjects::ColliderShapeOf(box).Type == ColliderShapeType::Circle);
+    CHECK(AppStub::WasPrinted("Collider shape Circle"));
+    REQUIRE(ECS.GetComponent<RigidBody>(box).Shape.GetShapeType() == CircleShape);
+    // Outlined as a circle now (24 sides top and bottom, 4 upright, a radius)
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK_EQ(count(PhysicsGizmos::DYNAMIC_COLOR), 53u);
+    // Twice as big
+    REQUIRE(TypeInto("Extent", "2\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::ColliderShapeOf(box).Scale, 2.0f);
+    CHECK(Near(ECS.GetComponent<RigidBody>(box).Shape.Radius, 3.0f));
+    // One undo step each
+    REQUIRE(Core().Undo());
+    CHECK_EQ(SceneObjects::ColliderShapeOf(box).Scale, 1.0f);
+
+    // B: every collider, the static wall in green
+    PressKey(App::KEY_B);
+    CHECK(Gui().CollidersShown());
+    CHECK_EQ(count(PhysicsGizmos::STATIC_COLOR), 12u);
+    Core().Select(NULL_ENTITY);
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(count(PhysicsGizmos::DYNAMIC_COLOR) > 0u);
+    // Drawn live while playing, off again from the playing inspector
+    PressKey(App::KEY_P);
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(Core().IsPlaying());
+    CHECK_EQ(count(PhysicsGizmos::STATIC_COLOR), 12u);
+    const auto* check = FindText("Show colliders", INSPECTOR_X);
+    REQUIRE(check != nullptr);
+    Click(check->X - 18.0f, check->Y + 4.0f);
+    CHECK(!Gui().CollidersShown());
+    CHECK_EQ(count(PhysicsGizmos::STATIC_COLOR), 0u);
+    PressKey(App::KEY_P);
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(ECS.IsEntityAlive(wall));
 }

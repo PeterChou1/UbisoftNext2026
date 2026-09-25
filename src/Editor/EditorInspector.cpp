@@ -137,6 +137,10 @@ void SceneEditorScene::RenderPlayingInspector(float x, float width)
         Text(x, RowY(y), "PLAYING", PLAY_TEXT, width);
     if (Row(WIDGET_H, y))
         Text(x, RowY(y), "Scripts: " + std::to_string(GameSceneManager.Scripts().InstanceCount()), TEXT_DIM, width);
+    // Live physics outlines (red: touching)
+    if (Row(WIDGET_H, y) &&
+        CheckBox(NextId(), x, y + 3.0f, m_ShowColliders, 16.0f, *m_UI, "Show colliders", width - 30.0f))
+        ToggleColliders();
     for (const std::string& missing : GameSceneManager.Scripts().MissingScripts())
     {
         if (Row(WIDGET_H, y))
@@ -371,6 +375,25 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
             int count = static_cast<int>(BodyType::Count) - 1;
             int index = Cycle(static_cast<int>(body) - 1, d, count);
             m_Editor.SetBody(e, static_cast<BodyType>(index + 1));
+        }
+        // The body's shape (the collider outline is drawn in the view)
+        if (open && SceneObjects::GetBodyType(e) != BodyType::None)
+        {
+            static const char* const COLLIDERS[] = {"Auto", "Box", "Circle", "Polygon"};
+            ColliderShape collider = SceneObjects::ColliderShapeOf(e);
+            std::string label = std::string("Collider ") + COLLIDERS[static_cast<int>(collider.Type)];
+            if (collider.Type == ColliderShapeType::Auto)
+                label += std::string(" (") +
+                         COLLIDERS[static_cast<int>(SceneObjects::EffectiveColliderShape(e))] + ")";
+            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, label, "<", ">")) != 0)
+            {
+                auto next = static_cast<ColliderShapeType>(Cycle(static_cast<int>(collider.Type), d, 4));
+                m_Editor.SetColliderShape(e, next, collider.Scale);
+                SetStatus(std::string("Collider shape ") + COLLIDERS[static_cast<int>(next)]);
+            }
+            float scale = collider.Scale;
+            if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Extent", ID_FIELD_COLLIDER_SCALE, scale, 0.1f))
+                m_Editor.SetColliderShape(e, collider.Type, scale);
         }
     }
 
@@ -668,8 +691,13 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
         SetStatus(m_Editor.NameOf(camera) + " now shows the current view");
     }
 
-    // Scene files in plain text (readable / diffable) or binary
+    // Physics debug outlines of every body (B)
     m_RowCursor -= 6.0f;
+    if (Row(WIDGET_H, y) &&
+        CheckBox(NextId(), x, y + 3.0f, m_ShowColliders, 16.0f, *m_UI, "Show all colliders (B)", width - 30.0f))
+        ToggleColliders();
+
+    // Scene files in plain text (readable / diffable) or binary
     bool text = Serialization::WorldSerializer::FileFormat() == Serialization::SaveFormat::Text;
     if (Row(WIDGET_H, y) && CheckBox(NextId(), x, y + 3.0f, text, 16.0f, *m_UI, "Plain text files", width - 30.0f))
     {

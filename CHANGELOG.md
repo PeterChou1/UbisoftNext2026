@@ -2,6 +2,149 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Physics: collider shapes, debug outlines, benchmark, optimisation
+
+### Collider shapes (`World/ColliderShape.h`)
+
+- **Component:** `ColliderShape { Type = Auto | Box | Circle | Polygon; Scale = 1 }`,
+  reflected and registered as `Collider` in both the scene serializer and
+  the component catalog. Duplicates, prefab data and scene files therefore
+  carry it.
+- **Building the body:** `SceneObjects::BuildBody` builds it from the
+  object's footprint:
+  - **Box:** the rectangle's width × height, or the box around a polygon's
+    outline.
+  - **Circle:** max(w, h) / 2, or the farthest outline point.
+  - **Polygon:** the outline (`ShapeGeometry::Outline`).
+
+  Each is multiplied by `Scale` (clamped to 0.1 to 5). **Auto** keeps the
+  old rule: rectangle → box, circle → circle, other polygons → outline,
+  model → a circle of 0.5 × scale (a box of the same width when Box is
+  chosen).
+- **Changing it:** `SceneObjects::SetColliderShape(entity, type, scale)`
+  rebuilds the body and keeps its type. `EffectiveColliderShape` resolves
+  Auto.
+- **Rebuilding:**
+  - `ShapeChanged` (size, sides) rebuilds with the chosen shape.
+  - `Prefab::Instantiate` and `SceneEditor::CopyObject` rebuild after
+    loading the components.
+  - `SceneEditor::SetField("Collider", ...)` rebuilds too.
+- **Editor:**
+  - `SceneEditor::SetColliderShape` is one undo step and needs a body.
+    Removing the RigidBody removes the collider shape.
+  - The inspector edits it in the RigidBody section: **Collider**
+    `< Auto (Box) >` and **Extent**.
+  - `Collider` is hidden from the generic component list and the Add
+    Component menu.
+
+### Debug outlines (`World/PhysicsGizmos.h`)
+
+- **`SceneObjects::ColliderOutline(entity)`:** copies the body, calls
+  `SyncTransform` + `RecomputeGeometry`, and returns its world outline at
+  the object's height. This is exactly where the physics system will put
+  it, even before the first step: bodies are only synced while simulating.
+- **`PhysicsGizmos::ColliderLines`:**
+  - a wire prism: the outline at the base and at `ColliderHeight` (the
+    shape's thickness, or the model's size), with upright edges at every
+    polygon corner or four around a circle;
+  - circles also get a radius line along the body's angle.
+- **`PhysicsGizmos::ColorOf(entity, simulating)`:** static green, dynamic
+  cyan, trigger yellow. While simulating, a body with `IsIntersecting` is
+  red.
+- **Editor overlay** (`SceneEditorScene::DrawColliders`):
+  - the selected body is always drawn;
+  - every body is drawn after **B**, the Scene settings checkbox, or the
+    play-mode **Show colliders** checkbox;
+  - it also draws while playing, through the game camera.
+
+### Benchmark (`tests/tools/PhysicsBenchmark.cpp`)
+
+```
+cmake -S tests -B build/rel -DCMAKE_BUILD_TYPE=Release
+cmake --build build/rel --target physics_benchmark        # every size
+build/rel/PhysicsBenchmark 4000 120 all                    # max bodies, frames, broad phase
+```
+
+- Three scenes, 100 to 8000 bodies:
+  - **scatter:** a large arena, bodies in every direction;
+  - **pile:** packed tight, thousands of contacts;
+  - **walls:** a maze of static walls.
+- Each run prints:
+  - average and worst frame time;
+  - pairs tested and contacts per frame;
+  - time per phase (broad / narrow / contacts / solve + integrate, from
+    `PhysicsSystem::GetStats`);
+  - a checksum of the final positions.
+
+  The checksum stayed identical through every optimisation below, until
+  the two deliberate bug fixes.
+
+| Bodies | scatter before → after | pile | walls |
+|---|---|---|---|
+| 1000 | 37.3 → 3.5 ms | 26.3 → 10.6 ms | 23.5 → 3.3 ms |
+| 2000 | 130.8 → 8.8 ms | 100.4 → 22.1 ms | 61.7 → 4.8 ms |
+| 4000 | (not run) → 17.6 ms | (not run) → 45.8 ms | (not run) → 14.2 ms |
+
+### Optimisations (`PhysicsSystem`, `RigidBody`, `Shape`, `Collision`, `Manifolds`)
+
+- **Broad phase** (`PhysicsSystem::BroadPhase`: Automatic, Sweep, Grid,
+  AllPairs):
+  - **Sort and sweep:** along X over compact box copies. The order is kept
+    between sub steps, so insertion sort is almost free.
+  - **Uniform grid:** used from 256 bodies (`GRID_BODIES`). Cells are twice
+    the average dynamic body's size. A pair is tested only in the cell that
+    holds the corner where the two boxes start overlapping. Very large
+    bodies (walls over 16 cells) are tested against every body instead of
+    being put in cells.
+  - **Determinism:** the candidate pairs are sorted back into all-pairs
+    order, so every mode gives bit-identical results (tested).
+- **No allocations per sub step:**
+  - collider points, edge normals and bounding boxes are recomputed in
+    place from one rotation matrix (circles skip it);
+  - clipping and the angular solver use fixed arrays;
+  - the circle-polygon test takes references.
+- **Transforms:**
+  - Without category callbacks, bodies are written to their transforms once
+    per step, not after each of the 10 sub steps. This is bit identical
+    (tested). With callbacks, the old per-sub-step writes are kept, because
+    callbacks may read the transforms.
+  - Static root bodies, and roots that did not move or turn, are not
+    rewritten, so their meshes are not re-uploaded.
+  - A child body is always written back.
+- **Parallel narrow phase:** from 2048 pairs, on the worker threads. The
+  results are applied in order, so they are deterministic.
+- **Contact tracking** (`ColliderCallbackSystem`): sorted vectors merged
+  for enter / exit, instead of copying `std::set`s.
+- **`SceneObjects::UniqueName`:** built a name set once per call instead of
+  searching all objects per candidate, which made creating n objects
+  O(n³).
+
+### Fixes found by the new tests
+
+- **Rotation sign:** a body's angle is read from the transform as
+  `-pitch`, but its turn was written back as `+delta`, so spinning bodies'
+  meshes turned the wrong way (and the next sync undid the spin).
+  `RigidBody::TransformTurn` gives the right sign per plane.
+- **Friction:** friction impulses were stored packed but applied by contact
+  index. After a contact without friction, the next one's impulse went to
+  the wrong point.
+
+### Tests
+
+- **`PhysicsTests.cpp`:**
+  - every broad phase gives the same simulation on a 300-body scene with
+    walls, a trigger, a pile and a parent / child pair, testing far fewer
+    pairs;
+  - per-step and per-sub-step transform writes match;
+  - static and resting bodies are not rewritten.
+- **`ColliderTests.cpp`:**
+  - shapes built from the footprint;
+  - undo, and the reflected field;
+  - duplicates, prefabs and files;
+  - the gizmo prism and colours.
+- **`EditorGuiTests.cpp`:** the Collider stepper and Extent field, outlines
+  in the view, **B**, and the play-mode checkbox.
+
 ## Shadow artifacts: directional light, filtered and biased shadow maps
 
 ### How it was debugged

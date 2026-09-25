@@ -118,6 +118,7 @@ namespace EditorStyle
     constexpr int ID_FIELD_SCALE = 18;
     constexpr int ID_FIELD_PARENT = 19;
     constexpr int ID_FIELD_POS_Y = 30;
+    constexpr int ID_FIELD_COLLIDER_SCALE = 31;
     constexpr int ID_FIELD_PARAM = 20;
     constexpr int ID_FIELD_LAST_OBJECT = 39;
     // Scene settings fields

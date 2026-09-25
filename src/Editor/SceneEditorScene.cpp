@@ -15,6 +15,7 @@
 #include "UIState.h"
 #include "UIText.h"
 #include "Widget.h"
+#include "World/PhysicsGizmos.h"
 #include "World/SceneComponents.h"
 #include "stdafx.h"
 
@@ -307,6 +308,11 @@ void SceneEditorScene::UpdateShortcuts()
         SetStatus("Undo");
     if (Input::WasPressed(App::KEY_Y) && m_Editor.Redo())
         SetStatus("Redo");
+    if (Input::WasPressed(App::KEY_B))
+    {
+        ToggleColliders();
+        SetStatus(m_ShowColliders ? "Showing every collider (B)" : "Showing the selected collider (B)");
+    }
     if (Input::WasPressed(App::KEY_G))
     {
         m_Snap = !m_Snap;
@@ -1441,6 +1447,7 @@ const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
                         {"EDITING",
              {{"U / Y", "Undo / redo"},
               {"G", "Snap to the grid on / off"},
+              {"B", "Show all colliders / selected only"},
               {"P", "Play / stop (through the game camera)"},
               {"Tab", "Software renderer (shadows) / fast triangles"},
               {"H", "Show / hide this panel"},
@@ -1592,8 +1599,41 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
     Text(label.X + 12.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 140.0f);
 }
 
+void SceneEditorScene::DrawColliderGizmo(Entity entity)
+{
+    PhysicsGizmos::GizmoColor color = PhysicsGizmos::ColorOf(entity, m_Editor.IsPlaying());
+    Vec3 forward = m_Cam->Backward * -1.0f;
+    for (const PhysicsGizmos::Line& line : PhysicsGizmos::ColliderLines(entity))
+    {
+        // Points behind the view can not be drawn
+        if ((line.A - m_Cam->Position).Dot(forward) <= 0.5f || (line.B - m_Cam->Position).Dot(forward) <= 0.5f)
+            continue;
+        Vec2 a = m_Cam->WorldPointToScreenSpace(line.A);
+        Vec2 b = m_Cam->WorldPointToScreenSpace(line.B);
+        App::DrawLine(a.X, a.Y, b.X, b.Y, color.R, color.G, color.B);
+    }
+}
+
+void SceneEditorScene::DrawColliders()
+{
+    // Every collider (B / the checkbox), else only the selected object's
+    if (m_ShowColliders)
+    {
+        for (Entity e : ECS.Visit<RigidBody>())
+        {
+            if (ECS.HasComponent<SceneObject>(e) && !m_Editor.IsField(e))
+                DrawColliderGizmo(e);
+        }
+        return;
+    }
+    Entity selected = m_Editor.Selected();
+    if (!m_Editor.IsPlaying() && selected != NULL_ENTITY && ECS.HasComponent<RigidBody>(selected))
+        DrawColliderGizmo(selected);
+}
+
 void SceneEditorScene::RenderOverlay()
 {
+    DrawColliders();
     if (m_Editor.IsPlaying())
         return;
     Entity selected = m_Editor.Selected();

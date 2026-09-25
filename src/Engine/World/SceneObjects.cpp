@@ -7,6 +7,7 @@
 #include "../Mesh.h"
 #include "../RigidBody.h"
 #include "../Transform.h"
+#include "ColliderShape.h"
 #include "ShapeGeometry.h"
 
 #include <algorithm>
@@ -34,19 +35,88 @@ namespace SceneObjects
             return t;
         }
 
-        RigidBody BuildBody(Entity entity)
+        // The object's footprint: its outline (local x, z) and the shape the
+        // body gets without a ColliderShape (Auto)
+        struct Footprint
         {
+            std::vector<Vec2> Outline;
+            ColliderShapeType Auto = ColliderShapeType::Circle;
+            float Width = 1.0f;
+            float Height = 1.0f;
+            float Radius = 0.5f;
+        };
+
+        Footprint FootprintOf(Entity entity)
+        {
+            Footprint footprint;
             if (ECS.HasComponent<Shape2D>(entity))
             {
                 const Shape2D& shape = ECS.GetComponent<Shape2D>(entity);
+                footprint.Outline = ShapeGeometry::Outline(shape);
+                footprint.Width = std::max(shape.Width, 0.01f);
+                footprint.Height = shape.Type == Shape2DType::Rectangle ? std::max(shape.Height, 0.01f)
+                                                                         : footprint.Width;
+                footprint.Radius = std::max(footprint.Width, footprint.Height) * 0.5f;
                 if (shape.Type == Shape2DType::Rectangle)
-                    return RigidBody(std::max(shape.Width, 0.01f), std::max(shape.Height, 0.01f));
-                if (shape.Type == Shape2DType::Circle)
-                    return RigidBody(std::max(shape.Width, 0.01f) * 0.5f);
-                return RigidBody(ShapeGeometry::Outline(shape));
+                    footprint.Auto = ColliderShapeType::Box;
+                else if (shape.Type == Shape2DType::Circle)
+                    footprint.Auto = ColliderShapeType::Circle;
+                else
+                    footprint.Auto = ColliderShapeType::Polygon;
+                // Polygons: the box and circle around the outline
+                if (shape.Type != Shape2DType::Rectangle && shape.Type != Shape2DType::Circle)
+                {
+                    Vec2 min = footprint.Outline.front(), max = min;
+                    float radius = 0.0f;
+                    for (const Vec2& p : footprint.Outline)
+                    {
+                        min = Vec2(std::min(min.X, p.X), std::min(min.Y, p.Y));
+                        max = Vec2(std::max(max.X, p.X), std::max(max.Y, p.Y));
+                        radius = std::max(radius, std::sqrt(p.X * p.X + p.Y * p.Y));
+                    }
+                    footprint.Width = std::max(max.X - min.X, 0.01f);
+                    footprint.Height = std::max(max.Y - min.Y, 0.01f);
+                    footprint.Radius = std::max(radius, 0.005f);
+                }
+                return footprint;
             }
+            // Models and empties: a circle of MODEL_RADIUS scaled
             float scale = ECS.GetComponent<Transform>(entity).LocalScale.X;
-            return RigidBody(MODEL_RADIUS * scale);
+            footprint.Radius = std::max(MODEL_RADIUS * scale, 0.005f);
+            footprint.Width = footprint.Height = footprint.Radius * 2.0f;
+            Shape2D circle;
+            circle.Type = Shape2DType::Circle;
+            circle.Width = footprint.Width;
+            footprint.Outline = ShapeGeometry::Outline(circle);
+            footprint.Auto = ColliderShapeType::Circle;
+            return footprint;
+        }
+
+        RigidBody BuildBody(Entity entity)
+        {
+            Footprint footprint = FootprintOf(entity);
+            ColliderShapeType type = footprint.Auto;
+            float scale = 1.0f;
+            if (ECS.HasComponent<ColliderShape>(entity))
+            {
+                const ColliderShape& collider = ECS.GetComponent<ColliderShape>(entity);
+                if (collider.Type != ColliderShapeType::Auto)
+                    type = collider.Type;
+                scale = std::clamp(collider.Scale, 0.1f, 5.0f);
+            }
+            switch (type)
+            {
+            case ColliderShapeType::Box:
+                return RigidBody(footprint.Width * scale, footprint.Height * scale);
+            case ColliderShapeType::Polygon: {
+                std::vector<Vec2> points = footprint.Outline;
+                for (Vec2& p : points)
+                    p = p * scale;
+                return RigidBody(points);
+            }
+            default:
+                return RigidBody(footprint.Radius * scale);
+            }
         }
     } // namespace
 
@@ -271,6 +341,65 @@ namespace SceneObjects
             }
         }
         return fixes;
+    }
+
+    void SetColliderShape(Entity entity, ColliderShapeType type, float scale)
+    {
+        ColliderShape collider{type, std::clamp(scale, 0.1f, 5.0f)};
+        if (ECS.HasComponent<ColliderShape>(entity))
+            ECS.GetComponent<ColliderShape>(entity) = collider;
+        else
+            ECS.AddComponent<ColliderShape>(entity, collider);
+        BodyType body = GetBodyType(entity);
+        if (body != BodyType::None)
+            SetBodyType(entity, body);
+    }
+
+    ColliderShape ColliderShapeOf(Entity entity)
+    {
+        return ECS.HasComponent<ColliderShape>(entity) ? ECS.GetComponent<ColliderShape>(entity) : ColliderShape{};
+    }
+
+    ColliderShapeType EffectiveColliderShape(Entity entity)
+    {
+        ColliderShape collider = ColliderShapeOf(entity);
+        return collider.Type != ColliderShapeType::Auto ? collider.Type : FootprintOf(entity).Auto;
+    }
+
+    std::vector<Vec3> ColliderOutline(Entity entity, int circleSegments)
+    {
+        std::vector<Vec3> outline;
+        if (!ECS.HasComponent<RigidBody>(entity) || !ECS.HasComponent<Transform>(entity))
+            return outline;
+        // Where physics puts the body for the transform as it is now (the
+        // body's own state is only synced while the world simulates)
+        RigidBody body = ECS.GetComponent<RigidBody>(entity);
+        Transform& transform = ECS.GetComponent<Transform>(entity);
+        body.SyncTransform(transform);
+        body.RecomputeGeometry();
+        float y = transform.GetWorldPosition().Y;
+        if (body.Shape.GetShapeType() == CircleShape)
+        {
+            const int segments = std::max(circleSegments, 3);
+            for (int i = 0; i < segments; ++i)
+            {
+                float angle = 2.0f * PI_F * static_cast<float>(i) / static_cast<float>(segments);
+                outline.push_back(Vec3(body.Position.X + body.Shape.Radius * std::cos(angle),
+                                       y,
+                                       body.Position.Y + body.Shape.Radius * std::sin(angle)));
+            }
+            return outline;
+        }
+        for (const Vec2& p : body.Shape.PolygonPoints)
+            outline.push_back(Vec3(p.X, y, p.Y));
+        return outline;
+    }
+
+    float ColliderHeight(Entity entity)
+    {
+        if (ECS.HasComponent<Shape2D>(entity))
+            return std::max(ECS.GetComponent<Shape2D>(entity).Thickness, 0.05f);
+        return std::max(ECS.GetComponent<Transform>(entity).LocalScale.Y * MODEL_RADIUS * 2.0f, 0.1f);
     }
 
     void SetBodyType(Entity entity, BodyType type)

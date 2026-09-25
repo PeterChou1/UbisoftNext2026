@@ -319,6 +319,11 @@ namespace Editor
         bool SetThickness(Entity entity, float thickness);
         bool SetColor(Entity entity, const Vec3& color);
         bool SetBody(Entity entity, SceneObjects::BodyType body);
+        /**
+         * \brief Shape of the object's physics body (Auto: like the object)
+         *        and its size relative to the object. Needs a body
+         */
+        bool SetColliderShape(Entity entity, ColliderShapeType type, float scale);
         bool SetTag(Entity entity, const std::string& tag);
 
         /**
@@ -345,6 +350,8 @@ namespace Editor
         // Their fields are read and written by name through reflection.
 
         static constexpr const char* COMPONENT_RIGIDBODY = "RigidBody";
+        // Edited in the RigidBody section, not listed on its own
+        static constexpr const char* COMPONENT_COLLIDER = "Collider";
         static constexpr const char* COMPONENT_SCRIPT = "Script";
 
         /**

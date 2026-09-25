@@ -387,6 +387,9 @@ namespace Prefab
                 }
                 entry->LoadBytes(ECS, e, c.Data);
             }
+            // A chosen collider shape (loaded above) rebuilds the body
+            if (ECS.HasComponent<ColliderShape>(e))
+                SceneObjects::SetBodyType(e, o.Body);
             created.push_back(e);
         }
         // Entity fields: object number + 1 -> the new copy

@@ -259,6 +259,42 @@ Unity. Each component is a section:
 | Dynamic | Solid, pushed around (players, crates) |
 | Trigger | Not solid; reports touches to scripts (pickups, hazards) |
 
+**Collider shape.** The RigidBody section also sets the body's shape:
+
+- **Collider** `<` `>` cycles through the shapes:
+  - **Auto** follows the object: a rectangle gets a box, a circle a circle,
+    another polygon its outline, and a model a circle. The label shows
+    which one, e.g. `Collider Auto (Box)`.
+  - **Box** is the object's footprint as a rectangle.
+  - **Circle** is a circle around the footprint.
+  - **Polygon** is the object's outline; a circle becomes a many-sided
+    polygon.
+- **Extent** sizes the collider relative to the object, from 0.1 to 5
+  (1 = the same size). For example, a large tree model can get a small
+  box around its trunk.
+
+Each change is one undo step. Duplicates, prefabs and scene files keep the
+choice. Resizing the object rebuilds its collider with the chosen shape.
+
+**Collider outlines.** The physics system's debug outlines show where each
+body really is. The selected object's collider is drawn as a wire prism:
+its shape at the base and at the top, joined by upright edges. A circle
+also gets a radius line that shows it turning.
+
+| Colour | Body |
+|---|---|
+| Green | Static |
+| Cyan | Dynamic |
+| Yellow | Trigger |
+| Red | Touching another body (while playing) |
+
+To show every collider, not only the selected one:
+
+- in the editor, press **B**, or use **Show all colliders (B)** in the
+  Scene settings (**Scene** on the toolbar);
+- while playing, tick **Show colliders** in the inspector. The outlines
+  then move with the bodies, and turn red while they touch.
+
 ### Type exact values
 
 Every number is an input box: Name, Parent, Pos X / Y / Z, Rot, Width /
@@ -576,6 +612,7 @@ The full list, grouped, is in [Controls.md](Controls.md) and in the editor's
 | X | Delete the selection (with its children) |
 | U / Y | Undo / redo |
 | G | Snap to grid on / off |
+| B | Show every collider outline / only the selected one |
 | P | Play / stop |
 | H | Controls panel |
 | Esc | Close a menu or the Controls panel, stop placing, cancel a typed value |

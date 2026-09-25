@@ -457,6 +457,8 @@ namespace Editor
             if (entry.Has(ECS, source))
                 entry.Copy(ECS, source, copy);
         }
+        if (ECS.HasComponent<ColliderShape>(copy))
+            SceneObjects::ShapeChanged(copy);
         return copy;
     }
 
@@ -929,7 +931,25 @@ namespace Editor
         if (!CanEdit(entity) || body >= BodyType::Count)
             return false;
         RecordUndo();
+        // The collider shape belongs to the body
+        if (body == BodyType::None && ECS.HasComponent<ColliderShape>(entity))
+            ECS.RemoveComponent<ColliderShape>(entity);
         SceneObjects::SetBodyType(entity, body);
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::SetColliderShape(Entity entity, ColliderShapeType type, float scale)
+    {
+        if (!CanEdit(entity) || SceneObjects::GetBodyType(entity) == BodyType::None ||
+            type > ColliderShapeType::Polygon || !std::isfinite(scale))
+            return false;
+        scale = std::clamp(scale, 0.1f, 5.0f);
+        ColliderShape current = SceneObjects::ColliderShapeOf(entity);
+        if (ECS.HasComponent<ColliderShape>(entity) && current.Type == type && current.Scale == scale)
+            return true;
+        RecordUndo();
+        SceneObjects::SetColliderShape(entity, type, scale);
         m_Dirty = true;
         return true;
     }
@@ -1065,7 +1085,7 @@ namespace Editor
 
         for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
         {
-            if (!entry.Has(ECS, entity))
+            if (!entry.Has(ECS, entity) || entry.Name == COMPONENT_COLLIDER)
                 continue;
             ComponentView view;
             view.Name = entry.Name;
@@ -1087,7 +1107,7 @@ namespace Editor
             result.push_back(COMPONENT_SCRIPT);
         for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
         {
-            if (!entry.Has(ECS, entity))
+            if (!entry.Has(ECS, entity) && entry.Name != COMPONENT_COLLIDER)
                 result.push_back(entry.Name);
         }
         return result;
@@ -1165,6 +1185,8 @@ namespace Editor
         // edit: no undo step, the scene stays clean
         if (info->GetValue(data) == before)
             return true;
+        if (component == "Collider")
+            SceneObjects::ShapeChanged(entity);
         PushUndo(std::move(snapshot));
         m_Dirty = true;
         return true;

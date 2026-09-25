@@ -5,6 +5,51 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 15. Physics: collider shapes, debug outlines, a benchmark and a faster solver
+
+- **Collider shapes:** the RigidBody section picks the body's shape:
+  - **Auto** (as before), **Box**, **Circle** or **Polygon** (the object's
+    outline);
+  - **Extent** sizes it from 0.1 to 5 times the object.
+
+  The choice is stored in a `Collider` component (`ColliderShape`), so
+  copies, prefabs, scene files and undo keep it.
+- **Debug outlines:** the selected body's collider is drawn as a wire prism,
+  coloured by body type: static green, dynamic cyan, trigger yellow, red
+  while touching. **B** (or the Scene settings checkbox) shows every
+  collider, and while playing **Show colliders** draws them live.
+- **Benchmark:** `cmake --build build/tests --target physics_benchmark`, or
+  `PhysicsBenchmark [max bodies] [frames] [auto|sweep|grid|all]`. It runs
+  three scenes (scatter, pile, walls) and prints frame times, pairs, contacts,
+  per-phase times, and a position checksum that proves an optimisation
+  changed nothing.
+- **Faster:** frame times at 2000 bodies (Release), before → after. Scaling
+  is now about linear (4000 bodies ≈ twice the time).
+
+  | Scene | Before | After |
+  |---|---|---|
+  | scatter | 131 ms | 9 ms |
+  | pile | 100 ms | 22 ms |
+  | walls | 62 ms | 5 ms |
+
+  What changed:
+  - the broad phase is sort and sweep, or a uniform grid from 256 bodies,
+    instead of testing every pair; every mode gives bit-identical results;
+  - no heap allocations per sub step;
+  - transforms are written once per step, and static or resting bodies are
+    left alone;
+  - the narrow phase runs in parallel for large scenes;
+  - creating n objects is no longer O(n³).
+- **Fixes:**
+  - spinning bodies turned their transform the wrong way;
+  - friction impulses were applied at the wrong contact point.
+- Tests:
+  - every broad phase gives the same simulation;
+  - once-per-step and per-sub-step transform writes match;
+  - collider shapes survive the editor, copies, prefabs and files;
+  - the outline matches the body;
+  - GUI: the Collider stepper, **B**, and the play-mode checkbox.
+
 ## 14. Shadow artifacts fixed: directional light, filtered and biased shadow maps
 
 Debugged by rendering scenes to images from several light positions and

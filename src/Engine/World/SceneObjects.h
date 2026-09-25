@@ -13,6 +13,7 @@
 #include "../Assets.h"
 #include "../Entity.h"
 #include "../Vec3.h"
+#include "ColliderShape.h"
 #include "SceneComponents.h"
 
 #include <map>
@@ -174,6 +175,31 @@ namespace SceneObjects
      * \brief Footprint of the object in world space (x, z), for overlays
      */
     std::vector<Vec3> WorldOutline(Entity entity);
+
+    // -- Colliders ------------------------------------------------------------------
+
+    /**
+     * \brief Shape of the object's physics body (ColliderShape.h); rebuilds
+     *        the body when it has one
+     */
+    void SetColliderShape(Entity entity, ColliderShapeType type, float scale = 1.0f);
+    ColliderShape ColliderShapeOf(Entity entity);
+    /**
+     * \brief The shape the body really has (Auto resolved)
+     */
+    ColliderShapeType EffectiveColliderShape(Entity entity);
+
+    /**
+     * \brief The body's collider in world space, at the object's height, as
+     *        a closed loop (circles as `circleSegments` points), placed from
+     *        the transform exactly as the physics system will place it.
+     *        Empty without a RigidBody
+     */
+    std::vector<Vec3> ColliderOutline(Entity entity, int circleSegments = 24);
+    /**
+     * \brief How tall the collider is drawn (the shape's thickness)
+     */
+    float ColliderHeight(Entity entity);
 
     /**
      * \brief Shaders that draw a shape or a model: its FragShaderTag and

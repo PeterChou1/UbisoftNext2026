@@ -1,6 +1,7 @@
 #include "SceneSerialization.h"
 
 #include "../Log.h"
+#include "../World/ColliderShape.h"
 #include "../World/SceneCamera.h"
 #include "../World/SceneLight.h"
 #include "../World/SceneObjects.h"
@@ -33,6 +34,7 @@ namespace Serialization
         // Reflected: also offered by the editor's Add Component (ComponentCatalog)
         registry.RegisterComponent<GameCamera>("GameCamera");
         registry.RegisterComponent<SceneLight>("SceneLight");
+        registry.RegisterComponent<ColliderShape>("Collider");
         registry.RegisterResource<SceneSettings>("SceneSettings");
     }
 
