@@ -24,6 +24,12 @@ namespace
         Negative = -5
     };
 
+} // namespace
+
+SERIALIZATION_ENUM_RANGE(TestEnum, Negative, Second)
+
+namespace
+{
     struct Nested
     {
         int A = 0;
@@ -287,4 +293,16 @@ TEST_CASE("Crc32: matches the standard check value")
     const char* check = "123456789";
     CHECK_EQ(Crc32(reinterpret_cast<const std::uint8_t*>(check), 9), 0xCBF43926u);
     CHECK_EQ(Crc32(nullptr, 0), 0u);
+}
+
+TEST_CASE("Archive: enum values outside the declared range are refused")
+{
+    std::int32_t raw = 7;
+    std::vector<std::uint8_t> bytes = ToBytes(raw);
+    TestEnum value = First;
+    CHECK_THROWS_AS(FromBytes(bytes, value), SerializationError);
+    raw = -5;
+    bytes = ToBytes(raw);
+    FromBytes(bytes, value);
+    CHECK(value == Negative);
 }

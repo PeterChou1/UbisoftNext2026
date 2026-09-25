@@ -9,6 +9,7 @@
 #include "Lighting.h"
 #include "Log.h"
 #include "Mesh.h"
+#include "ModelImport.h"
 #include "Scripting/ScriptRegistry.h"
 #include "UIState.h"
 #include "Widget.h"
@@ -65,6 +66,7 @@ namespace
     // dynamic ids from FIRST_DYNAMIC_ID
     constexpr int ID_SCENE_LIST = 1;
     constexpr int ID_FIELD_SCENE_NAME = 2;
+    constexpr int ID_FIELD_IMPORT = 3;
     // Fields of the selected object (dropped when the selection changes)
     constexpr int ID_FIELD_FIRST_OBJECT = 10;
     constexpr int ID_FIELD_NAME = 10;
@@ -180,6 +182,8 @@ void SceneEditorScene::Setup()
     m_Models = AssetServer::AvailableModels();
     if (m_Brush.Model.empty() && !m_Models.empty())
         m_Brush.Model = m_Models.front();
+    std::error_code importDirError;
+    std::filesystem::create_directories(IMPORT_DIRECTORY, importDirError);
 
     // Open the first scene of the folder, or start a new one
     RefreshSceneList();
@@ -580,10 +584,14 @@ bool SceneEditorScene::OpenScene(const std::string& name)
     m_DocName = name;
     m_PendingSceneIndex = -1;
     RefreshSceneList();
+    std::vector<std::uint8_t> head;
+    std::string readError;
+    bool isText = Serialization::WorldSerializer::ReadFile(ScenePath(name), head, readError) &&
+                  Serialization::WorldSerializer::IsTextSave(head);
     if (!result.Warnings.empty())
         SetStatus("Opened " + name + " with problems: " + result.Warnings.front(), true);
     else
-        SetStatus("Opened " + name);
+        SetStatus("Opened " + name + (isText ? " (plain text file)" : ""));
     return true;
 }
 
@@ -849,6 +857,57 @@ void SceneEditorScene::RenderPalette()
     y -= 2 * (SWATCH + 8.0f);
     if (CheckBox(NextId(), x, y, m_Snap, 16.0f, *m_UI, "Snap (G)"))
         m_Snap = !m_Snap;
+
+    // Import a custom .obj: type a path (or a file name in data/import/),
+    // Enter or the button imports it into data/models
+    y -= 34.0f;
+    Text(x, y, "IMPORT .OBJ", ACCENT);
+    y -= 28.0f;
+    bool imported = false;
+    if (TextField(ID_FIELD_IMPORT, x, y, width, 22.0f, *m_UI, m_ImportPath, TextFilter::Any, 260) ==
+        TextFieldEvent::Committed)
+    {
+        ImportModel();
+        imported = true;
+    }
+    y -= 28.0f;
+    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Import model") && !imported)
+        ImportModel();
+}
+
+void SceneEditorScene::ImportModel()
+{
+    std::string path = m_ImportPath;
+    // A bare file name is looked up in the import folder
+    std::error_code ec;
+    if (!path.empty() && !std::filesystem::exists(path, ec) && path.find_first_of("/\\") == std::string::npos)
+    {
+        std::filesystem::path inFolder = std::filesystem::path(IMPORT_DIRECTORY) / path;
+        if (inFolder.extension() != ".obj" && !std::filesystem::exists(inFolder, ec))
+            inFolder += ".obj";
+        if (std::filesystem::exists(inFolder, ec))
+            path = inFolder.string();
+    }
+    if (path.empty())
+    {
+        SetStatus("Type the path of an .obj file (or its name in data/import/) first", true);
+        return;
+    }
+    ModelImport::Result result = ModelImport::Import(path, AssetServer::MODEL_DIRECTORY);
+    if (!result)
+    {
+        SetStatus("Import failed: " + result.Error, true);
+        return;
+    }
+    m_Models = AssetServer::AvailableModels();
+    m_Brush.Model = result.Name;
+    SelectKind(ObjectKind::Model);
+    std::string message = (result.AlreadyImported ? "Already imported: " : "Imported ") + result.Name + " (" +
+                          std::to_string(result.Triangles) + " triangles). Click the field to place it";
+    if (!result.Warnings.empty())
+        message += ". " + result.Warnings.front();
+    SetStatus(message, false);
+    m_ImportPath.clear();
 }
 
 void SceneEditorScene::RenderInspector()
@@ -1082,7 +1141,18 @@ void SceneEditorScene::RenderSceneInspector(float x, float& y)
         m_Editor.SetGameCamera(m_CamTarget, m_CamDistance);
         SetStatus("The game will start with the current view");
     }
-    y -= BUTTON_H + 14.0f;
+    y -= BUTTON_H + 10.0f;
+
+    // Scene files in plain text (readable / diffable) or binary
+    bool text = Serialization::WorldSerializer::FileFormat() == Serialization::SaveFormat::Text;
+    if (CheckBox(NextId(), x, y, text, 16.0f, *m_UI, "Plain text files"))
+    {
+        text = !text;
+        Serialization::WorldSerializer::SetFileFormat(text ? Serialization::SaveFormat::Text
+                                                           : Serialization::SaveFormat::Binary);
+        SetStatus(text ? "Scenes are saved as plain text (Save to write it)" : "Scenes are saved as binary");
+    }
+    y -= ROW_H + 8.0f;
 
     Text(x, y, "Objects " + std::to_string(m_Editor.Objects().size()), TEXT_DIM);
     y -= ROW_H;

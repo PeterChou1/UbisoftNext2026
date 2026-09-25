@@ -28,6 +28,14 @@
 #include "Archive.h"
 #include "MathSerialization.h"
 
+// Valid values of the engine enums stored in save files
+SERIALIZATION_ENUM_RANGE(ShapeType, CircleShape, PolygonShape)
+SERIALIZATION_ENUM_RANGE(ColliderCategory, Default, Category8)
+SERIALIZATION_ENUM_RANGE(SlicePlane, XY, YZ)
+SERIALIZATION_ENUM_RANGE(FragShaderTypeID, DefaultFragShaderID, ShapeShaderID)
+SERIALIZATION_ENUM_RANGE(VertShaderTypeID, DefaultVertShaderID, DefaultVertShaderID)
+SERIALIZATION_ENUM_RANGE(EmitterType, Sphere, Cone)
+
 /**
  * \brief Befriended by classes that keep part of their state private
  */

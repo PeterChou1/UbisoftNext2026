@@ -2,6 +2,92 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Plain text save files and custom .obj import
+
+### Plain text saves
+
+- **`TextArchive.h`:** `TextOutputArchive` / `TextInputArchive` have the same
+  interface as the binary archives, so every existing
+  `Serialize(ar, value)` function reads and writes text unchanged.
+  - Numbers use the shortest decimal that reads back to the exact bits.
+  - `bool` is `true` / `false`; strings are quoted and escaped; containers are
+    written as `[n]` followed by their elements.
+- **`WorldSerializer`:**
+  - `Save(ecs, meta, SaveFormat::Text)` and `SaveText(...)` write the world as
+    text: a `UBSV-TEXT 1` header, `meta`, `entities` (id runs as `a..b`), one
+    `component "Name" version [count]` header per type followed by
+    `entity: values` lines, then `resource` records and `end`.
+  - `Parse` / `Load` / `LoadFromFile` recognise text by its header and
+    convert it with `TextToBinary`. That rebuilds exactly the binary file
+    `Save` would write, then parses it, so both formats share one validation
+    path.
+  - Text has no checksum, so it can be edited by hand. Errors name the line
+    and never touch the world. Unknown types from a newer build are skipped
+    with a warning; newer layout versions are refused.
+- **The registry** gives each type `SaveText` / `TextToBinary` functions,
+  created from its `Serialize` function.
+- **Program-wide option:** `WorldSerializer::SetFileFormat` / `FileFormat`
+  (default binary) is used by `SaveToFile`, `GameManager::SaveGame` and the
+  editor's `SaveSceneToBytes`. In the editor it is the **Plain text files**
+  check box in the Scene tab, and the status bar says when an opened scene
+  is a text file. Editor undo snapshots stay binary.
+- **Enum safety:** serialized enums declare their valid range with
+  `SERIALIZATION_ENUM_RANGE(Type, First, Last)`, and the compiler refuses a
+  serialized enum without one. Both archives refuse values outside the range.
+  Before, a damaged file could hold any value, which was undefined behaviour;
+  UBSan found this while testing hand-edited text.
+
+### Custom .obj import
+
+- **`Engine/ModelImport`:** `ModelImport::Import(path)` copies the model into
+  `data/models/`.
+  - It first checks that the file loads and has faces.
+  - It copies the `.mtl` libraries the file uses. A different library with
+    the same name is renamed, and the `mtllib` line is rewritten.
+  - Model names are made safe. The same file imported again is reused; a
+    different file with the same name gets `_2`, `_3`...
+  - It accepts quoted paths and `~/`, and drops any cached copy of the model
+    (`AssetServer::ForgetModel`).
+- **OBJ reader (`Utils::LoadInstance`):**
+  - faces with any number of corners are fan-triangulated;
+  - `v`, `v/vt`, `v//vn` and `v/vt/vn` corners, with negative (relative)
+    indices;
+  - out-of-range or invalid indices skip the face instead of reading out of
+    bounds;
+  - a missing `.mtl` or unknown material uses the default material, with a
+    log warning.
+
+  Every model in `data/models` loads bit for bit as before (checked against a
+  fingerprint of the old loader).
+- **Editor:** the palette's **IMPORT .OBJ** box and **Import model** button
+  take a path, or a file name in `data/import/`. After an import the model is
+  selected in the brush with the Model tool active. `TextField` gained a
+  maximum length (paths up to 260 characters).
+- **Example:** `data/import/pyramid.obj` / `.mtl` (a quad base plus
+  triangles), and `data/import/README.md`.
+
+### Tests (143, clean under ASan / UBSan, Debug and Release)
+
+- **`TextSaveTests`:**
+  - byte-exact round trips of every scene feature and of every committed
+    scene;
+  - readability;
+  - hand edits and CRLF line endings;
+  - 11 kinds of mistakes, reported with their line and leaving the world
+    untouched;
+  - unknown and newer types;
+  - escaped strings and special floats;
+  - 300 randomly damaged files;
+  - the file format option (files, `GameManager`, editor) and the editor
+    check box;
+  - enum ranges.
+- **`ModelImportTests`:**
+  - the OBJ reader (polygons, index forms, bad data, materials);
+  - import copying and name clashes;
+  - errors;
+  - the editor's import box through the GUI, placing and rendering the
+    imported model, and the example pyramid.
+
 ## Debug logging utility
 
 `src/Engine/Log.h` / `Log.cpp`:

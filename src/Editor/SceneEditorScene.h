@@ -60,6 +60,20 @@ class SceneEditorScene : public Scene
      */
     void SetSceneDirectory(const std::string& directory) { m_SceneDirectory = directory; }
 
+    /**
+     * \brief Import a model (what the palette's Import box does)
+     */
+    bool Import(const std::string& path)
+    {
+        m_ImportPath = path;
+        ImportModel();
+        return !m_StatusIsError;
+    }
+    const Editor::PlaceSettings& Brush() const { return m_Brush; }
+
+    // Where the editor looks for .obj files typed by name
+    static constexpr const char* IMPORT_DIRECTORY = "data/import";
+
     // -- Scene documents (also used by the tests) ---------------------------------------
     const std::string& SceneName() const { return m_DocName; }
     const std::vector<std::string>& SceneNames() const { return m_SceneNames; }
@@ -102,6 +116,11 @@ class SceneEditorScene : public Scene
     void SelectKind(Editor::ObjectKind kind);
     void RefreshSceneList();
     std::string UniqueSceneName() const;
+    /**
+     * \brief Import the .obj named in the palette's import box (a path, or a
+     *        file name in data/import/)
+     */
+    void ImportModel();
     void SetStatus(const std::string& message, bool error = false);
 
     // -- Drawing -------------------------------------------------------------------
@@ -162,6 +181,7 @@ class SceneEditorScene : public Scene
     // Scene picked while the open one had unsaved changes (-1 = none)
     int m_PendingSceneIndex = -1;
     std::vector<std::string> m_Models;
+    std::string m_ImportPath;
 
     std::string m_Status;
     bool m_StatusIsError = false;

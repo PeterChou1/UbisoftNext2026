@@ -1,6 +1,7 @@
 #include "Utils.h"
 
 #include "ECSManager.h"
+#include "Log.h"
 #include "RigidBody.h"
 #include "stdafx.h"
 
@@ -87,6 +88,11 @@ bool Utils::LoadInstance(std::string filename,
                          MeshInstance& mesh,
                          std::vector<Material>& textureList)
 {
+    // Reads the common subset of Wavefront OBJ: v / vt / vn, faces with any
+    // number of corners (triangulated as a fan), 1-based or negative
+    // (relative) indices, mtllib / usemtl. Faces referring to missing data are
+    // skipped instead of reading out of bounds, a missing .mtl or unknown
+    // material falls back to the default material
     std::ifstream file(filename);
     size_t lastSlash = filename.find_last_of("/\\");
     std::string directory = filename.substr(0, lastSlash + 1);
@@ -99,13 +105,27 @@ bool Utils::LoadInstance(std::string filename,
     std::vector<Vec2> temp_uvs;
     std::vector<Vec3> temp_normals;
     std::unordered_map<std::string, uint32_t> vertexMap;
-    bool UV = false, Normal = false;
     int cur_texID = -1;
     std::string line;
     std::unordered_map<std::string, size_t> textureIDs;
+    size_t skippedFaces = 0;
+
+    // "7", "-1": index into a list of `count` elements, -1 if invalid
+    auto resolveIndex = [](const std::string& token, size_t count) -> long {
+        if (token.empty())
+            return -1;
+        char* end = nullptr;
+        long index = std::strtol(token.c_str(), &end, 10);
+        if (end == token.c_str() || *end != '\0' || index == 0)
+            return -1;
+        long resolved = index > 0 ? index - 1 : static_cast<long>(count) + index;
+        return resolved >= 0 && resolved < static_cast<long>(count) ? resolved : -1;
+    };
 
     while (std::getline(file, line))
     {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
         std::stringstream ss(line);
         std::string prefix;
         ss >> prefix;
@@ -114,19 +134,16 @@ bool Utils::LoadInstance(std::string filename,
             std::string mtlfilename;
             ss >> mtlfilename;
             std::string mtlfilepath = directory + mtlfilename;
-            // fail to load mtl return
             if (!LoadMTLFile(directory, mtlfilepath, textureList, textureIDs))
-                return false;
+                LOG_WARN("Assets", "%s: material library %s not found, using the default material",
+                         filename.c_str(), mtlfilepath.c_str());
         }
         else if (prefix == "usemtl")
         {
             std::string matname;
             ss >> matname;
-            // fail to find material in mtl file
-            if (textureIDs.find(matname) == textureIDs.end())
-                return false;
-
-            cur_texID = static_cast<int>(textureIDs[matname]);
+            auto found = textureIDs.find(matname);
+            cur_texID = found == textureIDs.end() ? -1 : static_cast<int>(found->second);
         }
         else if (prefix == "v")
         {
@@ -136,89 +153,108 @@ bool Utils::LoadInstance(std::string filename,
         }
         else if (prefix == "vt")
         {
-            UV = true;
             Vec2 uv;
             ss >> uv.X >> uv.Y;
             temp_uvs.push_back(uv);
         }
         else if (prefix == "vn")
         {
-            Normal = true;
             Vec3 normal;
             ss >> normal.X >> normal.Y >> normal.Z;
             temp_normals.push_back(normal);
         }
         else if (prefix == "f")
         {
-            std::string vertex1, vertex2, vertex3;
-            ss >> vertex1 >> vertex2 >> vertex3;
-            std::string varray[3] = {vertex1, vertex2, vertex3};
-            Vertex vertarray[3] = {Vertex(), Vertex(), Vertex()};
-
-            for (int i = 0; i < 3; i++)
+            // Corners "v", "v/vt", "v//vn" or "v/vt/vn"
+            std::vector<Vertex> corners;
+            bool allNormals = true;
+            bool valid = true;
+            std::string corner;
+            while (ss >> corner && valid)
             {
-                Vertex& v = vertarray[i];
-                std::string vertex = varray[i];
-                std::istringstream vertexStream(vertex);
-                std::string vertexIndex, uvIndex, normalIndex;
-
-                std::getline(vertexStream, vertexIndex, '/');
-                if (UV)
+                std::string parts[3];
+                size_t part = 0;
+                for (char c : corner)
                 {
-                    std::getline(vertexStream, uvIndex, '/');
-                }
-                if (Normal)
-                {
-                    if (!UV)
+                    if (c == '/')
                     {
-                        // Skip over the uv index if UVs are not being loaded
-                        vertexStream.ignore(std::numeric_limits<std::streamsize>::max(), '/');
+                        if (++part > 2)
+                            break;
                     }
-                    std::getline(vertexStream, normalIndex, '/');
+                    else
+                        parts[part] += c;
                 }
-
-                int vIndex = std::stoi(vertexIndex) - 1;
-                v.LocalPosition = temp_vertices[vIndex];
-
-                if (UV && !uvIndex.empty())
+                Vertex v;
+                long vIndex = resolveIndex(parts[0], temp_vertices.size());
+                if (vIndex < 0)
                 {
-                    int uvIdx = std::stoi(uvIndex) - 1;
+                    valid = false;
+                    break;
+                }
+                v.LocalPosition = temp_vertices[vIndex];
+                if (!parts[1].empty())
+                {
+                    long uvIdx = resolveIndex(parts[1], temp_uvs.size());
+                    if (uvIdx < 0)
+                    {
+                        valid = false;
+                        break;
+                    }
                     v.UV.X = temp_uvs[uvIdx].X;
                     v.UV.Y = std::abs(temp_uvs[uvIdx].Y - 1);
                 }
-
-                if (Normal && !normalIndex.empty())
+                if (!parts[2].empty())
                 {
-                    int nIdx = std::stoi(normalIndex) - 1;
+                    long nIdx = resolveIndex(parts[2], temp_normals.size());
+                    if (nIdx < 0)
+                    {
+                        valid = false;
+                        break;
+                    }
                     v.LocalNormal = temp_normals[nIdx];
                 }
+                else
+                    allNormals = false;
+                corners.push_back(v);
+            }
+            if (!valid || corners.size() < 3)
+            {
+                ++skippedFaces;
+                continue;
             }
 
-            if (!Normal)
+            // Fan: (0, i, i + 1)
+            for (size_t i = 1; i + 1 < corners.size(); ++i)
             {
-                Vec3 lineA = vertarray[0].LocalPosition - vertarray[1].LocalPosition;
-                Vec3 lineB = vertarray[0].LocalPosition - vertarray[2].LocalPosition;
-                Vec3 normal = lineA.Cross(lineB);
-                normal.Normalize();
-                vertarray[0].LocalNormal = normal;
-                vertarray[1].LocalNormal = normal;
-                vertarray[2].LocalNormal = normal;
-            }
-
-            for (Vertex& v : vertarray)
-            {
-                std::string VString = v.ToString();
-                v.TextureID = cur_texID;
-                if (vertexMap.find(VString) == vertexMap.end())
+                Vertex vertarray[3] = {corners[0], corners[i], corners[i + 1]};
+                if (!allNormals)
                 {
-                    vertexMap[VString] = static_cast<uint32_t>(mesh.vertices.size());
-                    mesh.vertices.push_back(v);
+                    Vec3 lineA = vertarray[0].LocalPosition - vertarray[1].LocalPosition;
+                    Vec3 lineB = vertarray[0].LocalPosition - vertarray[2].LocalPosition;
+                    Vec3 normal = lineA.Cross(lineB);
+                    normal.Normalize();
+                    vertarray[0].LocalNormal = normal;
+                    vertarray[1].LocalNormal = normal;
+                    vertarray[2].LocalNormal = normal;
                 }
-                mesh.indices.push_back(vertexMap[VString]);
+
+                for (Vertex& v : vertarray)
+                {
+                    std::string VString = v.ToString();
+                    v.TextureID = cur_texID;
+                    if (vertexMap.find(VString) == vertexMap.end())
+                    {
+                        vertexMap[VString] = static_cast<uint32_t>(mesh.vertices.size());
+                        mesh.vertices.push_back(v);
+                    }
+                    mesh.indices.push_back(vertexMap[VString]);
+                }
             }
         }
     }
     file.close();
+    if (skippedFaces > 0)
+        LOG_WARN("Assets", "%s: skipped %zu faces with missing or invalid indices", filename.c_str(), skippedFaces);
     return true;
 }
 

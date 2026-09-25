@@ -1,0 +1,15 @@
+# Example model for the scene editor's "IMPORT .OBJ" box: type pyramid and
+# press Enter. A square base (a quad face) and four triangles.
+mtllib pyramid.mtl
+v -0.5 0 -0.5
+v 0.5 0 -0.5
+v 0.5 0 0.5
+v -0.5 0 0.5
+v 0 1 0
+usemtl Stone
+f 1 2 3 4
+usemtl Gold
+f 1 5 2
+f 2 5 3
+f 3 5 4
+f 4 5 1

@@ -24,6 +24,8 @@
 #include "EngineSerialization.h"
 #include "SerializationRegistry.h"
 
+SERIALIZATION_ENUM_RANGE(Shape2DType, Shape2DType::Rectangle, Shape2DType::Polygon)
+
 template <typename Archive>
 void Serialize(Archive& ar, SceneObject& object)
 {

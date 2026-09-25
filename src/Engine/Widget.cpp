@@ -288,8 +288,6 @@ void FillBar(float x, float y, float width, float height, float fillVal)
 }
 namespace
 {
-    constexpr size_t MAX_FIELD_CHARS = 32;
-
     bool Accepts(TextFilter filter, char& c)
     {
         switch (filter)
@@ -308,8 +306,15 @@ namespace
     }
 } // namespace
 
-TextFieldEvent TextField(
-        int id, float x, float y, float width, float height, UIState& uiState, std::string& text, TextFilter filter)
+TextFieldEvent TextField(int id,
+                         float x,
+                         float y,
+                         float width,
+                         float height,
+                         UIState& uiState,
+                         std::string& text,
+                         TextFilter filter,
+                         size_t maxChars)
 {
     bool hit = RegionHit(uiState.mouseX, uiState.mouseY, x, y, width, height);
     TextFieldEvent event = TextFieldEvent::None;
@@ -378,7 +383,7 @@ TextFieldEvent TextField(
                     if (uiState.editFresh)
                         uiState.editText.clear();
                     uiState.editFresh = false;
-                    if (uiState.editText.size() < MAX_FIELD_CHARS)
+                    if (uiState.editText.size() < maxChars)
                         uiState.editText.push_back(c);
                 }
             }

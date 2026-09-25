@@ -78,4 +78,5 @@ TextFieldEvent TextField(int id,
                          float height,
                          UIState& uiState,
                          std::string& text,
-                         TextFilter filter = TextFilter::Any);
+                         TextFilter filter = TextFilter::Any,
+                         size_t maxChars = 32);

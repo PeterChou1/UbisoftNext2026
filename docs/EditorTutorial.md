@@ -79,6 +79,28 @@ With **Snap (G)** on, positions snap to a 0.5 grid.
 
 ---
 
+### Your own 3D models (.obj)
+
+1. Put the `.obj` file, and the `.mtl` file it uses, in `data/import/`.
+2. Type its name (e.g. `pyramid`, the example that is already there) in the
+   palette's **IMPORT .OBJ** box, and press **Enter** or **Import model**.
+   You can also type a full path to an `.obj` anywhere on disk.
+
+The model is copied into `data/models/` and selected in the brush, with the
+**Model** tool active: click the field to place it.
+
+- **What the importer accepts:**
+  - faces with any number of corners;
+  - negative indices;
+  - `.mtl` colours.
+
+  A missing `.mtl` only gives a warning, and the model is drawn with the
+  default material.
+- **Size:** models are resized to a 1 unit footprint. Use **Scale** to size
+  them.
+- **Re-importing:** importing the same file twice reuses the first copy, and
+  a different file with the same name gets a numbered name (`tree_2`).
+
 ## 4. Select and move objects
 
 - **Select:** click an object. It gets a yellow outline and appears in the
@@ -185,6 +207,12 @@ problem (duplicate names, objects outside the field, unknown scripts).
 | Open another scene | Pick it in the scene list. With unsaved changes, the first pick only warns you: **Save**, or pick it again to throw the changes away |
 | Throw away changes | **Revert** reloads the scene from its file |
 | Undo / redo | **Undo** / **Redo**, or **U** / **Y** |
+| Save as plain text | **Scene** tab → **Plain text files**, then **Save** |
+
+Scene files are binary by default. With **Plain text files** checked, every
+save is written as readable text instead. You can open it in any text editor,
+compare it in version control, or edit values by hand. Both kinds open the
+same way: the editor and the Game recognise the format by themselves.
 
 ---
 

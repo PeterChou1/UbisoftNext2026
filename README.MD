@@ -84,6 +84,11 @@ Both programs must run from the repository root (the build does this) to find `d
 * The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
 * Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
+* **Custom models:** drop an `.obj` (+ `.mtl`) in `data/import/`, type its name in the palette's **IMPORT .OBJ** box and
+  press Enter (or type a full path). It is copied to `data/models/` and ready to place. See
+  [data/import/README.md](data/import/README.md).
+* **Plain text scene files:** Scene tab → **Plain text files**. Saves become readable / diffable / hand-editable text;
+  binary and text files both load everywhere.
 
 ## Game
 
@@ -108,6 +113,33 @@ r.Register<Spinner>("Spinner", "Spins the object", {{"Speed", 90.0f, 15.0f}});
 ```
 
 Derive from `SceneScript` for a script that drives a whole scene. Both programs pick new scripts up after a rebuild.
+
+## Save files: binary or plain text
+
+Scenes and saves are binary by default (compact, checksummed). Switch every file save to plain text with the editor's
+**Plain text files** option or from code:
+
+```cpp
+Serialization::WorldSerializer::SetFileFormat(Serialization::SaveFormat::Text);
+```
+
+A text file lists each component record on one line, e.g.
+
+```
+UBSV-TEXT 1
+meta [2] "Name" "level_1" "Scene" "Play"
+entities 5000 [13] 1..13 [4986] 14..4999
+component "SceneObject" 1 [13]
+1: "Field" "Field"
+6: "Circle" "Player"
+...
+resource "SceneSettings" 1
+: "level_1" "CollectGame" [2] "Level" 1 "Lives" 3 24 18 0 0 -1 24
+end
+```
+
+Loading recognises the format by itself, and text files get exactly the same validation as binary ones. Errors name the
+line.
 
 ## Debug logging
 

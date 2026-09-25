@@ -111,6 +111,12 @@ class AssetServer
     bool IsModelLoaded(const std::string& name) const { return Models.count(name) > 0; }
 
     /**
+     * \brief Drop a cached model so the next GetModel reads its file again
+     *        (after importing or replacing it)
+     */
+    void ForgetModel(const std::string& name) { Models.erase(name); }
+
+    /**
      * \brief Names of every model in data/models (sorted), used by the editor
      */
     static std::vector<std::string> AvailableModels()

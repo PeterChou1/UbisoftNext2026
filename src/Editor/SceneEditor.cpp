@@ -609,10 +609,12 @@ namespace Editor
     std::vector<std::uint8_t> SceneEditor::SaveSceneToBytes(const std::string& name) const
     {
         ECS.GetResource<SceneSettings>()->Name = name;
+        // Binary or plain text, following the program wide file format option
         return Serializer().Save(ECS,
                                  {{GameManager::SCENE_KEY, PLAYER_SCENE},
                                   {META_NAME, name},
-                                  {META_TOOL, "SceneEditor 2"}});
+                                  {META_TOOL, "SceneEditor 2"}},
+                                 Serialization::WorldSerializer::FileFormat());
     }
 
     Serialization::SaveResult SceneEditor::SaveScene(const std::string& path,

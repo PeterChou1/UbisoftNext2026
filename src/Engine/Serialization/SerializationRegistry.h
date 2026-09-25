@@ -34,6 +34,7 @@
 
 #include "../ECSManager.h"
 #include "Archive.h"
+#include "TextArchive.h"
 
 #include <cstdint>
 #include <functional>
@@ -65,6 +66,11 @@ namespace Serialization
         // Parses a component from the archive and returns the action which adds
         // it to the given entity
         std::function<StagedAction(Entity, InputArchive&)> Load;
+        // Plain text save files: write a component as text, and turn a text
+        // record back into its binary record (loading then goes through the
+        // binary path, with all its validation)
+        std::function<void(ECSManager&, Entity, TextOutputArchive&)> SaveText;
+        std::function<void(TextInputArchive&, OutputArchive&)> TextToBinary;
     };
 
     /**
@@ -81,6 +87,9 @@ namespace Serialization
         // Deserializes directly into the live resource, only fields touched by
         // the Serialize function are modified
         std::function<void(ECSManager&, InputArchive&)> Apply;
+        // Plain text save files, see ComponentSerializer
+        std::function<void(ECSManager&, TextOutputArchive&)> SaveText;
+        std::function<void(TextInputArchive&, OutputArchive&)> TextToBinary;
     };
 
     class SerializationRegistry
@@ -108,6 +117,14 @@ namespace Serialization
                 ar(component);
                 return [e, component](ECSManager& ecs) { ecs.AddComponent<T>(e, component); };
             };
+            s.SaveText = [](ECSManager& ecs, Entity e, TextOutputArchive& ar) {
+                ar(ecs.GetComponent<T>(e));
+            };
+            s.TextToBinary = [](TextInputArchive& in, OutputArchive& out) {
+                T component{};
+                in(component);
+                out(component);
+            };
             m_ComponentByName[name] = m_Components.size();
             m_Components.push_back(std::move(s));
         }
@@ -129,6 +146,12 @@ namespace Serialization
                 ar(*scratch);
             };
             s.Apply = [](ECSManager& ecs, InputArchive& ar) { ar(*ecs.GetResource<T>()); };
+            s.SaveText = [](ECSManager& ecs, TextOutputArchive& ar) { ar(*ecs.GetResource<T>()); };
+            s.TextToBinary = [](TextInputArchive& in, OutputArchive& out) {
+                auto scratch = std::make_unique<T>();
+                in(*scratch);
+                out(*scratch);
+            };
             m_ResourceByName[name] = m_Resources.size();
             m_Resources.push_back(std::move(s));
         }

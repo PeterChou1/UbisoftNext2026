@@ -21,6 +21,24 @@
 // skip types it does not know about (a save made by a newer build) and can
 // detect a Serialize function that reads the wrong amount of data.
 //
+// Plain text files (SaveFormat::Text) hold the same data readably, one record
+// per line, values in the order the type's Serialize function writes them:
+//
+//   UBSV-TEXT 1
+//   meta [2] "Name" "level_1" "Scene" "Play"
+//   entities 5000 [3] 0 1 2 [0]
+//   component "SceneObject" 1 [3]
+//   0: "Field" "Field"
+//   ...
+//   resource "SceneSettings" 1
+//   : "level_1" "CollectGame" [2] "Level" 1 "Lives" 3 24 18 0 0 -1 24
+//   end
+//
+// Text files have no checksum, so they can be read and edited by hand. Loading
+// turns a text file back into the binary form and parses that, so both
+// formats get exactly the same validation. Load / Parse / LoadFromFile
+// recognise the format by its first bytes.
+//
 // Loading happens in two phases:
 //   1. Parse  - validates the whole file and stages every change. The ECS is
 //               not touched, a corrupt file can never leave a half loaded world
@@ -39,6 +57,12 @@
 namespace Serialization
 {
     using SaveMetadata = std::map<std::string, std::string>;
+
+    enum class SaveFormat
+    {
+        Binary, // compact, checksummed (default)
+        Text    // plain text, readable / diffable / hand editable
+    };
 
     /**
      * \brief Result of parsing/loading a save
@@ -102,6 +126,32 @@ namespace Serialization
         std::vector<std::uint8_t> Save(ECSManager& ecs, const SaveMetadata& metadata = {}) const;
 
         /**
+         * \brief Serialize the whole world in the given format (the bytes of a
+         *        text save are its UTF-8 text)
+         */
+        std::vector<std::uint8_t> Save(ECSManager& ecs, const SaveMetadata& metadata, SaveFormat format) const;
+
+        /**
+         * \brief Plain text version of the world (see the file comment)
+         */
+        std::string SaveText(ECSManager& ecs, const SaveMetadata& metadata = {}) const;
+
+        /**
+         * \brief Convert a text save into the equivalent binary save
+         * \throws SerializationError on malformed text
+         */
+        std::vector<std::uint8_t> TextToBinary(const std::string& text, std::vector<std::string>& warnings) const;
+
+        static bool IsTextSave(const std::vector<std::uint8_t>& bytes);
+
+        /**
+         * \brief Format used by SaveToFile when none is given (a program wide
+         *        toggle: the editor's "Plain text files" option, the game's saves)
+         */
+        static void SetFileFormat(SaveFormat format);
+        static SaveFormat FileFormat();
+
+        /**
          * \brief Validate a save and stage its content without touching any ECS
          */
         LoadResult Parse(const std::vector<std::uint8_t>& bytes, WorldSnapshot& snapshot) const;
@@ -123,6 +173,10 @@ namespace Serialization
         SaveResult SaveToFile(ECSManager& ecs,
                               const std::string& path,
                               const SaveMetadata& metadata = {}) const;
+        SaveResult SaveToFile(ECSManager& ecs,
+                              const std::string& path,
+                              const SaveMetadata& metadata,
+                              SaveFormat format) const;
 
         /**
          * \brief Load the world from a file. On failure the ECS is left untouched
@@ -138,6 +192,7 @@ namespace Serialization
                              std::string& error);
 
       private:
+        LoadResult ParseBinary(const std::vector<std::uint8_t>& bytes, WorldSnapshot& snapshot) const;
         void ParseEntities(InputArchive& ar, WorldSnapshot& snapshot) const;
         void ParseComponents(InputArchive& ar, WorldSnapshot& snapshot) const;
         void ParseResources(InputArchive& ar, WorldSnapshot& snapshot) const;

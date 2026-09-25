@@ -189,6 +189,10 @@ namespace Editor
          */
         Serialization::LoadResult LoadScene(const std::string& path);
 
+        /**
+         * \brief The scene file's bytes, in WorldSerializer::FileFormat() (binary
+         *        or plain text)
+         */
         std::vector<std::uint8_t> SaveSceneToBytes(const std::string& name) const;
 
         // -- Undo / redo -----------------------------------------------------------

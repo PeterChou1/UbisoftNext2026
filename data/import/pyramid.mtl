@@ -1,0 +1,11 @@
+newmtl Stone
+Ka 1 1 1
+Kd 0.55 0.5 0.45
+Ks 0.2 0.2 0.2
+Ns 20
+
+newmtl Gold
+Ka 1 1 1
+Kd 0.95 0.75 0.2
+Ks 0.8 0.8 0.6
+Ns 200

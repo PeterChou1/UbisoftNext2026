@@ -4,6 +4,27 @@ A short log of everything changed on this branch, newest first. Details and
 explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md).
 
+## 8. Plain text save files, custom .obj import
+
+- **Plain text saves (optional).** Scenes and saves can be written as readable
+  text: one line per component record, strings quoted, exact numbers.
+  - Toggle it with the editor's **Plain text files** option (Scene tab) or
+    `WorldSerializer::SetFileFormat(SaveFormat::Text)`.
+  - Loading detects the format. Text is converted to the binary form and
+    checked by the same code.
+  - Every existing scene converts to text and back byte for byte.
+  - Enum values outside their range are now refused in both formats.
+- **Custom model import.** Type a file name from `data/import/` (or any path)
+  in the palette's **IMPORT .OBJ** box.
+  - The `.obj` and its `.mtl` files are copied into `data/models/`, and the
+    model is ready to place. Name clashes get numbered names.
+  - The OBJ reader now accepts faces with any number of corners and negative
+    indices. Bad indices are skipped instead of read out of bounds, and a
+    missing `.mtl` falls back to the default material.
+  - Existing models load exactly as before.
+  - An example model, `data/import/pyramid.obj`, is included.
+- 16 new tests (143 in total).
+
 ## 7. Debug logging
 
 - `Engine/Log.h` provides `LOG_TRACE / LOG_INFO / LOG_WARN / LOG_ERROR(category, printf format, ...)`.

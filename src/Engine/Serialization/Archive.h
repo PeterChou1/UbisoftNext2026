@@ -56,6 +56,35 @@ namespace Serialization
         using std::runtime_error::runtime_error;
     };
 
+    /**
+     * \brief Valid values of an enum stored in save files. Every serialized
+     *        enum must declare one (a compile error says so otherwise):
+     *
+     *            SERIALIZATION_ENUM_RANGE(ShapeType, CircleShape, PolygonShape)
+     *
+     *        Loading refuses values outside [Min, Max]: turning them into the
+     *        enum would be undefined behaviour, and hand edited text saves or
+     *        damaged files can contain anything
+     */
+    template <typename T>
+    struct EnumRange
+    {
+        static constexpr bool Defined = false;
+    };
+
+    template <typename T>
+    void CheckEnumValue(std::int32_t raw)
+    {
+        static_assert(EnumRange<T>::Defined,
+                      "Declare the valid range of this enum with SERIALIZATION_ENUM_RANGE(Type, First, Last)");
+        if (raw < EnumRange<T>::Min || raw > EnumRange<T>::Max)
+        {
+            throw SerializationError("Enum value " + std::to_string(raw) + " out of range [" +
+                                     std::to_string(EnumRange<T>::Min) + ", " +
+                                     std::to_string(EnumRange<T>::Max) + "]");
+        }
+    }
+
     // Forward declarations so the archives can dispatch to the overloads below
     template <typename Archive, typename T>
     void Dispatch(Archive& ar, T& value);
@@ -221,6 +250,7 @@ namespace Serialization
             else if constexpr (std::is_enum_v<T>)
             {
                 auto raw = static_cast<std::int32_t>(ReadUnsigned<std::uint32_t>());
+                CheckEnumValue<T>(raw);
                 value = static_cast<T>(raw);
             }
             else if constexpr (std::is_floating_point_v<T>)
@@ -506,3 +536,19 @@ namespace Serialization
             throw SerializationError("Trailing data after deserialized value");
     }
 } // namespace Serialization
+
+/**
+ * \brief Declare the valid range of a serialized enum (at global scope, after
+ *        the enum), see Serialization::EnumRange
+ */
+#define SERIALIZATION_ENUM_RANGE(Type, First, Last)                                            \
+    namespace Serialization                                                                    \
+    {                                                                                          \
+        template <>                                                                            \
+        struct EnumRange<Type>                                                                 \
+        {                                                                                      \
+            static constexpr bool Defined = true;                                              \
+            static constexpr std::int32_t Min = static_cast<std::int32_t>(First);              \
+            static constexpr std::int32_t Max = static_cast<std::int32_t>(Last);               \
+        };                                                                                     \
+    }
