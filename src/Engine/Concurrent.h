@@ -2,133 +2,120 @@
 // Concurrent.h
 //---------------------------------------------------------------------------------
 //
-// Multithreading wrapper classes since c++14 doesn't have
-// std::execution::parallel_policy
+// A parallel for each over the engine's worker threads (C++17 without
+// std::execution::par)
 //
 
 #pragma once
+
 #include <algorithm>
+#include <condition_variable>
 #include <functional>
 #include <future>
+#include <iterator>
+#include <memory>
 #include <mutex>
 #include <queue>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <vector>
 
-// comment this if you do not want multithreading
-#define PARALLEL
-
 class ThreadPool
 {
   public:
-    ThreadPool(size_t threads)
-        : thread_size(threads)
-        , stop(false)
+    explicit ThreadPool(size_t threads)
     {
         for (size_t i = 0; i < threads; ++i)
-            workers.emplace_back([this] {
-                while (!stop)
-                {
-                    std::function<void()> task;
-
-                    {
-                        std::unique_lock<std::mutex> lock(this->queue_mutex);
-                        this->condition.wait(lock,
-                                             [this] { return this->stop || !this->tasks.empty(); });
-                        if (this->stop && this->tasks.empty())
-                            return;
-                        task = std::move(this->tasks.front());
-                        this->tasks.pop();
-                    }
-
-                    task();
-                }
-            });
-    }
-
-    size_t size() { return thread_size; }
-    template <class F, class... Args>
-    auto enqueue(F&& f, Args&&... args) -> std::future<void>
-    {
-
-        auto task = std::make_shared<std::packaged_task<void()>>(
-                [Func = std::forward<F>(f)] { return Func(); });
-
-        std::future<void> res = task->get_future();
-        {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            if (stop)
-                throw std::runtime_error("enqueue on stopped ThreadPool");
-
-            tasks.emplace([task]() { (*task)(); });
-        }
-        condition.notify_one();
-        return res;
+            m_Workers.emplace_back([this] { WorkerLoop(); });
     }
 
     ~ThreadPool()
     {
         {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            stop = true;
+            std::unique_lock<std::mutex> lock(m_QueueMutex);
+            m_Stop = true;
         }
-        condition.notify_all();
-        for (std::thread& worker : workers)
+        m_Condition.notify_all();
+        for (std::thread& worker : m_Workers)
             worker.join();
     }
 
+    size_t Size() const { return m_Workers.size(); }
+
+    template <class F>
+    std::future<void> Enqueue(F&& f)
+    {
+        auto task = std::make_shared<std::packaged_task<void()>>(std::forward<F>(f));
+        std::future<void> result = task->get_future();
+        {
+            std::unique_lock<std::mutex> lock(m_QueueMutex);
+            if (m_Stop)
+                throw std::runtime_error("enqueue on stopped ThreadPool");
+            m_Tasks.emplace([task]() { (*task)(); });
+        }
+        m_Condition.notify_one();
+        return result;
+    }
+
   private:
-    // need to keep track of threads so we can join them
-    std::vector<std::thread> workers;
-    // the task queue
-    std::queue<std::function<void()>> tasks;
-    size_t thread_size;
-    // synchronization
-    std::mutex queue_mutex;
-    std::condition_variable condition;
-    bool stop;
+    void WorkerLoop()
+    {
+        for (;;)
+        {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(m_QueueMutex);
+                m_Condition.wait(lock, [this] { return m_Stop || !m_Tasks.empty(); });
+                if (m_Stop && m_Tasks.empty())
+                    return;
+                task = std::move(m_Tasks.front());
+                m_Tasks.pop();
+            }
+            task();
+        }
+    }
+
+    std::vector<std::thread> m_Workers;
+    std::queue<std::function<void()>> m_Tasks;
+    std::mutex m_QueueMutex;
+    std::condition_variable m_Condition;
+    bool m_Stop = false;
 };
 
-/**
- * \brief Wrapper around a for loop making it multithreaded
- */
 class Concurrent final
 {
   public:
+    /**
+     * \brief std::for_each split in one contiguous chunk per worker thread,
+     *        returns when every chunk is done
+     */
     template <class It, class Fn>
     static void ForEach(It first, It last, Fn func)
     {
-#ifdef PARALLEL
-        ThreadPool& pool = getThreadPool();
+        ThreadPool& pool = GetThreadPool();
 
         auto totalElements = std::distance(first, last);
-        auto chunkSize = totalElements / pool.size();
-        auto remainder = totalElements % pool.size();
+        auto chunkSize = totalElements / pool.Size();
+        auto remainder = totalElements % pool.Size();
 
         std::vector<std::future<void>> futures;
-
         auto begin = first;
-        for (unsigned int i = 0; i < pool.size(); ++i)
+        for (size_t i = 0; i < pool.Size(); ++i)
         {
             auto end = std::next(begin, chunkSize + (remainder > 0 ? 1 : 0));
             if (remainder > 0)
                 --remainder;
-            futures.push_back(pool.enqueue([=, &func]() { std::for_each(begin, end, func); }));
+            futures.push_back(pool.Enqueue([=, &func]() { std::for_each(begin, end, func); }));
             begin = end;
         }
 
         for (auto& future : futures)
-        {
-            future.get(); // Wait for each task to complete
-        }
-#else
-        std::for_each(first, last, func);
-#endif
+            future.get();
     }
 
   private:
-    static ThreadPool& getThreadPool()
+    static ThreadPool& GetThreadPool()
     {
         static ThreadPool pool(std::thread::hardware_concurrency());
         return pool;

@@ -2,9 +2,8 @@
 // EntityManager.h
 //---------------------------------------------------------------------------------
 //
-// Manages All Entity in the ECS System
-// An Entity Manager maps an Entity to their Signature
-// which denotes which component they own
+// Allocates the Entity ids of the ECS System and maps every Entity to its
+// Signature (the components it owns)
 //
 
 #pragma once
@@ -12,6 +11,8 @@
 
 #include <array>
 #include <cassert>
+#include <cstdint>
+#include <deque>
 #include <queue>
 #include <set>
 #include <string>
@@ -20,13 +21,7 @@
 class EntityManager
 {
   public:
-    EntityManager()
-    {
-        for (Entity entity = 1; entity < MAX_ENTITIES; ++entity)
-        {
-            m_AvailableEntities.push(entity);
-        }
-    }
+    EntityManager() { Clear(); }
 
     Entity CreateEntity()
     {
@@ -36,11 +31,10 @@ class EntityManager
         m_AvailableEntities.pop();
         m_Alive[id] = true;
         ++m_LivingEntityCount;
-
         return id;
     }
 
-    size_t GetEntityCount() { return m_LivingEntityCount; }
+    size_t GetEntityCount() const { return m_LivingEntityCount; }
 
     void DestroyEntity(Entity entity)
     {
@@ -54,45 +48,35 @@ class EntityManager
     void SetSignature(Entity entity, Signature signature)
     {
         assert(entity < MAX_ENTITIES && "Entity out of range.");
-
         m_Signatures[entity] = signature;
     }
 
-    Signature GetSignature(Entity entity)
+    Signature GetSignature(Entity entity) const
     {
         assert(entity < MAX_ENTITIES && "Entity out of range.");
-
         return m_Signatures[entity];
     }
 
-    std::set<Entity> MatchSignature(Signature signature)
+    /**
+     * \brief Every Entity id whose signature holds all of the given one
+     */
+    std::set<Entity> MatchSignature(Signature signature) const
     {
         std::set<Entity> entities;
-
         for (Entity entity = 0; entity < MAX_ENTITIES; ++entity)
         {
             if ((m_Signatures[entity] & signature) == signature)
-            {
                 entities.insert(entity);
-            }
         }
-
         return entities;
     }
 
     void Clear()
     {
-        // clear queue
-        std::queue<Entity> empty;
-        std::swap(m_AvailableEntities, empty);
+        m_AvailableEntities = {};
         for (Entity entity = 1; entity < MAX_ENTITIES; ++entity)
-        {
             m_AvailableEntities.push(entity);
-        }
-        for (Signature& signature : m_Signatures)
-        {
-            signature.reset();
-        }
+        m_Signatures.fill(Signature());
         m_Alive.fill(false);
         m_LivingEntityCount = 0;
     }
@@ -146,8 +130,8 @@ class EntityManager
             {
                 if (entity == NULL_ENTITY || entity >= MAX_ENTITIES)
                 {
-                    error = std::string("Entity id out of range in ") + listName + " list: " +
-                            std::to_string(entity);
+                    error = std::string("Entity id out of range in ") + listName +
+                            " list: " + std::to_string(entity);
                     return false;
                 }
                 if (seen[entity])
@@ -179,17 +163,16 @@ class EntityManager
         assert(ValidateState(living, available, error) && "Invalid entity allocator state");
         (void)error;
         Clear();
-        std::queue<Entity> queue;
-        for (Entity entity : available)
-            queue.push(entity);
-        std::swap(m_AvailableEntities, queue);
+        m_AvailableEntities =
+                std::queue<Entity>(std::deque<Entity>(available.begin(), available.end()));
         for (Entity entity : living)
             m_Alive[entity] = true;
         m_LivingEntityCount = static_cast<uint32_t>(living.size());
     }
 
   private:
-    std::queue<Entity> m_AvailableEntities{};
+    // Free ids, in the order CreateEntity hands them out
+    std::queue<Entity> m_AvailableEntities;
     std::array<Signature, MAX_ENTITIES> m_Signatures{};
     std::array<bool, MAX_ENTITIES> m_Alive{};
     uint32_t m_LivingEntityCount{};

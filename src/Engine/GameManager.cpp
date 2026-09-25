@@ -15,11 +15,14 @@
 #include "Serialization/SceneSerialization.h"
 #include "Serialization/WorldSerializer.h"
 #include "Tiles.h"
-#include "World/SceneLight.h"
 #include "VertexBuffer.h"
 #include "World/SceneComponents.h"
+#include "World/SceneLight.h"
 #include "app.h"
 #include "stdafx.h"
+
+#include <cassert>
+#include <utility>
 
 extern ECSManager ECS;
 
@@ -77,7 +80,6 @@ void GameManager::Update(float deltaTime)
     if (m_StatusTimer > 0.0f)
         m_StatusTimer -= deltaTime;
 
-    assert(m_SceneMap.count(m_ActiveScene) > 0 && "Active Scene Name Not registered");
     Input::Update();
     // Mouse / click state first: scripts and scenes see this frame's clicks
     m_UIStateManager->Update();
@@ -90,14 +92,13 @@ void GameManager::Update(float deltaTime)
         ShowStatus(options->LineRendering ? "Renderer: hardware triangles (Tab)"
                                           : "Renderer: software rasterizer (Tab)");
     }
-    bool simulate = m_SceneMap[m_ActiveScene]->SimulatesWorld();
-    if (simulate)
+    if (ActiveScene().SimulatesWorld())
     {
         m_PhysicsSystem->Update(deltaTime);
         m_ParticleSystem->Update(deltaTime);
         m_ScriptSystem->Update(deltaTime);
     }
-    m_SceneMap[m_ActiveScene]->Update(deltaTime);
+    ActiveScene().Update(deltaTime);
     // The scene's light object (or the default light) lights this frame
     SceneLighting::Update(*ECS.GetResource<Lighting>(), *ECS.GetResource<GameOptions>());
     m_ShaderHandler->Update(deltaTime);
@@ -106,17 +107,15 @@ void GameManager::Update(float deltaTime)
 
 void GameManager::Render()
 {
-    assert(m_SceneMap.count(m_ActiveScene) > 0 && "Active Scene Name Not registered");
-
     // Render Pipeline
     m_VertexShader->Shade();
     m_Clipper->Clip();
     m_Rasterizer->Rasterize();
     m_FragmentShader->Shade();
     // Script HUDs, then the scene's own UI on top
-    if (m_SceneMap[m_ActiveScene]->SimulatesWorld())
+    if (ActiveScene().SimulatesWorld())
         m_ScriptSystem->Render();
-    m_SceneMap[m_ActiveScene]->Render();
+    ActiveScene().Render();
     if (m_StatusTimer > 0.0f)
         App::Print(20.0f, APP_VIRTUAL_HEIGHT - 40.0f, m_StatusMessage.c_str(), 1.0f, 1.0f, 0.0f);
     // Clear Render Pipeline to get ready for next render pass
@@ -148,7 +147,7 @@ void GameManager::SetActiveScene(const std::string& sceneName)
     m_CurrentScenePath.clear();
     m_ActiveScene = sceneName;
     LOG_INFO("Scene", "Active scene: %s", sceneName.c_str());
-    m_SceneMap[m_ActiveScene]->Setup();
+    ActiveScene().Setup();
 }
 
 std::string GameManager::ScenePath(const std::string& sceneName)
@@ -158,7 +157,8 @@ std::string GameManager::ScenePath(const std::string& sceneName)
 
 bool GameManager::SaveGame(const std::string& path, std::string& error)
 {
-    Serialization::SaveResult result = Serializer().SaveToFile(ECS, path, {{SCENE_KEY, m_ActiveScene}});
+    Serialization::SaveResult result =
+            Serializer().SaveToFile(ECS, path, {{SCENE_KEY, m_ActiveScene}});
     if (!result)
     {
         error = result.Error;
@@ -202,7 +202,7 @@ bool GameManager::LoadGame(const std::string& path, std::string& error)
     LOG_INFO("Load", "Loaded %s (%zu entities)", path.c_str(), snapshot.LivingEntities.size());
 
     // 4. Let the scene react (camera, runtime state); scripts start next frame
-    m_SceneMap[m_ActiveScene]->OnWorldRestored();
+    ActiveScene().OnWorldRestored();
     m_ScriptSystem->Reset();
     return true;
 }
@@ -242,27 +242,28 @@ void GameManager::ResetRenderCaches()
 
 void GameManager::ProcessRequests()
 {
+    // (each request is taken before it runs: it may queue another one)
     if (!m_PendingScene.empty())
-    {
-        std::string scene = m_PendingScene;
-        m_PendingScene.clear();
-        SetActiveScene(scene);
-    }
+        SetActiveScene(std::exchange(m_PendingScene, {}));
 
     std::string error;
     if (!m_PendingSave.empty())
     {
-        std::string path = m_PendingSave;
-        m_PendingSave.clear();
+        std::string path = std::exchange(m_PendingSave, {});
         ShowStatus(SaveGame(path, error) ? "Saved " + path : "Save failed: " + error);
     }
     if (!m_PendingLoad.empty())
     {
-        std::string path = m_PendingLoad;
-        m_PendingLoad.clear();
+        std::string path = std::exchange(m_PendingLoad, {});
         if (!LoadGame(path, error))
             ShowStatus("Load failed: " + error);
     }
+}
+
+Scene& GameManager::ActiveScene()
+{
+    assert(m_SceneMap.count(m_ActiveScene) > 0 && "Active Scene Name Not registered");
+    return *m_SceneMap[m_ActiveScene];
 }
 
 void GameManager::ShowStatus(const std::string& message)

@@ -2,8 +2,8 @@
 // ComponentManager.h
 //---------------------------------------------------------------------------------
 //
-// Manages ComponentBuffers during the game session the class
-// is simple Storage class that maps a ComponentBuffer to their ComponentTypeID
+// Maps every component type (ComponentTypeID) to the ComponentBuffer holding
+// the components of that type. Types are registered on first use
 //
 
 #pragma once
@@ -12,102 +12,77 @@
 #include "Entity.h"
 #include "TypeID.h"
 
+#include <cassert>
 #include <memory>
-#include <set>
 #include <unordered_map>
+#include <utility>
 
 class ComponentManager
 {
   public:
     template <typename T>
-    void RegisterComponent()
-    {
-        ComponentTypeID typeID = TypeID<T>::VALUE;
-        assert(m_RegisteredComponents.find(typeID) == m_RegisteredComponents.end() &&
-               "Registering component type more than once.");
-        assert(typeID < MAX_COMPONENTS && "Maximum allowed registered components exceeded");
-        m_RegisteredComponents.insert(typeID);
-        m_ComponentArrays.insert({typeID, std::make_shared<ComponentBuffer<T>>()});
-    }
-
-    template <typename T>
     ComponentTypeID GetComponentType()
     {
         ComponentTypeID typeID = TypeID<T>::VALUE;
-        if (m_RegisteredComponents.find(typeID) == m_RegisteredComponents.end())
-            RegisterComponent<T>();
-
+        if (!IsRegistered(typeID))
+        {
+            assert(typeID < MAX_COMPONENTS && "Maximum allowed registered components exceeded");
+            m_ComponentArrays.insert({typeID, std::make_unique<ComponentBuffer<T>>()});
+        }
         return typeID;
     }
 
     template <typename... Ts>
     Signature GetSignature()
     {
-        std::vector<ComponentTypeID> types = {GetComponentType<Ts>()...};
-        Signature s;
-        for (auto cType : types)
-        {
-            s.set(cType);
-        }
-        return s;
+        Signature signature;
+        (signature.set(GetComponentType<Ts>()), ...);
+        return signature;
     }
 
     template <typename T>
     void AddComponent(Entity entity, T component)
     {
-        ComponentTypeID typeID = TypeID<T>::VALUE;
-        if (m_RegisteredComponents.find(typeID) == m_RegisteredComponents.end())
-            RegisterComponent<T>();
-        GetComponentArray<T>()->InsertData(entity, component);
+        GetComponentType<T>();
+        GetComponentArray<T>().InsertData(entity, std::move(component));
     }
 
     template <typename T>
     void RemoveComponent(Entity entity)
     {
-        GetComponentArray<T>()->RemoveData(entity);
+        GetComponentArray<T>().RemoveData(entity);
     }
 
     template <typename T>
     bool HasComponent(Entity entity)
     {
-        ComponentTypeID typeID = TypeID<T>::VALUE;
-        if (m_RegisteredComponents.find(typeID) != m_RegisteredComponents.end())
-            return GetComponentArray<T>()->HasData(entity);
-        return false;
+        return IsRegistered(TypeID<T>::VALUE) && GetComponentArray<T>().HasData(entity);
     }
 
     template <typename T>
     T& GetComponent(Entity entity)
     {
-        return GetComponentArray<T>()->GetData(entity);
+        return GetComponentArray<T>().GetData(entity);
     }
 
     void EntityDestroyed(Entity entity)
     {
-        for (auto const& pair : m_ComponentArrays)
-        {
-            auto const& component = pair.second;
-
-            component->EntityDestroyed(entity);
-        }
+        for (auto& [typeID, buffer] : m_ComponentArrays)
+            buffer->EntityDestroyed(entity);
     }
 
-    void Clear()
-    {
-        m_ComponentArrays.clear();
-        m_RegisteredComponents.clear();
-    }
+    void Clear() { m_ComponentArrays.clear(); }
 
   private:
-    std::set<ComponentTypeID> m_RegisteredComponents;
-    std::unordered_map<ComponentTypeID, std::shared_ptr<IComponentBuffer>> m_ComponentArrays{};
+    bool IsRegistered(ComponentTypeID typeID) const { return m_ComponentArrays.count(typeID) > 0; }
 
     template <typename T>
-    std::shared_ptr<ComponentBuffer<T>> GetComponentArray()
+    ComponentBuffer<T>& GetComponentArray()
     {
         ComponentTypeID typeID = TypeID<T>::VALUE;
-        assert(m_RegisteredComponents.find(typeID) != m_RegisteredComponents.end() &&
-               "Component does not exist");
-        return std::static_pointer_cast<ComponentBuffer<T>>(m_ComponentArrays[typeID]);
+        assert(IsRegistered(typeID) && "Component does not exist");
+        return static_cast<ComponentBuffer<T>&>(*m_ComponentArrays[typeID]);
     }
+
+    std::unordered_map<ComponentTypeID, std::unique_ptr<IComponentBuffer>> m_ComponentArrays;
 };

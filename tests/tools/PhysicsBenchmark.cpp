@@ -62,14 +62,14 @@ namespace
     }
 
     // Every third body a box, every third a hexagon, the rest circles
-    Entity MovingBody(int i, const Vec3& at, std::mt19937& random)
+    void MovingBody(int i, const Vec3& at, std::mt19937& random)
     {
-        const Shape2DType types[] = {Shape2DType::Circle, Shape2DType::Rectangle, Shape2DType::Polygon};
+        const Shape2DType types[] = {
+                Shape2DType::Circle, Shape2DType::Rectangle, Shape2DType::Polygon};
         std::uniform_real_distribution<float> angle(0.0f, 360.0f);
         Entity e = Body(types[i % 3], at, 0.8f, 0.8f, BodyType::Dynamic, angle(random));
         std::uniform_real_distribution<float> speed(-6.0f, 6.0f);
         ECS.GetComponent<RigidBody>(e).Velocity = Vec2(speed(random), speed(random));
-        return e;
     }
 
     void Scatter(int count, std::mt19937& random)
@@ -189,8 +189,15 @@ int main(int argc, char** argv)
         void (*Build)(int, std::mt19937&);
     };
     const Scenario scenarios[] = {{"scatter", Scatter}, {"pile", Pile}, {"walls", Walls}};
-    std::printf("%-8s %7s %9s %9s %12s %9s %16s   %s\n", "scenario", "bodies", "avg ms", "worst ms",
-                "pairs tested", "contacts", "checksum", "ms in: broad / narrow / contacts / solve+integrate");
+    std::printf("%-8s %7s %9s %9s %12s %9s %16s   %s\n",
+                "scenario",
+                "bodies",
+                "avg ms",
+                "worst ms",
+                "pairs tested",
+                "contacts",
+                "checksum",
+                "ms in: broad / narrow / contacts / solve+integrate");
     for (const Scenario& scenario : scenarios)
     {
         for (int count : {100, 250, 500, 1000, 2000, 4000, 8000})
@@ -198,9 +205,18 @@ int main(int argc, char** argv)
             if (count > maxBodies)
                 break;
             Result r = Run(scenario.Build, count, frames);
-            std::printf("%-8s %7d %9.3f %9.3f %12.0f %9.1f %16.6f   %.2f / %.2f / %.2f / %.2f\n", scenario.Name,
-                        r.Bodies, r.AverageMs, r.WorstMs, r.PairsTested, r.Contacts, r.Checksum, r.BroadMs, r.NarrowMs,
-                        r.OtherMs, r.SolveMs);
+            std::printf("%-8s %7d %9.3f %9.3f %12.0f %9.1f %16.6f   %.2f / %.2f / %.2f / %.2f\n",
+                        scenario.Name,
+                        r.Bodies,
+                        r.AverageMs,
+                        r.WorstMs,
+                        r.PairsTested,
+                        r.Contacts,
+                        r.Checksum,
+                        r.BroadMs,
+                        r.NarrowMs,
+                        r.OtherMs,
+                        r.SolveMs);
             std::fflush(stdout);
         }
     }

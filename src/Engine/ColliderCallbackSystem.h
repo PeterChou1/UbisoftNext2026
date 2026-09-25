@@ -1,10 +1,20 @@
+//---------------------------------------------------------------------------------
+// ColliderCallbackSystem.h
+//---------------------------------------------------------------------------------
+//
+// Calls the Collider callbacks registered for pairs of collision categories
+// (enter / stay / exit), and records the contact events of every body pair
+//
 #pragma once
+
 #include "ColliderCategory.h"
 #include "Resource.h"
 #include "RigidBody.h"
 
+#include <memory>
 #include <set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 /**
@@ -26,12 +36,13 @@ struct ContactEvent
 class ColliderCallbackSystem : public Resource
 {
   public:
-    ColliderCallbackSystem() = default;
-
     void RegisterCallback(const std::shared_ptr<Collider>& callback);
 
     void ResetResource() override;
 
+    /**
+     * \brief Whether a callback is registered for the categories, in either order
+     */
     bool HasRegisterCallback(CollisionPair pair);
 
     /**
@@ -40,8 +51,16 @@ class ColliderCallbackSystem : public Resource
      */
     bool HasCallbacks() const { return !m_CallBackMap.empty(); }
 
+    /**
+     * \brief Report that two bodies with a registered callback touch during
+     *        the current physics sub step
+     */
     void SubmitForCallback(Entity A, Entity B);
 
+    /**
+     * \brief After every physics sub step: the contact events, then the
+     *        callbacks of the submitted pairs
+     */
     void Update();
 
     /**
@@ -57,6 +76,14 @@ class ColliderCallbackSystem : public Resource
   private:
     void UpdateContacts();
 
+    /**
+     * \brief Call event(callback, self, other, selfBody, otherBody) with the
+     *        callback registered for the two bodies' categories (the bodies in
+     *        its order). False when there is none
+     */
+    template <typename Fn>
+    bool Dispatch(Entity e1, Entity e2, Fn&& event);
+
     // Pairs touching this sub step (unsorted, may repeat) and last sub step
     // (sorted, unique): sorted vectors instead of std::set, this runs for
     // every contact every physics sub step
@@ -64,6 +91,7 @@ class ColliderCallbackSystem : public Resource
     std::vector<std::pair<Entity, Entity>> m_PrevContacts;
     std::vector<ContactEvent> m_ContactEvents;
 
+    // Pairs submitted for a callback this sub step and last sub step
     std::set<std::pair<Entity, Entity>> m_CollidePairs;
     std::set<std::pair<Entity, Entity>> m_PrevCollidePairs;
 

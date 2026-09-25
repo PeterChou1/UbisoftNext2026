@@ -2,15 +2,16 @@
 // Shape.h
 //---------------------------------------------------------------------------------
 //
-// Class used to represent a shape within rigid body stores
-// all shape information in the class depending on what shape it is
+// The collider shape of a rigid body: a circle or a convex polygon
 //
 #pragma once
 
-#include <algorithm>
-
+#include "Mat2.h"
 #include "Utils.h"
 #include "Vec2.h"
+
+#include <algorithm>
+#include <vector>
 
 enum ShapeType
 {
@@ -21,40 +22,21 @@ enum ShapeType
 class Shape
 {
   public:
-    Shape() = default;
-
     ShapeType GetShapeType() const { return m_ShapeEnum; }
 
-    void RecomputePoints(float angle, Vec2 position)
-    {
-        // In place: this runs for every body every physics sub step
-        Utils::TranslatePointsInto(LocalSpacePoints, angle, position, PolygonPoints);
-        ComputeEdgeNormals();
-    }
-
     /**
-     * \brief RecomputePoints with the rotation matrix already built
+     * \brief World space points and edge normals from the local points
      */
     void RecomputePoints(const Mat2& rotation, Vec2 position)
     {
+        // In place: this runs for every body every physics sub step
         Utils::TranslatePointsInto(LocalSpacePoints, rotation, position, PolygonPoints);
         ComputeEdgeNormals();
     }
 
-    void ComputeEdgeNormals()
-    {
-        size_t polySize = PolygonPoints.size();
-        EdgeNormals.resize(polySize);
-        for (size_t i = 0; i < PolygonPoints.size(); i++)
-        {
-            Vec2 edge = PolygonPoints[i] - PolygonPoints[(i + 1) % polySize];
-            EdgeNormals[i] = edge.Cross(-1.0).Normalize();
-        }
-    }
-
     static Shape CreateCircle(float radius)
     {
-        auto collider = Shape();
+        Shape collider;
         collider.Radius = radius;
         collider.m_ShapeEnum = CircleShape;
         return collider;
@@ -76,7 +58,7 @@ class Shape
         if (signedArea < 0.0f)
             std::reverse(points.begin(), points.end());
 
-        auto collider = Shape();
+        Shape collider;
         collider.LocalSpacePoints = points;
         collider.PolygonPoints = points;
         collider.m_ShapeEnum = PolygonShape;
@@ -94,11 +76,11 @@ class Shape
 
     static Shape CreateRect(float width, float height)
     {
-        auto collider = Shape();
-        collider.LocalSpacePoints.push_back(Vec2(-width / 2.0f, -height / 2.0f));
-        collider.LocalSpacePoints.push_back(Vec2(width / 2.0f, -height / 2.0f));
-        collider.LocalSpacePoints.push_back(Vec2(width / 2.0f, height / 2.0f));
-        collider.LocalSpacePoints.push_back(Vec2(-width / 2.0f, height / 2.0f));
+        Shape collider;
+        collider.LocalSpacePoints = {Vec2(-width / 2.0f, -height / 2.0f),
+                                     Vec2(width / 2.0f, -height / 2.0f),
+                                     Vec2(width / 2.0f, height / 2.0f),
+                                     Vec2(-width / 2.0f, height / 2.0f)};
         collider.PolygonPoints = collider.LocalSpacePoints;
         collider.m_ShapeEnum = PolygonShape;
         collider.Width = width;
@@ -112,6 +94,7 @@ class Shape
     std::vector<Vec2> PolygonPoints;
     std::vector<Vec2> EdgeNormals;
     std::vector<Vec2> LocalSpacePoints;
+    // Saved (or cleared on load) with the shape but not used by the physics
     std::vector<Vec2> DebugPoints;
     std::vector<Vec2> ContactPoints;
     Vec2 Max{};
@@ -120,6 +103,17 @@ class Shape
   private:
     // Grants the save system access to private state (see EngineSerialization.h)
     friend struct SerializationAccess;
+
+    void ComputeEdgeNormals()
+    {
+        const size_t count = PolygonPoints.size();
+        EdgeNormals.resize(count);
+        for (size_t i = 0; i < count; i++)
+        {
+            Vec2 edge = PolygonPoints[i] - PolygonPoints[(i + 1) % count];
+            EdgeNormals[i] = edge.Cross(-1.0f).Normalize();
+        }
+    }
 
     ShapeType m_ShapeEnum{};
 };
