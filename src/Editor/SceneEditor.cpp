@@ -1,19 +1,19 @@
 #include "SceneEditor.h"
 
 #include "ECSManager.h"
+#include "FragShaderTag.h"
 #include "GameManager.h"
 #include "Mesh.h"
 #include "Reflection/ComponentCatalog.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Serialization/SceneSerialization.h"
-#include "FragShaderTag.h"
 #include "Transform.h"
-#include "VertShaderTag.h"
 #include "World/SceneComponents.h"
 #include "World/ShapeGeometry.h"
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <set>
 
 extern ECSManager ECS;
@@ -53,6 +53,32 @@ namespace Editor
             }
             float scale = ECS.GetComponent<Transform>(e).LocalScale.X;
             return scale * scale;
+        }
+
+        // A registered script of the right kind (object or scene script)
+        bool IsScript(const std::string& name, bool sceneScript)
+        {
+            const ScriptInfo* info = ScriptRegistry::Get().Find(name);
+            return info != nullptr && info->IsSceneScript == sceneScript;
+        }
+
+        bool HasParam(const std::string& script, const std::string& param)
+        {
+            const ScriptInfo* info = ScriptRegistry::Get().Find(script);
+            return info != nullptr &&
+                   std::any_of(info->Params.begin(), info->Params.end(), [&](const ScriptParam& p) {
+                       return p.Name == param;
+                   });
+        }
+
+        // A parameter's value: the one set, else the script's default
+        float ParamValue(const std::string& script,
+                         const std::map<std::string, float>& params,
+                         const std::string& param)
+        {
+            auto resolved = ScriptRegistry::Get().ResolveParams(script, params);
+            auto it = resolved.find(param);
+            return it == resolved.end() ? 0.0f : it->second;
         }
     } // namespace
 
@@ -105,13 +131,7 @@ namespace Editor
             // ... and the light, where the old fixed light was
             SceneLighting::Create();
         }
-
-        m_UndoStack.clear();
-        m_RedoStack.clear();
-        m_Selected = NULL_ENTITY;
-        m_Dirty = false;
-        m_Playing = false;
-        WorldReplaced();
+        ResetDocument();
     }
 
     //-----------------------------------------------------------------------------
@@ -120,71 +140,62 @@ namespace Editor
 
     Entity SceneEditor::Place(ObjectKind kind, const Vec3& position, const PlaceSettings& settings)
     {
-        if (kind >= ObjectKind::Count)
-            return NULL_ENTITY;
-        if (kind == ObjectKind::Model && settings.Model.empty())
-            return NULL_ENTITY;
-        RecordUndo();
-        Entity e = PlaceObject(kind, position, settings);
-        m_Dirty = true;
-        m_Selected = e;
-        return e;
+        return Create(kind, position, NULL_ENTITY, settings);
     }
 
-    Entity SceneEditor::Create(ObjectKind kind, const Vec3& position, Entity parent, const PlaceSettings& settings)
+    Entity SceneEditor::Create(ObjectKind kind,
+                               const Vec3& position,
+                               Entity parent,
+                               const PlaceSettings& settings)
     {
         if (kind >= ObjectKind::Count || (kind == ObjectKind::Model && settings.Model.empty()))
             return NULL_ENTITY;
         if (parent != NULL_ENTITY && !CanEdit(parent))
             return NULL_ENTITY;
         RecordUndo();
-        Entity e = PlaceObject(kind, position, settings);
+        Entity e = PlaceObject(kind, GroundPoint(position), settings);
         if (parent != NULL_ENTITY)
             SceneObjects::SetParent(e, parent);
-        m_Dirty = true;
         m_Selected = e;
         return e;
     }
 
-    Entity SceneEditor::PlaceObject(ObjectKind kind, const Vec3& position, const PlaceSettings& settings)
+    Entity
+    SceneEditor::PlaceObject(ObjectKind kind, const Vec3& position, const PlaceSettings& settings)
     {
-        Vec3 p = ClampToField(position);
-        p.Y = 0.0f;
-        Entity e = NULL_ENTITY;
         if (kind == ObjectKind::Empty)
         {
             // Just a transform: no body, it has nothing to collide with
-            e = SceneObjects::CreateEmpty(SceneObjects::UniqueName(ObjectKindName(kind)), p, settings.YawDegrees);
+            Entity e = SceneObjects::CreateEmpty(
+                    SceneObjects::UniqueName(ObjectKindName(kind)), position, settings.YawDegrees);
             ECS.GetComponent<SceneObject>(e).Tag = settings.Tag;
+            return e;
         }
-        else if (kind == ObjectKind::Model)
+        if (kind == ObjectKind::Model)
         {
-            e = SceneObjects::CreateModel(SceneObjects::UniqueName(settings.Model),
-                                          settings.Model,
-                                          p,
-                                          settings.YawDegrees,
-                                          std::max(settings.Width, MIN_SIZE));
+            Entity e = SceneObjects::CreateModel(SceneObjects::UniqueName(settings.Model),
+                                                 settings.Model,
+                                                 position,
+                                                 settings.YawDegrees,
+                                                 std::max(settings.Width, MIN_SIZE));
             ECS.GetComponent<SceneObject>(e).Tag = settings.Tag;
             SceneObjects::SetBodyType(e, settings.Body);
+            return e;
         }
-        else
-        {
-            SceneObjects::ShapeDesc desc;
-            desc.Name = SceneObjects::UniqueName(ObjectKindName(kind));
-            desc.Tag = settings.Tag;
-            desc.Shape.Type = static_cast<Shape2DType>(kind);
-            desc.Shape.Width = std::clamp(settings.Width, MIN_SIZE, MAX_SIZE);
-            desc.Shape.Height = std::clamp(settings.Height, MIN_SIZE, MAX_SIZE);
-            desc.Shape.Sides = std::clamp(
-                    settings.Sides, ShapeGeometry::MIN_POLYGON_SIDES, ShapeGeometry::MAX_POLYGON_SIDES);
-            desc.Shape.Thickness = std::max(settings.Thickness, 0.0f);
-            desc.Shape.Color = settings.Color;
-            desc.Position = p;
-            desc.YawDegrees = settings.YawDegrees;
-            desc.Body = settings.Body;
-            e = SceneObjects::CreateShape(desc);
-        }
-        return e;
+        SceneObjects::ShapeDesc desc;
+        desc.Name = SceneObjects::UniqueName(ObjectKindName(kind));
+        desc.Tag = settings.Tag;
+        desc.Shape.Type = static_cast<Shape2DType>(kind);
+        desc.Shape.Width = std::clamp(settings.Width, MIN_SIZE, MAX_SIZE);
+        desc.Shape.Height = std::clamp(settings.Height, MIN_SIZE, MAX_SIZE);
+        desc.Shape.Sides = std::clamp(
+                settings.Sides, ShapeGeometry::MIN_POLYGON_SIDES, ShapeGeometry::MAX_POLYGON_SIDES);
+        desc.Shape.Thickness = std::max(settings.Thickness, 0.0f);
+        desc.Shape.Color = settings.Color;
+        desc.Position = position;
+        desc.YawDegrees = settings.YawDegrees;
+        desc.Body = settings.Body;
+        return SceneObjects::CreateShape(desc);
     }
 
     //-----------------------------------------------------------------------------
@@ -196,10 +207,7 @@ namespace Editor
         if (prefab.Objects.empty() || (parent != NULL_ENTITY && !CanEdit(parent)))
             return NULL_ENTITY;
         RecordUndo();
-        Vec3 p = ClampToField(position);
-        p.Y = 0.0f;
-        Entity e = Prefab::Instantiate(prefab, p, 0.0f, parent);
-        m_Dirty = true;
+        Entity e = Prefab::Instantiate(prefab, GroundPoint(position), 0.0f, parent);
         m_Selected = e;
         return e;
     }
@@ -211,11 +219,6 @@ namespace Editor
         return ECS.GetComponent<PrefabLink>(entity).Prefab;
     }
 
-    Prefab::Data SceneEditor::CapturePrefab(Entity root, const std::string& name) const
-    {
-        return Prefab::Capture(root, name);
-    }
-
     bool SceneEditor::LinkPrefab(Entity root, const std::string& name)
     {
         if (!CanEdit(root) || name.empty())
@@ -225,7 +228,6 @@ namespace Editor
             ECS.GetComponent<PrefabLink>(root).Prefab = name;
         else
             ECS.AddComponent<PrefabLink>(root, {name});
-        m_Dirty = true;
         return true;
     }
 
@@ -235,7 +237,6 @@ namespace Editor
             return false;
         RecordUndo();
         ECS.RemoveComponent<PrefabLink>(root);
-        m_Dirty = true;
         return true;
     }
 
@@ -252,7 +253,8 @@ namespace Editor
             float prefabYaw = prefab.Objects.front().Rotation.GetPitch2D() * 57.2957795f;
             // No FlushECS: the renderer drops the old meshes at the end of the frame
             SceneObjects::Destroy(root);
-            Entity copy = Prefab::Instantiate(prefab, Vec3(position.X, 0.0f, position.Z), yaw - prefabYaw, parent);
+            Entity copy = Prefab::Instantiate(
+                    prefab, Vec3(position.X, 0.0f, position.Z), yaw - prefabYaw, parent);
             // Keep the root where it was (height included) and its name
             SceneObjects::SetPosition(copy, position);
             if (SceneObjects::FindByName(name) == NULL_ENTITY)
@@ -273,7 +275,6 @@ namespace Editor
         Entity copy = Replace(root, prefab);
         if (wasSelected)
             m_Selected = copy;
-        m_Dirty = true;
         return copy;
     }
 
@@ -303,7 +304,6 @@ namespace Editor
         }
         if (!IsObject(m_Selected))
             m_Selected = NULL_ENTITY;
-        m_Dirty = true;
         return updated;
     }
 
@@ -318,10 +318,7 @@ namespace Editor
                 roots.push_back(e);
         }
         if (roots.size() == 1)
-        {
-            Prefab::Data single = Prefab::Capture(roots[0], name);
-            return single;
-        }
+            return Prefab::Capture(roots[0], name);
         // Several top level objects: grouped under a new empty root at the
         // stage's origin, each keeping its place relative to it
         Prefab::Data group;
@@ -355,20 +352,15 @@ namespace Editor
     {
         // A prefab is a group of objects, not a scene: no camera
         NewScene(false);
-        Entity root = NULL_ENTITY;
         if (prefab != nullptr && !prefab->Objects.empty())
         {
-            root = Prefab::Instantiate(*prefab, {0, 0, 0});
+            m_Selected = Prefab::Instantiate(*prefab, {0, 0, 0});
             // Inside its own stage the prefab is plain objects
-            ECS.RemoveComponent<PrefabLink>(root);
+            ECS.RemoveComponent<PrefabLink>(m_Selected);
         }
         else
-            root = SceneObjects::CreateEmpty(name, {0, 0, 0});
-        m_UndoStack.clear();
-        m_RedoStack.clear();
-        m_Dirty = false;
-        m_Selected = root;
-        return root;
+            m_Selected = SceneObjects::CreateEmpty(name, {0, 0, 0});
+        return m_Selected;
     }
 
     SceneEditor::Session SceneEditor::Suspend() const
@@ -401,7 +393,6 @@ namespace Editor
         Vec3 offset = ClampToField(from + DUPLICATE_OFFSET) - from;
         offset.Y = 0.0f;
         Entity copy = DuplicateTree(source, offset, ParentOf(source));
-        m_Dirty = true;
         m_Selected = copy;
         return copy;
     }
@@ -419,39 +410,42 @@ namespace Editor
     Entity SceneEditor::CopyObject(Entity source, const Vec3& position)
     {
         const SceneObject& object = ECS.GetComponent<SceneObject>(source);
+        std::string name = SceneObjects::UniqueName(object.Name);
+        float yaw = SceneObjects::GetYaw(source);
+        BodyType body = SceneObjects::GetBodyType(source);
         Entity copy = NULL_ENTITY;
-        if (SceneObjects::IsEmpty(source))
-        {
-            copy = SceneObjects::CreateEmpty(SceneObjects::UniqueName(object.Name), position, SceneObjects::GetYaw(source));
-            ECS.GetComponent<SceneObject>(copy).Tag = object.Tag;
-            SceneObjects::SetBodyType(copy, SceneObjects::GetBodyType(source));
-        }
-        else if (ECS.HasComponent<Shape2D>(source))
+        if (!SceneObjects::IsEmpty(source) && ECS.HasComponent<Shape2D>(source))
         {
             SceneObjects::ShapeDesc desc;
-            desc.Name = SceneObjects::UniqueName(object.Name);
+            desc.Name = name;
             desc.Tag = object.Tag;
             desc.Shape = ECS.GetComponent<Shape2D>(source);
             desc.Position = position;
-            desc.YawDegrees = SceneObjects::GetYaw(source);
-            desc.Body = SceneObjects::GetBodyType(source);
+            desc.YawDegrees = yaw;
+            desc.Body = body;
             copy = SceneObjects::CreateShape(desc);
         }
         else
         {
             // World scale: SetParent turns it back into the parent's scale
-            copy = SceneObjects::CreateModel(SceneObjects::UniqueName(object.Name),
-                                             ECS.GetComponent<Mesh>(source).Model,
-                                             position,
-                                             SceneObjects::GetYaw(source),
-                                             ECS.GetComponent<Transform>(source).GetWorldTransform().LocalScale.X);
+            copy = SceneObjects::IsEmpty(source)
+                           ? SceneObjects::CreateEmpty(name, position, yaw)
+                           : SceneObjects::CreateModel(name,
+                                                       ECS.GetComponent<Mesh>(source).Model,
+                                                       position,
+                                                       yaw,
+                                                       ECS.GetComponent<Transform>(source)
+                                                               .GetWorldTransform()
+                                                               .LocalScale.X);
             ECS.GetComponent<SceneObject>(copy).Tag = object.Tag;
-            SceneObjects::SetBodyType(copy, SceneObjects::GetBodyType(source));
+            SceneObjects::SetBodyType(copy, body);
         }
         if (ECS.HasComponent<ScriptComponent>(source))
             ECS.AddComponent<ScriptComponent>(copy, ECS.GetComponent<ScriptComponent>(source));
         if (HasShaders(source))
-            SceneObjects::SetShaders(copy, SceneObjects::FragmentShaderOf(source), SceneObjects::VertexShaderOf(source));
+            SceneObjects::SetShaders(copy,
+                                     SceneObjects::FragmentShaderOf(source),
+                                     SceneObjects::VertexShaderOf(source));
         for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
         {
             if (entry.Has(ECS, source))
@@ -537,7 +531,8 @@ namespace Editor
         return best != NULL_ENTITY ? best : field;
     }
 
-    Entity SceneEditor::PickRay(const std::function<Vec3(float)>& pointAtHeight, float* hitHeight) const
+    Entity SceneEditor::PickRay(const std::function<Vec3(float)>& pointAtHeight,
+                                float* hitHeight) const
     {
         constexpr int SAMPLES = 8;
         Entity best = NULL_ENTITY;
@@ -577,9 +572,11 @@ namespace Editor
             // Where does the ray go through the object's body? Sampled from
             // the top down: the first hit is the surface the user sees
             float base = SceneObjects::GetPosition(e).Y;
-            float height = ECS.HasComponent<Shape2D>(e) ? ECS.GetComponent<Shape2D>(e).Thickness
-                           : SceneObjects::IsEmpty(e) ? 0.0f
-                                                      : ECS.GetComponent<Transform>(e).GetWorldTransform().LocalScale.Y;
+            float height =
+                    ECS.HasComponent<Shape2D>(e) ? ECS.GetComponent<Shape2D>(e).Thickness
+                    : SceneObjects::IsEmpty(e)
+                            ? 0.0f
+                            : ECS.GetComponent<Transform>(e).GetWorldTransform().LocalScale.Y;
             height = std::max(height, 0.0f);
             bool hit = false;
             float at = base;
@@ -633,37 +630,35 @@ namespace Editor
             return false;
         RecordUndo();
         SceneObjects::SetYaw(entity, degrees);
-        m_Dirty = true;
         return true;
     }
 
-    bool SceneEditor::SetHeight(Entity entity, float y, bool recordUndo)
+    bool SceneEditor::SetHeight(Entity entity, float y)
     {
         if (!CanEdit(entity) || !std::isfinite(y))
             return false;
-        if (recordUndo)
-            RecordUndo();
+        RecordUndo();
         Vec3 p = SceneObjects::GetPosition(entity);
         p.Y = std::clamp(y, -MAX_HEIGHT, MAX_HEIGHT);
         SceneObjects::SetPosition(entity, p);
-        m_Dirty = true;
         return true;
     }
 
     bool SceneEditor::HasShaders(Entity entity) const
     {
-        return IsObject(entity) && (ECS.HasComponent<Shape2D>(entity) || ECS.HasComponent<Mesh>(entity));
+        return IsObject(entity) &&
+               (ECS.HasComponent<Shape2D>(entity) || ECS.HasComponent<Mesh>(entity));
     }
 
     bool SceneEditor::SetFragmentShader(Entity entity, FragShaderTypeID shader)
     {
         if (!HasShaders(entity) || shader < DefaultFragShaderID || shader > StripesShaderID)
             return false;
-        if (SceneObjects::FragmentShaderOf(entity) == shader && ECS.HasComponent<FragShaderTag>(entity))
+        if (SceneObjects::FragmentShaderOf(entity) == shader &&
+            ECS.HasComponent<FragShaderTag>(entity))
             return true;
         RecordUndo();
         SceneObjects::SetFragmentShader(entity, shader);
-        m_Dirty = true;
         return true;
     }
 
@@ -675,7 +670,6 @@ namespace Editor
             return true;
         RecordUndo();
         SceneObjects::SetVertexShader(entity, shader);
-        m_Dirty = true;
         return true;
     }
 
@@ -694,12 +688,11 @@ namespace Editor
     {
         RecordUndo();
         SceneCamera::View view;
-        view.Target = ClampToField(target);
-        view.Target.Y = 0.0f;
+        view.Target = GroundPoint(target);
         bool first = GameCameraObject() == NULL_ENTITY;
-        Entity e = SceneCamera::Create(view, SceneObjects::UniqueName(first ? SceneCamera::DEFAULT_NAME : "Camera"));
+        Entity e = SceneCamera::Create(
+                view, SceneObjects::UniqueName(first ? SceneCamera::DEFAULT_NAME : "Camera"));
         m_Selected = e;
-        m_Dirty = true;
         return e;
     }
 
@@ -722,10 +715,9 @@ namespace Editor
         settings.Position.Y = SceneLighting::DEFAULT_POSITION.Y;
         settings.Light.Pitch = 89.0f;
         bool first = LightObject() == NULL_ENTITY;
-        Entity e = SceneLighting::Create(settings,
-                                         SceneObjects::UniqueName(first ? SceneLighting::DEFAULT_NAME : "Light"));
+        Entity e = SceneLighting::Create(
+                settings, SceneObjects::UniqueName(first ? SceneLighting::DEFAULT_NAME : "Light"));
         m_Selected = e;
-        m_Dirty = true;
         return e;
     }
 
@@ -744,7 +736,6 @@ namespace Editor
             SceneObjects::SetYaw(light, std::atan2(to.X, to.Z) * TO_DEGREES);
         SceneLight& settings = ECS.GetComponent<SceneLight>(light);
         settings.Pitch = std::clamp(std::atan2(-to.Y, ground) * TO_DEGREES, 5.0f, 89.0f);
-        m_Dirty = true;
         return true;
     }
 
@@ -756,7 +747,6 @@ namespace Editor
         SceneCamera::View placed = view;
         placed.Target = ClampToField(view.Target);
         SceneCamera::SetView(camera, placed);
-        m_Dirty = true;
         return true;
     }
 
@@ -767,14 +757,14 @@ namespace Editor
         placed.Target = ClampToField(view.Target);
         Entity camera = GameCameraObject();
         if (camera == NULL_ENTITY)
-            camera = SceneCamera::Create(placed, SceneObjects::UniqueName(SceneCamera::DEFAULT_NAME));
+            camera = SceneCamera::Create(placed,
+                                         SceneObjects::UniqueName(SceneCamera::DEFAULT_NAME));
         else
             SceneCamera::SetView(camera, placed);
         // Kept in step for programs that still read the settings' camera
         auto settings = ECS.GetResource<SceneSettings>();
         settings->CameraTarget = placed.Target;
         settings->CameraDistance = ECS.GetComponent<GameCamera>(camera).Distance;
-        m_Dirty = true;
         return camera;
     }
 
@@ -796,7 +786,6 @@ namespace Editor
         SceneObjects::Destroy(entity);
         if (std::find(removed.begin(), removed.end(), m_Selected) != removed.end())
             m_Selected = NULL_ENTITY;
-        m_Dirty = true;
         return true;
     }
 
@@ -808,27 +797,16 @@ namespace Editor
             return false;
         if (ParentOf(child) == parent)
             return true;
-        std::vector<std::uint8_t> snapshot = Snapshot();
+        Bytes snapshot = Snapshot();
         if (!SceneObjects::SetParent(child, parent))
             return false;
         PushUndo(std::move(snapshot));
-        m_Dirty = true;
         return true;
     }
 
     Entity SceneEditor::AddEmpty(const Vec3& position, Entity parent)
     {
-        if (parent != NULL_ENTITY && !CanEdit(parent))
-            return NULL_ENTITY;
-        RecordUndo();
-        Vec3 p = ClampToField(position);
-        p.Y = 0.0f;
-        Entity e = SceneObjects::CreateEmpty(SceneObjects::UniqueName(ObjectKindName(ObjectKind::Empty)), p);
-        if (parent != NULL_ENTITY)
-            SceneObjects::SetParent(e, parent);
-        m_Dirty = true;
-        m_Selected = e;
-        return e;
+        return Create(ObjectKind::Empty, position, parent);
     }
 
     Entity SceneEditor::ParentOf(Entity entity) const
@@ -888,7 +866,6 @@ namespace Editor
             t.Scale(width / std::max(t.LocalScale.X, 0.0001f));
         }
         SceneObjects::ShapeChanged(entity);
-        m_Dirty = true;
         return true;
     }
 
@@ -897,10 +874,9 @@ namespace Editor
         if (!CanEdit(entity) || KindOf(entity) != ObjectKind::Polygon)
             return false;
         RecordUndo();
-        ECS.GetComponent<Shape2D>(entity).Sides =
-                std::clamp(sides, ShapeGeometry::MIN_POLYGON_SIDES, ShapeGeometry::MAX_POLYGON_SIDES);
+        ECS.GetComponent<Shape2D>(entity).Sides = std::clamp(
+                sides, ShapeGeometry::MIN_POLYGON_SIDES, ShapeGeometry::MAX_POLYGON_SIDES);
         SceneObjects::ShapeChanged(entity);
-        m_Dirty = true;
         return true;
     }
 
@@ -911,7 +887,6 @@ namespace Editor
         RecordUndo();
         ECS.GetComponent<Shape2D>(entity).Thickness = std::clamp(thickness, 0.0f, 10.0f);
         SceneObjects::ShapeChanged(entity);
-        m_Dirty = true;
         return true;
     }
 
@@ -922,7 +897,6 @@ namespace Editor
         RecordUndo();
         ECS.GetComponent<Shape2D>(entity).Color = color;
         ECS.GetComponent<Shape2D>(entity).Built = false;
-        m_Dirty = true;
         return true;
     }
 
@@ -935,7 +909,6 @@ namespace Editor
         if (body == BodyType::None && ECS.HasComponent<ColliderShape>(entity))
             ECS.RemoveComponent<ColliderShape>(entity);
         SceneObjects::SetBodyType(entity, body);
-        m_Dirty = true;
         return true;
     }
 
@@ -946,11 +919,11 @@ namespace Editor
             return false;
         scale = std::clamp(scale, 0.1f, 5.0f);
         ColliderShape current = SceneObjects::ColliderShapeOf(entity);
-        if (ECS.HasComponent<ColliderShape>(entity) && current.Type == type && current.Scale == scale)
+        if (ECS.HasComponent<ColliderShape>(entity) && current.Type == type &&
+            current.Scale == scale)
             return true;
         RecordUndo();
         SceneObjects::SetColliderShape(entity, type, scale);
-        m_Dirty = true;
         return true;
     }
 
@@ -961,7 +934,6 @@ namespace Editor
             return false;
         RecordUndo();
         ECS.GetComponent<SceneObject>(entity).Tag = tag;
-        m_Dirty = true;
         return true;
     }
 
@@ -976,7 +948,6 @@ namespace Editor
             return false;
         RecordUndo();
         ECS.GetComponent<SceneObject>(entity).Name = name;
-        m_Dirty = true;
         return true;
     }
 
@@ -989,26 +960,18 @@ namespace Editor
         Mesh& mesh = ECS.GetComponent<Mesh>(entity);
         mesh.Model = model;
         mesh.Loaded = false;
-        m_Dirty = true;
         return true;
     }
 
     bool SceneEditor::SetScript(Entity entity, const std::string& script)
     {
-        if (!CanEdit(entity))
+        if (!CanEdit(entity) || (!script.empty() && !IsScript(script, false)))
             return false;
-        if (!script.empty())
-        {
-            const ScriptInfo* info = ScriptRegistry::Get().Find(script);
-            if (info == nullptr || info->IsSceneScript)
-                return false;
-        }
         RecordUndo();
         if (ECS.HasComponent<ScriptComponent>(entity))
             ECS.RemoveComponent<ScriptComponent>(entity);
         if (!script.empty())
             ECS.AddComponent<ScriptComponent>(entity, {script, {}});
-        m_Dirty = true;
         return true;
     }
 
@@ -1016,16 +979,10 @@ namespace Editor
     {
         if (!CanEdit(entity) || !ECS.HasComponent<ScriptComponent>(entity))
             return false;
-        ScriptComponent& component = ECS.GetComponent<ScriptComponent>(entity);
-        const ScriptInfo* info = ScriptRegistry::Get().Find(component.Script);
-        if (info == nullptr ||
-            std::none_of(info->Params.begin(), info->Params.end(), [&](const ScriptParam& p) {
-                return p.Name == param;
-            }))
+        if (!HasParam(ECS.GetComponent<ScriptComponent>(entity).Script, param))
             return false;
         RecordUndo();
         ECS.GetComponent<ScriptComponent>(entity).Params[param] = value;
-        m_Dirty = true;
         return true;
     }
 
@@ -1041,10 +998,7 @@ namespace Editor
         std::string script = GetScript(entity);
         if (script.empty())
             return 0.0f;
-        auto params = ScriptRegistry::Get().ResolveParams(
-                script, ECS.GetComponent<ScriptComponent>(entity).Params);
-        auto it = params.find(param);
-        return it == params.end() ? 0.0f : it->second;
+        return ParamValue(script, ECS.GetComponent<ScriptComponent>(entity).Params, param);
     }
 
     //-----------------------------------------------------------------------------
@@ -1103,7 +1057,8 @@ namespace Editor
             return result;
         if (SceneObjects::GetBodyType(entity) == BodyType::None)
             result.push_back(COMPONENT_RIGIDBODY);
-        if (!ECS.HasComponent<ScriptComponent>(entity) && !ScriptRegistry::Get().Names(false).empty())
+        if (!ECS.HasComponent<ScriptComponent>(entity) &&
+            !ScriptRegistry::Get().Names(false).empty())
             result.push_back(COMPONENT_SCRIPT);
         for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
         {
@@ -1137,7 +1092,6 @@ namespace Editor
             return false;
         RecordUndo();
         entry->Add(ECS, entity);
-        m_Dirty = true;
         return true;
     }
 
@@ -1154,7 +1108,6 @@ namespace Editor
             return false;
         RecordUndo();
         entry->Remove(ECS, entity);
-        m_Dirty = true;
         return true;
     }
 
@@ -1172,23 +1125,22 @@ namespace Editor
         if (info->Type == Reflection::FieldType::Entity)
         {
             const auto* target = std::get_if<std::int64_t>(&value);
-            if (target == nullptr ||
-                (*target != static_cast<std::int64_t>(NULL_ENTITY) && !IsObject(static_cast<Entity>(*target))))
+            if (target == nullptr || (*target != static_cast<std::int64_t>(NULL_ENTITY) &&
+                                      !IsObject(static_cast<Entity>(*target))))
                 return false;
         }
         void* data = entry->Data(ECS, entity);
         Reflection::FieldValue before = info->GetValue(data);
-        std::vector<std::uint8_t> snapshot = Snapshot();
+        Bytes snapshot = Snapshot();
         if (!info->SetValue(data, value))
             return false;
         // Values that end up unchanged (clamped to the same value) are not an
         // edit: no undo step, the scene stays clean
         if (info->GetValue(data) == before)
             return true;
-        if (component == "Collider")
+        if (component == COMPONENT_COLLIDER)
             SceneObjects::ShapeChanged(entity);
         PushUndo(std::move(snapshot));
-        m_Dirty = true;
         return true;
     }
 
@@ -1235,42 +1187,29 @@ namespace Editor
 
     bool SceneEditor::SetSceneScript(const std::string& script)
     {
-        if (!script.empty())
-        {
-            const ScriptInfo* info = ScriptRegistry::Get().Find(script);
-            if (info == nullptr || !info->IsSceneScript)
-                return false;
-        }
+        if (!script.empty() && !IsScript(script, true))
+            return false;
         RecordUndo();
         auto settings = ECS.GetResource<SceneSettings>();
         settings->SceneScript = script;
         settings->SceneParams.clear();
-        m_Dirty = true;
         return true;
     }
 
     bool SceneEditor::SetSceneParam(const std::string& param, float value)
     {
         auto settings = ECS.GetResource<SceneSettings>();
-        const ScriptInfo* info = ScriptRegistry::Get().Find(settings->SceneScript);
-        if (info == nullptr ||
-            std::none_of(info->Params.begin(), info->Params.end(), [&](const ScriptParam& p) {
-                return p.Name == param;
-            }))
+        if (!HasParam(settings->SceneScript, param))
             return false;
         RecordUndo();
         settings->SceneParams[param] = value;
-        m_Dirty = true;
         return true;
     }
 
     float SceneEditor::GetSceneParam(const std::string& param) const
     {
         auto settings = ECS.GetResource<SceneSettings>();
-        auto params =
-                ScriptRegistry::Get().ResolveParams(settings->SceneScript, settings->SceneParams);
-        auto it = params.find(param);
-        return it == params.end() ? 0.0f : it->second;
+        return ParamValue(settings->SceneScript, settings->SceneParams, param);
     }
 
     void SceneEditor::SetFieldSize(float width, float height)
@@ -1297,7 +1236,6 @@ namespace Editor
                     SceneObjects::SetPosition(e, clamped);
             }
         }
-        m_Dirty = true;
     }
 
     //-----------------------------------------------------------------------------
@@ -1307,7 +1245,6 @@ namespace Editor
     std::vector<std::string> SceneEditor::Validate() const
     {
         std::vector<std::string> issues;
-        const ScriptRegistry& scripts = ScriptRegistry::Get();
         std::set<std::string> names;
         for (Entity e : Objects())
         {
@@ -1322,24 +1259,16 @@ namespace Editor
                     issues.push_back("'" + object.Name + "' is outside the field");
             }
             std::string script = GetScript(e);
-            if (!script.empty())
-            {
-                const ScriptInfo* info = scripts.Find(script);
-                if (info == nullptr || info->IsSceneScript)
-                    issues.push_back("'" + object.Name + "' uses unknown script '" + script + "'");
-            }
+            if (!script.empty() && !IsScript(script, false))
+                issues.push_back("'" + object.Name + "' uses unknown script '" + script + "'");
         }
         const std::string& sceneScript = ECS.GetResource<SceneSettings>()->SceneScript;
-        if (!sceneScript.empty())
-        {
-            const ScriptInfo* info = scripts.Find(sceneScript);
-            if (info == nullptr || !info->IsSceneScript)
-                issues.push_back("Unknown scene script '" + sceneScript + "'");
-        }
+        if (!sceneScript.empty() && !IsScript(sceneScript, true))
+            issues.push_back("Unknown scene script '" + sceneScript + "'");
         return issues;
     }
 
-    std::vector<std::uint8_t> SceneEditor::SaveSceneToBytes(const std::string& name) const
+    SceneEditor::Bytes SceneEditor::SaveSceneToBytes(const std::string& name) const
     {
         ECS.GetResource<SceneSettings>()->Name = name;
         // Binary or plain text, following the program wide file format option
@@ -1362,7 +1291,7 @@ namespace Editor
         }
         try
         {
-            std::vector<std::uint8_t> bytes = SaveSceneToBytes(name);
+            Bytes bytes = SaveSceneToBytes(name);
             if (!Serialization::WorldSerializer::WriteFile(path, bytes, result.Error))
                 return result;
             result.BytesWritten = bytes.size();
@@ -1379,7 +1308,7 @@ namespace Editor
     Serialization::LoadResult SceneEditor::LoadScene(const std::string& path)
     {
         Serialization::LoadResult result;
-        std::vector<std::uint8_t> bytes;
+        Bytes bytes;
         if (!Serialization::WorldSerializer::ReadFile(path, bytes, result.Error))
             return result;
 
@@ -1399,26 +1328,30 @@ namespace Editor
         result.Warnings.insert(result.Warnings.end(), warnings.begin(), warnings.end());
         for (const std::string& issue : Validate())
             result.Warnings.push_back(issue);
+        ResetDocument();
+        return result;
+    }
 
+    void SceneEditor::ResetDocument()
+    {
         m_UndoStack.clear();
         m_RedoStack.clear();
         m_Selected = NULL_ENTITY;
         m_Dirty = false;
         m_Playing = false;
         WorldReplaced();
-        return result;
     }
 
     //-----------------------------------------------------------------------------
     // Undo / redo / play
     //-----------------------------------------------------------------------------
 
-    std::vector<std::uint8_t> SceneEditor::Snapshot() const
+    SceneEditor::Bytes SceneEditor::Snapshot() const
     {
         return Serializer().Save(ECS);
     }
 
-    void SceneEditor::Restore(const std::vector<std::uint8_t>& snapshot)
+    void SceneEditor::Restore(const Bytes& snapshot)
     {
         Serialization::LoadResult result = Serializer().Load(ECS, snapshot);
         if (!result)
@@ -1439,36 +1372,35 @@ namespace Editor
         PushUndo(Snapshot());
     }
 
-    void SceneEditor::PushUndo(std::vector<std::uint8_t> snapshot)
+    void SceneEditor::PushUndo(Bytes snapshot)
     {
         m_UndoStack.push_back(std::move(snapshot));
         if (m_UndoStack.size() > MAX_UNDO)
             m_UndoStack.erase(m_UndoStack.begin());
         m_RedoStack.clear();
+        m_Dirty = true;
+    }
+
+    bool SceneEditor::StepHistory(std::vector<Bytes>& from, std::vector<Bytes>& to)
+    {
+        if (from.empty() || m_Playing)
+            return false;
+        to.push_back(Snapshot());
+        Bytes snapshot = std::move(from.back());
+        from.pop_back();
+        Restore(snapshot);
+        m_Dirty = true;
+        return true;
     }
 
     bool SceneEditor::Undo()
     {
-        if (m_UndoStack.empty() || m_Playing)
-            return false;
-        m_RedoStack.push_back(Snapshot());
-        std::vector<std::uint8_t> snapshot = std::move(m_UndoStack.back());
-        m_UndoStack.pop_back();
-        Restore(snapshot);
-        m_Dirty = true;
-        return true;
+        return StepHistory(m_UndoStack, m_RedoStack);
     }
 
     bool SceneEditor::Redo()
     {
-        if (m_RedoStack.empty() || m_Playing)
-            return false;
-        m_UndoStack.push_back(Snapshot());
-        std::vector<std::uint8_t> snapshot = std::move(m_RedoStack.back());
-        m_RedoStack.pop_back();
-        Restore(snapshot);
-        m_Dirty = true;
-        return true;
+        return StepHistory(m_RedoStack, m_UndoStack);
     }
 
     void SceneEditor::BeginPlay()
@@ -1513,5 +1445,12 @@ namespace Editor
         clamped.X = std::clamp(clamped.X, -halfW, halfW);
         clamped.Z = std::clamp(clamped.Z, -halfH, halfH);
         return clamped;
+    }
+
+    Vec3 SceneEditor::GroundPoint(const Vec3& position) const
+    {
+        Vec3 point = ClampToField(position);
+        point.Y = 0.0f;
+        return point;
     }
 } // namespace Editor

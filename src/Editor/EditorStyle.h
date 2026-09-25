@@ -89,8 +89,16 @@ namespace EditorStyle
                            {0.85f, 0.85f, 0.85f}};
     constexpr int COLOR_COUNT = sizeof(COLORS) / sizeof(COLORS[0]);
 
-    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner", "Camera", "Light"};
-    constexpr int TAG_COUNT = sizeof(TAGS) / sizeof(TAGS[0]);
+    const char* const TAGS[] = {"",
+                                "Player",
+                                "Enemy",
+                                "Pickup",
+                                "Wall",
+                                "Goal",
+                                "Hazard",
+                                "Spawner",
+                                "Camera",
+                                "Light"};
 
     // -- Editing steps ----------------------------------------------------------------
     constexpr float SNAP_STEP = 0.5f;
@@ -155,7 +163,8 @@ namespace EditorStyle
     /**
      * \brief Print text cut to maxWidth (0: to the end of its panel) with ".."
      */
-    inline void Text(float x, float y, const std::string& text, const Color& c = TEXT, float maxWidth = 0.0f)
+    inline void
+    Text(float x, float y, const std::string& text, const Color& c = TEXT, float maxWidth = 0.0f)
     {
         float room = maxWidth > 0.0f ? maxWidth : PanelRight(x, y) - x;
         std::string shown = UIText::Fit(text, room);
@@ -163,13 +172,26 @@ namespace EditorStyle
     }
 
     // Baseline that centers text in a widget row (WIDGET_H high) at y
-    inline float RowY(float y) { return UIText::CenterY(y, WIDGET_H); }
+    inline float RowY(float y)
+    {
+        return UIText::CenterY(y, WIDGET_H);
+    }
 
-    inline Color ToColor(const Vec3& v) { return Color(v.X, v.Y, v.Z); }
+    // Label in front of a typed value (LABEL_W wide)
+    inline void RowLabel(float x, float y, const std::string& label, const Color& c = TEXT)
+    {
+        Text(x, RowY(y), label, c, LABEL_W - 4.0f);
+    }
+
+    inline Color ToColor(const Vec3& v)
+    {
+        return Color(v.X, v.Y, v.Z);
+    }
 
     inline bool SameColor(const Vec3& a, const Vec3& b)
     {
-        return std::fabs(a.X - b.X) < 0.01f && std::fabs(a.Y - b.Y) < 0.01f && std::fabs(a.Z - b.Z) < 0.01f;
+        return std::fabs(a.X - b.X) < 0.01f && std::fabs(a.Y - b.Y) < 0.01f &&
+               std::fabs(a.Z - b.Z) < 0.01f;
     }
 
     // Cycle an index through [0, count) by delta
@@ -187,7 +209,17 @@ namespace EditorStyle
         return it == std::end(list) ? 0 : static_cast<int>(it - std::begin(list));
     }
 
-    inline std::string TagLabel(const std::string& tag) { return tag.empty() ? "-" : tag; }
+    // The entry `delta` steps from `current` in the list (wrapping around)
+    template <typename List, typename T>
+    const auto& CycleIn(const List& list, const T& current, int delta)
+    {
+        return list[Cycle(IndexOf(list, current), delta, static_cast<int>(std::size(list)))];
+    }
+
+    inline std::string DashIfEmpty(const std::string& text)
+    {
+        return text.empty() ? "-" : text;
+    }
 
     // [""] + names, used by the script pickers
     inline std::vector<std::string> WithNone(std::vector<std::string> names)

@@ -20,15 +20,12 @@
 // Both lists scroll (scrollbar on the right) when they are longer than the
 // panel.
 //
-#include "ECSManager.h"
 #include "EditorStyle.h"
 #include "SceneEditorScene.h"
 #include "UIState.h"
-#include "World/SceneObjects.h"
 
 #include <cmath>
 
-using Editor::ObjectKind;
 using namespace EditorStyle;
 
 namespace
@@ -121,7 +118,11 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
         DrawPanel(x - 2.0f, headerBottom, width + 4.0f, TREE_ROW_H, ROW_TARGET, ROW_TARGET);
     float headerText = UIText::CenterY(headerBottom, TREE_ROW_H);
     Text(x, headerText, "SCENE", ACCENT, 76.0f);
-    Text(x + 80.0f, headerText, std::to_string(m_Editor.Objects().size()) + " objects", TEXT_DIM, width - 80.0f);
+    Text(x + 80.0f,
+         headerText,
+         std::to_string(m_Editor.Objects().size()) + " objects",
+         TEXT_DIM,
+         width - 80.0f);
 
     // The rows, scrolled
     float listTop = headerBottom - 2.0f;
@@ -167,7 +168,8 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
         bool hasChildren = !m_Editor.ChildrenOf(e).empty();
         bool folded = m_Collapsed.count(e) != 0;
         bool overFold = hasChildren && mx >= indent && mx <= indent + FOLD_W;
-        if (hasChildren && Button(NextId(), indent, rowBottom + 2.0f, *m_UI, FOLD_W, 16.0f, folded ? "+" : "-"))
+        if (hasChildren &&
+            Button(NextId(), indent, rowBottom + 2.0f, *m_UI, FOLD_W, 16.0f, folded ? "+" : "-"))
         {
             if (folded)
                 m_Collapsed.erase(e);
@@ -176,7 +178,7 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
         }
         std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
         // Prefab instances are blue, like in Unity; game cameras yellow, lights orange
-        const Color& color = m_Editor.IsField(e)               ? TEXT_DIM
+        const Color& color = m_Editor.IsField(e)             ? TEXT_DIM
                              : !m_Editor.PrefabOf(e).empty() ? PREFAB_TEXT
                              : m_Editor.IsCamera(e)          ? CAMERA_COLOR
                              : m_Editor.IsLight(e)           ? LIGHT_COLOR
@@ -204,7 +206,8 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
         }
     }
     // Right click on the empty part of the tree (or on SCENE): create
-    if (m_UI->rightClick && !m_Menu.IsOpen() && ((overList && hovered == NULL_ENTITY) || overHeader))
+    if (m_UI->rightClick && !m_Menu.IsOpen() &&
+        ((overList && hovered == NULL_ENTITY) || overHeader))
         m_Menu.Open(mx, my, CreateItems(ViewCenter(), NULL_ENTITY));
 
     Scrollbar(SCROLL_TREE, x + width - SCROLLBAR_W, listBottom, listTop, content, m_TreeScroll);
@@ -214,7 +217,8 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
         return;
     if (m_UI->mouseLeftDown)
     {
-        if (std::fabs(mx - m_TreePressX) > TREE_DRAG_START || std::fabs(my - m_TreePressY) > TREE_DRAG_START)
+        if (std::fabs(mx - m_TreePressX) > TREE_DRAG_START ||
+            std::fabs(my - m_TreePressY) > TREE_DRAG_START)
             m_TreeDragging = !m_Editor.IsField(m_TreePressed);
         if (m_TreeDragging)
         {
@@ -268,22 +272,31 @@ void SceneEditorScene::RenderAssets(float top, float bottom)
     float y = top - 28.0f;
     constexpr float TITLE_W = 74.0f;
     Text(x, RowY(y), "ASSETS", ACCENT, TITLE_W - 2.0f);
-    if (!m_PrefabMode && Button(NextId(), x + TITLE_W, y, *m_UI, width - TITLE_W, WIDGET_H, "New Prefab"))
+    if (!m_PrefabMode &&
+        Button(NextId(), x + TITLE_W, y, *m_UI, width - TITLE_W, WIDGET_H, "New Prefab"))
         NewPrefab();
 
     // Import box at the bottom: a path, or a file name in data/import/
     float importY = bottom + 6.0f;
     bool imported = false;
     float importW = width - 64.0f;
-    if (TextField(ID_FIELD_IMPORT, x, importY, importW, WIDGET_H, *m_UI, m_ImportPath, TextFilter::Any, 260) ==
-        TextFieldEvent::Committed)
+    if (TextField(ID_FIELD_IMPORT,
+                  x,
+                  importY,
+                  importW,
+                  WIDGET_H,
+                  *m_UI,
+                  m_ImportPath,
+                  TextFilter::Any,
+                  260) == TextFieldEvent::Committed)
     {
         ImportModel();
         imported = true;
     }
     if (m_ImportPath.empty() && m_UI->focusedItem != ID_FIELD_IMPORT)
         Text(x + 4.0f, RowY(importY), "import .obj", TEXT_DIM, importW - 8.0f);
-    if (Button(NextId(), x + importW + 4.0f, importY, *m_UI, 60.0f, WIDGET_H, "Import") && !imported)
+    if (Button(NextId(), x + importW + 4.0f, importY, *m_UI, 60.0f, WIDGET_H, "Import") &&
+        !imported)
         ImportModel();
 
     // Prefabs then models, scrolled
@@ -326,16 +339,18 @@ void SceneEditorScene::RenderAssets(float top, float bottom)
             DrawPanel(x - 2.0f, rowBottom, rowW + 4.0f, TREE_ROW_H, ROW_SELECTED, ROW_SELECTED);
         else if (over)
             DrawPanel(x - 2.0f, rowBottom, rowW + 4.0f, TREE_ROW_H, ROW_HOVER, ROW_HOVER);
-        Text(x + 12.0f, textY, entry.Name, entry.Kind == AssetKind::Prefab ? PREFAB_TEXT : TEXT, rowW - 12.0f);
+        Text(x + 12.0f,
+             textY,
+             entry.Name,
+             entry.Kind == AssetKind::Prefab ? PREFAB_TEXT : TEXT,
+             rowW - 12.0f);
         if (!over || m_UI->IsTyping())
             continue;
-        m_Hint = "Click " + entry.Name + ", then click the scene to place it (or drag it onto the scene)";
+        m_Hint = "Click " + entry.Name +
+                 ", then click the scene to place it (or drag it onto the scene)";
         if (m_UI->leftClick)
         {
-            if (entry.Kind == AssetKind::Prefab)
-                StartPlacingPrefab(entry.Name);
-            else
-                StartPlacingModel(entry.Name);
+            StartPlacing(entry.Kind, entry.Name);
             // Keep the button down and drag it onto the scene to drop it there
             m_AssetDrag = true;
         }
@@ -345,13 +360,9 @@ void SceneEditorScene::RenderAssets(float top, float bottom)
             AssetKind kind = entry.Kind;
             std::vector<MenuItem> items;
             items.push_back({"Place at View Center", [this, name, kind] {
-                                 if (kind == AssetKind::Prefab)
-                                     StartPlacingPrefab(name);
-                                 else
-                                     StartPlacingModel(name);
+                                 StartPlacing(kind, name);
                                  PlaceAsset(ViewCenter());
-                                 m_PlaceKind = AssetKind::None;
-                                 m_PlaceName.clear();
+                                 StopPlacing();
                              }});
             if (kind == AssetKind::Prefab)
             {

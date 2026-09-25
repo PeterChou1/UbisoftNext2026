@@ -10,7 +10,6 @@
 #include "Lighting.h"
 #include "Log.h"
 #include "ModelImport.h"
-#include "Scripting/ScriptRegistry.h"
 #include "Transform.h"
 #include "UIState.h"
 #include "UIText.h"
@@ -27,7 +26,6 @@ extern ECSManager ECS;
 extern GameManager GameSceneManager;
 
 using Editor::ObjectKind;
-using SceneObjects::BodyType;
 using namespace EditorStyle;
 
 namespace
@@ -117,7 +115,8 @@ void SceneEditorScene::Setup()
     RefreshSceneList();
     if (m_SceneNames.empty() || !OpenScene(m_SceneNames.front()))
         NewDocument();
-    SetStatus("Right click the scene or the hierarchy to create objects. Tutorial: docs/EditorTutorial.md");
+    SetStatus("Right click the scene or the hierarchy to create objects. Tutorial: "
+              "docs/EditorTutorial.md");
 }
 
 void SceneEditorScene::Update(float deltaTime)
@@ -187,7 +186,8 @@ void SceneEditorScene::Render()
         m_UI->leftClick = menuOpen ? false : click;
         if (!m_Editor.IsPlaying() && !m_PrefabMode)
             RenderSceneList();
-        if (listOpen && click && m_UI->openDropDownId == ID_SCENE_LIST && m_UI->activeItem != ID_SCENE_LIST)
+        if (listOpen && click && m_UI->openDropDownId == ID_SCENE_LIST &&
+            m_UI->activeItem != ID_SCENE_LIST)
             m_UI->openDropDownId = 0;
     }
 
@@ -285,8 +285,7 @@ void SceneEditorScene::UpdateShortcuts()
         }
         if (c == 27 && m_PlaceKind != AssetKind::None)
         {
-            m_PlaceKind = AssetKind::None;
-            m_PlaceName.clear();
+            StopPlacing();
             SetStatus("Stopped placing");
         }
     }
@@ -311,7 +310,8 @@ void SceneEditorScene::UpdateShortcuts()
     if (Input::WasPressed(App::KEY_B))
     {
         ToggleColliders();
-        SetStatus(m_ShowColliders ? "Showing every collider (B)" : "Showing the selected collider (B)");
+        SetStatus(m_ShowColliders ? "Showing every collider (B)"
+                                  : "Showing the selected collider (B)");
     }
     if (Input::WasPressed(App::KEY_G))
     {
@@ -324,9 +324,10 @@ bool SceneEditorScene::MouseOverUI() const
 {
     float x = m_UI->mouseX;
     float y = m_UI->mouseY;
-    return m_UI->openDropDownId != 0 || m_Menu.Contains(x, y) || x < LEFT_W || x > SCREEN_W - INSPECTOR_W ||
-           y > SCREEN_H - TOOLBAR_H || y < STATUS_H ||
-           (m_ShowControls && Inside(x, y, CONTROLS_X, CONTROLS_BOTTOM, CONTROLS_W, CONTROLS_TOP - CONTROLS_BOTTOM));
+    return m_UI->openDropDownId != 0 || m_Menu.Contains(x, y) || x < LEFT_W ||
+           x > SCREEN_W - INSPECTOR_W || y > SCREEN_H - TOOLBAR_H || y < STATUS_H ||
+           (m_ShowControls &&
+            Inside(x, y, CONTROLS_X, CONTROLS_BOTTOM, CONTROLS_W, CONTROLS_TOP - CONTROLS_BOTTOM));
 }
 
 bool SceneEditorScene::MouseAtHeight(float height, Vec3& point) const
@@ -345,7 +346,6 @@ Entity SceneEditorScene::PickUnderMouse(float* hitHeight) const
     Entity marker = NULL_ENTITY;
     float markerHeight = 0.0f;
     float best = MARKER_PICK_PIXELS * MARKER_PICK_PIXELS;
-    Vec3 forward = m_Cam->Backward * -1.0f;
     for (Entity e : m_Editor.Objects())
     {
         Vec3 point;
@@ -355,7 +355,7 @@ Entity SceneEditorScene::PickUnderMouse(float* hitHeight) const
             point = SceneCamera::EyeOf(SceneCamera::ViewOf(e));
         else
             continue;
-        if ((point - m_Cam->Position).Dot(forward) <= 0.5f)
+        if (!InFront(point))
             continue;
         Vec2 s = m_Cam->WorldPointToScreenSpace(point);
         float dx = s.X - m_UI->mouseX;
@@ -386,14 +386,14 @@ Vec3 SceneEditorScene::SnapPoint(const Vec3& point) const
 {
     if (!m_Snap)
         return point;
-    return {Editor::SceneEditor::Snap(point.X, SNAP_STEP), point.Y, Editor::SceneEditor::Snap(point.Z, SNAP_STEP)};
+    return {Editor::SceneEditor::Snap(point.X, SNAP_STEP),
+            point.Y,
+            Editor::SceneEditor::Snap(point.Z, SNAP_STEP)};
 }
 
 Vec3 SceneEditorScene::ViewCenter() const
 {
-    Vec3 center = m_Editor.ClampToField(SnapPoint(m_View.Target));
-    center.Y = 0.0f;
-    return center;
+    return m_Editor.GroundPoint(SnapPoint(m_View.Target));
 }
 
 void SceneEditorScene::BeginDrag(Entity entity, float height)
@@ -465,8 +465,7 @@ void SceneEditorScene::UpdateViewportMouse()
     {
         if (m_PlaceKind != AssetKind::None)
         {
-            m_PlaceKind = AssetKind::None;
-            m_PlaceName.clear();
+            StopPlacing();
             SetStatus("Stopped placing");
             return;
         }
@@ -509,8 +508,7 @@ void SceneEditorScene::OpenViewportMenu()
     }
     // On the field (or nothing): create objects where it was clicked
     Vec3 ground;
-    Vec3 at = MouseToGround(ground) ? m_Editor.ClampToField(SnapPoint(ground)) : ViewCenter();
-    at.Y = 0.0f;
+    Vec3 at = MouseToGround(ground) ? m_Editor.GroundPoint(SnapPoint(ground)) : ViewCenter();
     m_Menu.Open(m_UI->mouseX, m_UI->mouseY, CreateItems(at, NULL_ENTITY));
 }
 
@@ -521,8 +519,11 @@ void SceneEditorScene::OpenViewportMenu()
 std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity parent)
 {
     std::vector<MenuItem> items;
-    for (ObjectKind kind :
-         {ObjectKind::Empty, ObjectKind::Rectangle, ObjectKind::Circle, ObjectKind::Triangle, ObjectKind::Polygon})
+    for (ObjectKind kind : {ObjectKind::Empty,
+                            ObjectKind::Rectangle,
+                            ObjectKind::Circle,
+                            ObjectKind::Triangle,
+                            ObjectKind::Polygon})
     {
         items.push_back({std::string("Create ") + Editor::ObjectKindName(kind),
                          [this, kind, position, parent] { CreateObject(kind, position, parent); }});
@@ -530,8 +531,9 @@ std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity
     MenuItem models{"Create Model", nullptr};
     for (const std::string& model : m_Models)
     {
-        models.Children.push_back(
-                {model, [this, position, parent, model] { CreateObject(ObjectKind::Model, position, parent, model); }});
+        models.Children.push_back({model, [this, position, parent, model] {
+                                       CreateObject(ObjectKind::Model, position, parent, model);
+                                   }});
     }
     models.Enabled = !models.Children.empty();
     items.push_back(models);
@@ -541,15 +543,12 @@ std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity
     {
         prefabs.Children.push_back({name, [this, position, parent, name] {
                                         Prefab::Data data;
-                                        std::string error;
-                                        if (!Prefab::LoadFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
-                                        {
-                                            SetStatus("Can not load prefab " + name + ": " + error, true);
+                                        if (!LoadPrefab(name, data))
                                             return;
-                                        }
                                         Entity e = m_Editor.PlacePrefab(data, position, parent);
                                         if (e != NULL_ENTITY)
-                                            SetStatus("Placed prefab " + name + " (" + m_Editor.NameOf(e) + ")");
+                                            SetStatus("Placed prefab " + name + " (" +
+                                                      m_Editor.NameOf(e) + ")");
                                     }});
     }
     prefabs.Enabled = !prefabs.Children.empty();
@@ -560,14 +559,16 @@ std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity
         items.push_back({"Create Light", [this, position] {
                              Entity e = m_Editor.AddLight(position);
                              SetStatus("Created " + m_Editor.NameOf(e) +
-                                       (m_Editor.LightObject() == e ? " (the scene's light)"
-                                                                    : " (the scene uses the first light)"));
+                                       (m_Editor.LightObject() == e
+                                                ? " (the scene's light)"
+                                                : " (the scene uses the first light)"));
                          }});
         items.push_back({"Create Camera", [this, position] {
                              Entity e = m_Editor.AddCamera(position);
                              SetStatus("Created " + m_Editor.NameOf(e) +
-                                       (m_Editor.GameCameraObject() == e ? " (the game camera)"
-                                                                         : " (the game uses the first camera)"));
+                                       (m_Editor.GameCameraObject() == e
+                                                ? " (the game camera)"
+                                                : " (the game uses the first camera)"));
                          }});
     }
     return items;
@@ -580,11 +581,8 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
         return CreateItems(ViewCenter(), NULL_ENTITY);
 
     std::vector<MenuItem> items;
-    Vec3 childAt = m_Editor.ClampToField(SceneObjects::GetPosition(e) + CHILD_OFFSET);
-    childAt.Y = 0.0f;
-    MenuItem child{"Create Child", nullptr};
-    child.Children = CreateItems(childAt, e);
-    items.push_back(child);
+    Vec3 childAt = m_Editor.GroundPoint(SceneObjects::GetPosition(e) + CHILD_OFFSET);
+    items.push_back({"Create Child", nullptr, CreateItems(childAt, e)});
     items.push_back({"Rename", [this, e] {
                          // Starts typing in the inspector's Name box
                          m_Editor.Select(e);
@@ -619,7 +617,8 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
     {
         items.push_back({"Aim at View Center", [this, e] {
                              if (m_Editor.AimLight(e, ViewCenter()))
-                                 SetStatus(m_Editor.NameOf(e) + " now shines at the centre of the view");
+                                 SetStatus(m_Editor.NameOf(e) +
+                                           " now shines at the centre of the view");
                          }});
     }
     else if (!m_Editor.IsCamera(e) && m_Editor.LightObject() != NULL_ENTITY)
@@ -628,7 +627,8 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
         items.push_back({"Aim Light Here", [this, e] {
                              Entity light = m_Editor.LightObject();
                              if (m_Editor.AimLight(light, SceneObjects::GetPosition(e)))
-                                 SetStatus(m_Editor.NameOf(light) + " now shines at " + m_Editor.NameOf(e));
+                                 SetStatus(m_Editor.NameOf(light) + " now shines at " +
+                                           m_Editor.NameOf(e));
                          }});
     }
     if (m_Editor.IsCamera(e))
@@ -650,21 +650,8 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
     if (!prefab.empty())
     {
         items.push_back({"Edit Prefab", [this, prefab] { EditPrefab(prefab); }});
-        items.push_back({"Reset to Prefab", [this, e, prefab] {
-                             Prefab::Data data;
-                             std::string error;
-                             if (!Prefab::LoadFile(Prefab::PathOf(prefab, m_PrefabDirectory), data, error))
-                             {
-                                 SetStatus("Can not load prefab " + prefab + ": " + error, true);
-                                 return;
-                             }
-                             if (m_Editor.ResetToPrefab(e, data) != NULL_ENTITY)
-                                 SetStatus("Reset to prefab " + prefab);
-                         }});
-        items.push_back({"Unpack Prefab", [this, e, prefab] {
-                             if (m_Editor.UnpackPrefab(e))
-                                 SetStatus(m_Editor.NameOf(e) + " is no longer linked to " + prefab);
-                         }});
+        items.push_back({"Reset to Prefab", [this, e] { ResetInstance(e); }});
+        items.push_back({"Unpack Prefab", [this, e] { UnpackInstance(e); }});
     }
     return items;
 }
@@ -706,10 +693,14 @@ void SceneEditorScene::RaiseSelected(float amount)
         return;
     float y = SceneObjects::GetPosition(selected).Y + amount;
     if (m_Editor.SetHeight(selected, y))
-        SetStatus(m_Editor.NameOf(selected) + " height " + Fmt("%.2f", SceneObjects::GetPosition(selected).Y));
+        SetStatus(m_Editor.NameOf(selected) + " height " +
+                  Fmt("%.2f", SceneObjects::GetPosition(selected).Y));
 }
 
-void SceneEditorScene::CreateObject(ObjectKind kind, const Vec3& position, Entity parent, const std::string& model)
+void SceneEditorScene::CreateObject(ObjectKind kind,
+                                    const Vec3& position,
+                                    Entity parent,
+                                    const std::string& model)
 {
     Editor::PlaceSettings settings;
     settings.Model = model;
@@ -720,23 +711,33 @@ void SceneEditorScene::CreateObject(ObjectKind kind, const Vec3& position, Entit
         return;
     }
     m_ShowScene = false;
-    SetStatus("Created " + m_Editor.NameOf(e) + (parent != NULL_ENTITY ? " in " + m_Editor.NameOf(parent) : ""));
+    SetStatus("Created " + m_Editor.NameOf(e) +
+              (parent != NULL_ENTITY ? " in " + m_Editor.NameOf(parent) : ""));
 }
 
 void SceneEditorScene::StartPlacingPrefab(const std::string& name)
 {
-    m_PlaceKind = name.empty() ? AssetKind::None : AssetKind::Prefab;
-    m_PlaceName = name;
-    if (!name.empty())
-        SetStatus("Placing prefab " + name + ": click the scene (right click or Esc to stop)");
+    StartPlacing(AssetKind::Prefab, name);
 }
 
 void SceneEditorScene::StartPlacingModel(const std::string& name)
 {
-    m_PlaceKind = name.empty() ? AssetKind::None : AssetKind::Model;
+    StartPlacing(AssetKind::Model, name);
+}
+
+void SceneEditorScene::StartPlacing(AssetKind kind, const std::string& name)
+{
+    m_PlaceKind = name.empty() ? AssetKind::None : kind;
     m_PlaceName = name;
     if (!name.empty())
-        SetStatus("Placing model " + name + ": click the scene (right click or Esc to stop)");
+        SetStatus(std::string(kind == AssetKind::Prefab ? "Placing prefab " : "Placing model ") +
+                  name + ": click the scene (right click or Esc to stop)");
+}
+
+void SceneEditorScene::StopPlacing()
+{
+    m_PlaceKind = AssetKind::None;
+    m_PlaceName.clear();
 }
 
 void SceneEditorScene::PlaceAsset(const Vec3& position)
@@ -745,10 +746,8 @@ void SceneEditorScene::PlaceAsset(const Vec3& position)
     if (m_PlaceKind == AssetKind::Prefab)
     {
         Prefab::Data data;
-        std::string error;
-        if (!Prefab::LoadFile(Prefab::PathOf(m_PlaceName, m_PrefabDirectory), data, error))
+        if (!LoadPrefab(m_PlaceName, data))
         {
-            SetStatus("Can not load prefab " + m_PlaceName + ": " + error, true);
             m_PlaceKind = AssetKind::None;
             return;
         }
@@ -833,7 +832,8 @@ void SceneEditorScene::RefreshSceneList()
             m_SceneNames.push_back(entry.path().stem().string());
     }
     // The open scene is listed even before its first save
-    if (!m_DocName.empty() && std::find(m_SceneNames.begin(), m_SceneNames.end(), m_DocName) == m_SceneNames.end())
+    if (!m_DocName.empty() &&
+        std::find(m_SceneNames.begin(), m_SceneNames.end(), m_DocName) == m_SceneNames.end())
         m_SceneNames.push_back(m_DocName);
     std::sort(m_SceneNames.begin(), m_SceneNames.end());
     m_SceneIndex = m_DocName.empty() ? 0 : IndexOf(m_SceneNames, m_DocName);
@@ -991,7 +991,7 @@ bool SceneEditorScene::SaveAsPrefab(Entity root)
         return false;
     }
     std::string name = UniquePrefabName(m_Editor.NameOf(root));
-    Prefab::Data data = m_Editor.CapturePrefab(root, name);
+    Prefab::Data data = Prefab::Capture(root, name);
     std::string error;
     if (!Prefab::SaveFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
     {
@@ -1002,7 +1002,8 @@ bool SceneEditorScene::SaveAsPrefab(Entity root)
     if (!m_PrefabMode)
         m_Editor.LinkPrefab(root, name);
     RefreshAssets();
-    SetStatus("Saved prefab " + name + " (" + std::to_string(data.Objects.size()) + " objects). Place it from Assets");
+    SetStatus("Saved prefab " + name + " (" + std::to_string(data.Objects.size()) +
+              " objects). Place it from Assets");
     return true;
 }
 
@@ -1024,19 +1025,7 @@ bool SceneEditorScene::EditPrefab(const std::string& name)
         SetStatus("Can not open prefab " + name + ": " + error, true);
         return false;
     }
-    m_Session = m_Editor.Suspend();
-    m_PrefabMode = true;
-    m_PrefabName = name;
-    m_PrefabSaved = false;
-    m_ExitPending = false;
-    m_ShowScene = false;
-    m_Menu.Close();
-    m_PlaceKind = AssetKind::None;
-    m_UI->focusedItem = 0;
-    m_Editor.OpenPrefabStage(&data, name);
-    m_SceneView = m_View;
-    m_View = DefaultView();
-    m_View.Distance = PREFAB_DISTANCE;
+    EnterPrefabMode(&data, name);
     SetStatus("Editing prefab " + name + ": Save Prefab, then Back to Scene" +
               (warnings.empty() ? std::string() : " (" + warnings.front() + ")"));
     return true;
@@ -1047,6 +1036,13 @@ bool SceneEditorScene::NewPrefab()
     if (m_Editor.IsPlaying() || m_PrefabMode)
         return false;
     std::string name = UniquePrefabName("prefab");
+    EnterPrefabMode(nullptr, name);
+    SetStatus("New prefab " + name + ": right click " + name + " to add objects, then Save Prefab");
+    return true;
+}
+
+void SceneEditorScene::EnterPrefabMode(const Prefab::Data* prefab, const std::string& name)
+{
     m_Session = m_Editor.Suspend();
     m_PrefabMode = true;
     m_PrefabName = name;
@@ -1056,12 +1052,34 @@ bool SceneEditorScene::NewPrefab()
     m_Menu.Close();
     m_PlaceKind = AssetKind::None;
     m_UI->focusedItem = 0;
-    m_Editor.OpenPrefabStage(nullptr, name);
+    m_Editor.OpenPrefabStage(prefab, name);
     m_SceneView = m_View;
     m_View = DefaultView();
     m_View.Distance = PREFAB_DISTANCE;
-    SetStatus("New prefab " + name + ": right click " + name + " to add objects, then Save Prefab");
-    return true;
+}
+
+bool SceneEditorScene::LoadPrefab(const std::string& name, Prefab::Data& data)
+{
+    std::string error;
+    if (Prefab::LoadFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
+        return true;
+    SetStatus("Can not load prefab " + name + ": " + error, true);
+    return false;
+}
+
+void SceneEditorScene::ResetInstance(Entity root)
+{
+    std::string prefab = m_Editor.PrefabOf(root);
+    Prefab::Data data;
+    if (LoadPrefab(prefab, data) && m_Editor.ResetToPrefab(root, data) != NULL_ENTITY)
+        SetStatus("Reset to prefab " + prefab);
+}
+
+void SceneEditorScene::UnpackInstance(Entity root)
+{
+    std::string prefab = m_Editor.PrefabOf(root);
+    if (m_Editor.UnpackPrefab(root))
+        SetStatus(m_Editor.NameOf(root) + " is no longer linked to " + prefab);
 }
 
 bool SceneEditorScene::SavePrefab()
@@ -1079,7 +1097,8 @@ bool SceneEditorScene::SavePrefab()
     m_PrefabSaved = true;
     m_ExitPending = false;
     RefreshAssets();
-    SetStatus("Saved prefab " + m_PrefabName + " (" + std::to_string(data.Objects.size()) + " objects)");
+    SetStatus("Saved prefab " + m_PrefabName + " (" + std::to_string(data.Objects.size()) +
+              " objects)");
     return true;
 }
 
@@ -1090,7 +1109,10 @@ bool SceneEditorScene::BackToScene()
     if (m_Editor.IsDirty() && !m_ExitPending)
     {
         m_ExitPending = true;
-        SetStatus(m_PrefabName + " has unsaved changes: Save Prefab, or Back to Scene again to discard them", true);
+        SetStatus(
+                m_PrefabName +
+                        " has unsaved changes: Save Prefab, or Back to Scene again to discard them",
+                true);
         return false;
     }
     m_Menu.Close();
@@ -1116,7 +1138,8 @@ bool SceneEditorScene::BackToScene()
     }
     int updated = m_Editor.UpdatePrefabInstances(data);
     SetStatus("Back to " + m_DocName +
-              (updated > 0 ? ": updated " + std::to_string(updated) + " instance(s) of " + name : std::string()));
+              (updated > 0 ? ": updated " + std::to_string(updated) + " instance(s) of " + name
+                           : std::string()));
     return true;
 }
 
@@ -1125,7 +1148,8 @@ void SceneEditorScene::ImportModel()
     std::string path = m_ImportPath;
     // A bare file name is looked up in the import folder
     std::error_code ec;
-    if (!path.empty() && !std::filesystem::exists(path, ec) && path.find_first_of("/\\") == std::string::npos)
+    if (!path.empty() && !std::filesystem::exists(path, ec) &&
+        path.find_first_of("/\\") == std::string::npos)
     {
         std::filesystem::path inFolder = std::filesystem::path(IMPORT_DIRECTORY) / path;
         if (inFolder.extension() != ".obj" && !std::filesystem::exists(inFolder, ec))
@@ -1146,8 +1170,9 @@ void SceneEditorScene::ImportModel()
     }
     RefreshAssets();
     StartPlacingModel(result.Name);
-    std::string message = (result.AlreadyImported ? "Already imported: " : "Imported ") + result.Name + " (" +
-                          std::to_string(result.Triangles) + " triangles). Click the scene to place it";
+    std::string message = (result.AlreadyImported ? "Already imported: " : "Imported ") +
+                          result.Name + " (" + std::to_string(result.Triangles) +
+                          " triangles). Click the scene to place it";
     if (!result.Warnings.empty())
         message += ". " + result.Warnings.front();
     SetStatus(message, false);
@@ -1158,13 +1183,15 @@ void SceneEditorScene::ImportModel()
 // Widgets
 //-----------------------------------------------------------------------------
 
-int SceneEditorScene::Stepper(
-        float x, float y, float width, const std::string& label, const char* minus, const char* plus)
+int SceneEditorScene::Stepper(float x, float y, float width, const std::string& label)
 {
-    // "label        [-] [+]" row, returns -1 / +1 when a button was clicked.
     // The label is cut before the buttons
     Text(x, RowY(y), label, TEXT, width - 2 * STEP_W - 10.0f);
-    float right = x + width;
+    return StepButtons(x + width, y, "<", ">");
+}
+
+int SceneEditorScene::StepButtons(float right, float y, const char* minus, const char* plus)
+{
     int delta = 0;
     if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, WIDGET_H, minus))
         delta = -1;
@@ -1173,17 +1200,24 @@ int SceneEditorScene::Stepper(
     return delta;
 }
 
-bool SceneEditorScene::NumberRow(
-        float x, float y, float width, const std::string& label, int fieldId, float& value, float step, const char* format)
+bool SceneEditorScene::NumberRow(float x,
+                                 float y,
+                                 float width,
+                                 const std::string& label,
+                                 int fieldId,
+                                 float& value,
+                                 float step,
+                                 const char* format)
 {
     // "label [ value ] [-] [+]": type a value (Enter) or step it
-    Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
+    RowLabel(x, y, label);
     float fieldX = x + LABEL_W;
     float fieldW = width - LABEL_W - 2 * STEP_W - 10.0f;
     bool changed = false;
     std::string text = Fmt(format, value);
     FieldDrawn(fieldId);
-    if (TextField(fieldId, fieldX, y, fieldW, WIDGET_H, *m_UI, text, TextFilter::Number) == TextFieldEvent::Committed)
+    if (TextField(fieldId, fieldX, y, fieldW, WIDGET_H, *m_UI, text, TextFilter::Number) ==
+        TextFieldEvent::Committed)
     {
         char* end = nullptr;
         float typed = std::strtof(text.c_str(), &end);
@@ -1195,21 +1229,58 @@ bool SceneEditorScene::NumberRow(
         else if (!text.empty())
             SetStatus("Not a number: " + text, true);
     }
-    float right = x + width;
-    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, WIDGET_H, "-"))
-    {
+    int delta = StepButtons(x + width, y, "-", "+");
+    if (delta < 0)
         value -= step;
-        changed = true;
-    }
-    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, WIDGET_H, "+"))
-    {
+    else if (delta > 0)
         value += step;
-        changed = true;
-    }
-    return changed;
+    return changed || delta != 0;
 }
 
-void SceneEditorScene::Scrollbar(int id, float x, float bottom, float top, float content, float& scroll)
+bool SceneEditorScene::TextRow(float x,
+                               float y,
+                               float width,
+                               const std::string& label,
+                               int fieldId,
+                               std::string& text,
+                               size_t maxChars)
+{
+    RowLabel(x, y, label);
+    FieldDrawn(fieldId);
+    return TextField(fieldId,
+                     x + LABEL_W,
+                     y,
+                     width - LABEL_W,
+                     WIDGET_H,
+                     *m_UI,
+                     text,
+                     TextFilter::Any,
+                     maxChars) == TextFieldEvent::Committed;
+}
+
+int SceneEditorScene::ColorRow(
+        float x, float y, float width, const std::string& label, const Vec3& current)
+{
+    RowLabel(x, y, label);
+    int clicked = -1;
+    float step = std::min(SWATCH + 3.0f, (width - LABEL_W) / static_cast<float>(COLOR_COUNT));
+    for (int i = 0; i < COLOR_COUNT; ++i)
+    {
+        float sx = x + LABEL_W + i * step;
+        if (ColorSwatch(NextId(),
+                        sx,
+                        y + 2.0f,
+                        step - 3.0f,
+                        ToColor(COLORS[i]),
+                        SameColor(current, COLORS[i]),
+                        *m_UI))
+            clicked = i;
+    }
+    return clicked;
+}
+
+void SceneEditorScene::Scrollbar(
+        int id, float x, float bottom, float top, float content, float& scroll)
 {
     float view = top - bottom;
     float range = content - view;
@@ -1281,24 +1352,14 @@ bool SceneEditorScene::RenderToolbar()
         return clicked;
     };
 
+    // Playing is never in the prefab editor
     if (m_PrefabMode)
     {
         Text(10.0f, RowY(by), "PREFAB " + m_PrefabName, PREFAB_TEXT, LEFT_W - 20.0f);
         if (toolbarButton("Save Prefab", 90))
             SavePrefab();
-        if (toolbarButton("Undo", 50) && !m_Editor.Undo())
-            SetStatus("Nothing to undo");
-        if (toolbarButton("Redo", 50) && !m_Editor.Redo())
-            SetStatus("Nothing to redo");
-        if (toolbarButton("Back to Scene", 110))
-            BackToScene();
-
-        if (m_Editor.IsDirty())
-            Text(x + 4.0f, RowY(by), "*", ACCENT);
-        return true;
     }
-
-    if (!playing)
+    else if (!playing)
     {
         if (toolbarButton("New", 50))
             NewDocument();
@@ -1306,10 +1367,21 @@ bool SceneEditorScene::RenderToolbar()
             RevertScene();
         if (toolbarButton("Save", 50))
             SaveDocument();
+    }
+    if (!playing)
+    {
         if (toolbarButton("Undo", 50) && !m_Editor.Undo())
             SetStatus("Nothing to undo");
         if (toolbarButton("Redo", 50) && !m_Editor.Redo())
             SetStatus("Nothing to redo");
+    }
+    if (m_PrefabMode)
+    {
+        if (toolbarButton("Back to Scene", 110))
+            BackToScene();
+        if (m_Editor.IsDirty())
+            Text(x + 4.0f, RowY(by), "*", ACCENT);
+        return true;
     }
     if (toolbarButton(playing ? "Stop" : "Play", 60))
         TogglePlay();
@@ -1327,8 +1399,14 @@ bool SceneEditorScene::RenderToolbar()
     float fieldX = x + 12.0f + labelW;
     float fieldW = std::max(60.0f, std::min(150.0f, SCREEN_W - fieldX - 24.0f));
     std::string name = m_DocName;
-    if (TextField(ID_FIELD_SCENE_NAME, fieldX, by + 2.0f, fieldW, WIDGET_H, *m_UI, name, TextFilter::Name) ==
-        TextFieldEvent::Committed)
+    if (TextField(ID_FIELD_SCENE_NAME,
+                  fieldX,
+                  by + 2.0f,
+                  fieldW,
+                  WIDGET_H,
+                  *m_UI,
+                  name,
+                  TextFilter::Name) == TextFieldEvent::Committed)
         RenameDocument(name);
     if (m_Editor.IsDirty())
         Text(fieldX + fieldW + 6.0f, RowY(by), "*", ACCENT);
@@ -1360,7 +1438,9 @@ void SceneEditorScene::RenderSceneList()
     {
         m_PendingSceneIndex = m_SceneIndex;
         m_SceneIndex = before;
-        SetStatus(m_DocName + " has unsaved changes: Save, or pick " + picked + " again to discard them", true);
+        SetStatus(m_DocName + " has unsaved changes: Save, or pick " + picked +
+                          " again to discard them",
+                  true);
         return;
     }
     OpenScene(picked);
@@ -1372,15 +1452,21 @@ void SceneEditorScene::RenderStatusBar()
     // Right end: the Controls panel (also H)
     float buttonW = std::max(80.0f, UIText::Width("Controls") + 16.0f);
     float buttonX = SCREEN_W - buttonW - 10.0f;
-    if (Button(NextId(), buttonX, (STATUS_H - BUTTON_H) * 0.5f, *m_UI, buttonW, BUTTON_H, "Controls"))
+    if (Button(NextId(),
+               buttonX,
+               (STATUS_H - BUTTON_H) * 0.5f,
+               *m_UI,
+               buttonW,
+               BUTTON_H,
+               "Controls"))
         ToggleControls();
     float room = buttonX - 20.0f;
     if (m_StatusTimer > 0.0f)
         Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT, room);
-    const char* hints =
-            m_Editor.IsPlaying()
-                    ? "P stop  (the keyboard goes to the scene's scripts)"
-                    : "H: all controls  Right click: menus  WASD pan  arrows orbit/tilt  E/V up/down  Z/C zoom  I/K raise/lower  P play";
+    const char* hints = m_Editor.IsPlaying()
+                                ? "P stop  (the keyboard goes to the scene's scripts)"
+                                : "H: all controls  Right click: menus  WASD pan  arrows "
+                                  "orbit/tilt  E/V up/down  Z/C zoom  I/K raise/lower  P play";
     // The tooltip of the field under the mouse replaces the hints
     if (!m_Hint.empty())
         Text(10.0f, 8.0f, m_Hint, ACCENT, room);
@@ -1388,15 +1474,30 @@ void SceneEditorScene::RenderStatusBar()
         Text(10.0f, 8.0f, hints, TEXT_DIM, room);
 }
 
-void SceneEditorScene::DrawOutline(Entity entity, float r, float g, float b)
+bool SceneEditorScene::InFront(const Vec3& point) const
+{
+    Vec3 forward = m_Cam->Backward * -1.0f;
+    return (point - m_Cam->Position).Dot(forward) > 0.5f;
+}
+
+void SceneEditorScene::DrawWorldLine(const Vec3& a, const Vec3& b, const Color& color)
+{
+    Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
+    Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
+    App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
+}
+
+void SceneEditorScene::DrawVisibleLine(const Vec3& a, const Vec3& b, const Color& color)
+{
+    if (InFront(a) && InFront(b))
+        DrawWorldLine(a, b, color);
+}
+
+void SceneEditorScene::DrawOutline(Entity entity, const Color& color)
 {
     std::vector<Vec3> outline = SceneObjects::WorldOutline(entity);
     for (size_t i = 0; i < outline.size(); ++i)
-    {
-        Vec2 a = m_Cam->WorldPointToScreenSpace(outline[i]);
-        Vec2 c = m_Cam->WorldPointToScreenSpace(outline[(i + 1) % outline.size()]);
-        App::DrawLine(a.X, a.Y, c.X, c.Y, r, g, b);
-    }
+        DrawWorldLine(outline[i], outline[(i + 1) % outline.size()], color);
 }
 
 void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
@@ -1407,14 +1508,9 @@ void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
     Vec3 c = world.LocalPosition;
     Vec3 right = world.LocalRotation.RotatePoint(Vec3(size, 0.0f, 0.0f));
     Vec3 forward = world.LocalRotation.RotatePoint(Vec3(0.0f, 0.0f, size));
-    auto line = [&](const Vec3& a, const Vec3& b) {
-        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
-        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
-        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
-    };
-    line(c - right, c + right);
-    line(c - forward, c + forward);
-    line(c, c + Vec3(0.0f, size, 0.0f));
+    DrawWorldLine(c - right, c + right, color);
+    DrawWorldLine(c - forward, c + forward, color);
+    DrawWorldLine(c, c + Vec3(0.0f, size, 0.0f), color);
 }
 
 const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
@@ -1444,7 +1540,7 @@ const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
               {"Turn it", "R / J, Rot and Pitch (a sun: only turning)"},
               {"Inspector", "SceneLight: type, colour, shadows"},
               {"Right click", "Aim it, or Aim Light Here on an object"}}},
-                        {"EDITING",
+            {"EDITING",
              {{"U / Y", "Undo / redo"},
               {"G", "Snap to the grid on / off"},
               {"B", "Show all colliders / selected only"},
@@ -1458,13 +1554,23 @@ const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
 
 void SceneEditorScene::RenderControlsPanel()
 {
-    DrawPanel(CONTROLS_X, CONTROLS_BOTTOM, CONTROLS_W, CONTROLS_TOP - CONTROLS_BOTTOM, PANEL_FILL, ACCENT);
+    DrawPanel(CONTROLS_X,
+              CONTROLS_BOTTOM,
+              CONTROLS_W,
+              CONTROLS_TOP - CONTROLS_BOTTOM,
+              PANEL_FILL,
+              ACCENT);
     float x = CONTROLS_X + 12.0f;
     float width = CONTROLS_W - 24.0f;
     float y = CONTROLS_TOP - 28.0f;
     Text(x, y, "CONTROLS", ACCENT, width - 80.0f);
     float closeW = std::max(60.0f, UIText::Width("Close") + 16.0f);
-    if (Button(NextId(), CONTROLS_X + CONTROLS_W - closeW - 8.0f, CONTROLS_TOP - 30.0f, *m_UI, closeW, WIDGET_H,
+    if (Button(NextId(),
+               CONTROLS_X + CONTROLS_W - closeW - 8.0f,
+               CONTROLS_TOP - 30.0f,
+               *m_UI,
+               closeW,
+               WIDGET_H,
                "Close"))
         m_ShowControls = false;
     float keysW = std::min(150.0f, width * 0.36f);
@@ -1497,23 +1603,17 @@ void SceneEditorScene::DrawCameraGizmo(Entity entity, bool selected)
     Vec3 up = right.Cross(look);
     up.Normalize();
     const Color& color = selected ? ACCENT : CAMERA_COLOR;
-    Vec3 forward = m_Cam->Backward * -1.0f;
-    // Points behind the editor's view can not be drawn
-    auto visible = [&](const Vec3& p) { return (p - m_Cam->Position).Dot(forward) > 0.5f; };
-    auto line = [&](const Vec3& a, const Vec3& b) {
-        if (!visible(a) || !visible(b))
-            return;
-        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
-        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
-        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
-    };
+    auto line = [&](const Vec3& a, const Vec3& b) { DrawVisibleLine(a, b, color); };
     line(view.Target, eye);
     // The pyramid: its size follows the field of view
     float depth = CAMERA_GIZMO_SIZE;
-    float half = depth * std::tan(std::clamp(view.FieldOfView, 20.0f, 150.0f) * 0.5f * 3.14159265f / 180.0f);
+    float half = depth * std::tan(std::clamp(view.FieldOfView, 20.0f, 150.0f) * 0.5f * 3.14159265f /
+                                  180.0f);
     Vec3 center = eye + look * depth;
-    Vec3 corners[4] = {center + right * (half * 1.3f) + up * half, center - right * (half * 1.3f) + up * half,
-                       center - right * (half * 1.3f) - up * half, center + right * (half * 1.3f) - up * half};
+    Vec3 corners[4] = {center + right * (half * 1.3f) + up * half,
+                       center - right * (half * 1.3f) + up * half,
+                       center - right * (half * 1.3f) - up * half,
+                       center + right * (half * 1.3f) - up * half};
     for (int i = 0; i < 4; ++i)
     {
         line(eye, corners[i]);
@@ -1522,7 +1622,7 @@ void SceneEditorScene::DrawCameraGizmo(Entity entity, bool selected)
     // "Up" marker on the top edge
     line(corners[0], center + up * (half * 1.8f));
     line(corners[1], center + up * (half * 1.8f));
-    if (visible(eye))
+    if (InFront(eye))
     {
         Vec2 label = m_Cam->WorldPointToScreenSpace(eye);
         Text(label.X + 8.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 120.0f);
@@ -1536,17 +1636,8 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
     // cone (spot)
     SceneLighting::Settings settings = SceneLighting::SettingsOf(entity);
     const Color& color = selected ? ACCENT : LIGHT_COLOR;
-    Vec3 forward = m_Cam->Backward * -1.0f;
-    auto visible = [&](const Vec3& p) { return (p - m_Cam->Position).Dot(forward) > 0.5f; };
-    auto line = [&](const Vec3& a, const Vec3& b, const Color& c) {
-        if (!visible(a) || !visible(b))
-            return;
-        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
-        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
-        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, c.R, c.G, c.B);
-    };
     const Vec3 at = settings.Position;
-    if (!visible(at))
+    if (!InFront(at))
         return;
     // The ring and its rays face the view
     Vec3 right = m_Cam->CamTransform.GetRight();
@@ -1559,13 +1650,12 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
         float a1 = TWO_PI * static_cast<float>(i + 1) / SEGMENTS;
         Vec3 p0 = at + (right * std::cos(a0) + up * std::sin(a0)) * (LIGHT_GIZMO_SIZE * 0.5f);
         Vec3 p1 = at + (right * std::cos(a1) + up * std::sin(a1)) * (LIGHT_GIZMO_SIZE * 0.5f);
-        line(p0, p1, color);
+        DrawVisibleLine(p0, p1, color);
         if (i % 2 == 0)
-            line(at + (p0 - at) * 1.4f, at + (p0 - at) * 2.0f, color);
+            DrawVisibleLine(at + (p0 - at) * 1.4f, at + (p0 - at) * 2.0f, color);
     }
     // Where it shines
-    Vec3 target = SceneLighting::GroundTarget(settings);
-    line(at, target, color);
+    DrawVisibleLine(at, SceneLighting::GroundTarget(settings), color);
     Vec3 direction = SceneLighting::Direction(settings.Yaw, settings.Light.Pitch);
     Vec3 side = direction.Cross(Vec3(0.0f, 1.0f, 0.0f));
     if (side.Dot(side) < 1e-6f)
@@ -1580,20 +1670,21 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
         for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
         {
             Vec3 start = at + offset * (LIGHT_GIZMO_SIZE * 1.5f);
-            line(start, start + direction * 4.0f, dim);
+            DrawVisibleLine(start, start + direction * 4.0f, dim);
         }
-        Vec2 label = m_Cam->WorldPointToScreenSpace(at);
-        Text(label.X + 12.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 140.0f);
-        return;
     }
-    float spread = std::tan(std::clamp(settings.Light.Spread, 30.0f, 150.0f) * 0.25f * 3.14159265f / 180.0f);
-    for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
+    else
     {
-        // Half way out of the cone, to where that ray meets the ground
-        Vec3 ray = direction + offset * spread;
-        ray.Normalize();
-        float length = ray.Y < -1e-3f && at.Y > 0.0f ? at.Y / -ray.Y : 10.0f;
-        line(at, at + ray * std::min(length, 200.0f), dim);
+        float spread = std::tan(std::clamp(settings.Light.Spread, 30.0f, 150.0f) * 0.25f *
+                                3.14159265f / 180.0f);
+        for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
+        {
+            // Half way out of the cone, to where that ray meets the ground
+            Vec3 ray = direction + offset * spread;
+            ray.Normalize();
+            float length = ray.Y < -1e-3f && at.Y > 0.0f ? at.Y / -ray.Y : 10.0f;
+            DrawVisibleLine(at, at + ray * std::min(length, 200.0f), dim);
+        }
     }
     Vec2 label = m_Cam->WorldPointToScreenSpace(at);
     Text(label.X + 12.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 140.0f);
@@ -1601,17 +1692,10 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
 
 void SceneEditorScene::DrawColliderGizmo(Entity entity)
 {
-    PhysicsGizmos::GizmoColor color = PhysicsGizmos::ColorOf(entity, m_Editor.IsPlaying());
-    Vec3 forward = m_Cam->Backward * -1.0f;
+    PhysicsGizmos::GizmoColor gizmo = PhysicsGizmos::ColorOf(entity, m_Editor.IsPlaying());
+    const Color color = {gizmo.R, gizmo.G, gizmo.B};
     for (const PhysicsGizmos::Line& line : PhysicsGizmos::ColliderLines(entity))
-    {
-        // Points behind the view can not be drawn
-        if ((line.A - m_Cam->Position).Dot(forward) <= 0.5f || (line.B - m_Cam->Position).Dot(forward) <= 0.5f)
-            continue;
-        Vec2 a = m_Cam->WorldPointToScreenSpace(line.A);
-        Vec2 b = m_Cam->WorldPointToScreenSpace(line.B);
-        App::DrawLine(a.X, a.Y, b.X, b.Y, color.R, color.G, color.B);
-    }
+        DrawVisibleLine(line.A, line.B, color);
 }
 
 void SceneEditorScene::DrawColliders()
@@ -1657,18 +1741,14 @@ void SceneEditorScene::RenderOverlay()
         if (SceneObjects::IsEmpty(selected))
             DrawCross(selected, ACCENT, CROSS_SIZE * 1.4f);
         else
-            DrawOutline(selected, ACCENT.R, ACCENT.G, ACCENT.B);
+            DrawOutline(selected, ACCENT);
         // Hierarchy links of the selection: to its parent and its children
-        auto link = [&](Entity a, Entity b, const Color& c) {
-            Vec2 sa = m_Cam->WorldPointToScreenSpace(SceneObjects::GetPosition(a));
-            Vec2 sb = m_Cam->WorldPointToScreenSpace(SceneObjects::GetPosition(b));
-            App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, c.R, c.G, c.B);
-        };
+        Vec3 at = SceneObjects::GetPosition(selected);
         Entity parent = m_Editor.ParentOf(selected);
         if (parent != NULL_ENTITY)
-            link(selected, parent, PARENT_LINK);
+            DrawWorldLine(at, SceneObjects::GetPosition(parent), PARENT_LINK);
         for (Entity child : m_Editor.ChildrenOf(selected))
-            link(selected, child, CHILD_LINK);
+            DrawWorldLine(at, SceneObjects::GetPosition(child), CHILD_LINK);
     }
 
     if (MouseOverUI() || m_Dragging || m_Menu.IsOpen())
@@ -1683,7 +1763,9 @@ void SceneEditorScene::RenderOverlay()
         Vec2 s = m_Cam->WorldPointToScreenSpace(snapped);
         App::DrawLine(s.X - 8, s.Y, s.X + 8, s.Y, 0.4f, 1.0f, 0.4f);
         App::DrawLine(s.X, s.Y - 8, s.X, s.Y + 8, 0.4f, 1.0f, 0.4f);
-        Text(m_UI->mouseX + 14.0f, m_UI->mouseY + 10.0f, m_PlaceName,
+        Text(m_UI->mouseX + 14.0f,
+             m_UI->mouseY + 10.0f,
+             m_PlaceName,
              m_PlaceKind == AssetKind::Prefab ? PREFAB_TEXT : TEXT);
         return;
     }
@@ -1693,6 +1775,6 @@ void SceneEditorScene::RenderOverlay()
         if (SceneObjects::IsEmpty(hovered))
             DrawCross(hovered, TEXT, CROSS_SIZE * 1.2f);
         else
-            DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
+            DrawOutline(hovered, {0.8f, 0.8f, 0.8f});
     }
 }
