@@ -97,6 +97,9 @@ namespace Editor
         static constexpr const char* FIELD_NAME = "Field";
         static constexpr size_t MAX_UNDO = 64;
 
+        // A serialized world (undo steps, play mode, suspended scenes)
+        using Bytes = std::vector<std::uint8_t>;
+
         /**
          * \brief Replace the world with an empty scene: the field, a "Main
          *        Camera" and a "Directional Light" (without them: a prefab
@@ -144,7 +147,8 @@ namespace Editor
          *        behind it). A camera's eye marker is picked before anything
          *        else. `hitHeight` receives the height of the hit
          */
-        Entity PickRay(const std::function<Vec3(float)>& pointAtHeight, float* hitHeight = nullptr) const;
+        Entity PickRay(const std::function<Vec3(float)>& pointAtHeight,
+                       float* hitHeight = nullptr) const;
 
         /**
          * \brief Every scene object (entities with a SceneObject)
@@ -171,7 +175,7 @@ namespace Editor
          * \brief Raise / lower an object: its world height (Y), kept within
          *        +-MAX_HEIGHT. Move keeps the height
          */
-        bool SetHeight(Entity entity, float y, bool recordUndo = true);
+        bool SetHeight(Entity entity, float y);
         static constexpr float MAX_HEIGHT = 100.0f;
 
         // -- Shaders (shapes and models) ---------------------------------------------
@@ -182,7 +186,6 @@ namespace Editor
          */
         bool SetFragmentShader(Entity entity, FragShaderTypeID shader);
         bool SetVertexShader(Entity entity, VertShaderTypeID shader);
-        bool HasShaders(Entity entity) const;
 
         /**
          * \brief Delete an object and all of its children
@@ -197,17 +200,13 @@ namespace Editor
          * \brief Place a copy of a prefab (under `parent` when given). One undo
          *        step, the instance's root is selected
          */
-        Entity PlacePrefab(const Prefab::Data& prefab, const Vec3& position, Entity parent = NULL_ENTITY);
+        Entity
+        PlacePrefab(const Prefab::Data& prefab, const Vec3& position, Entity parent = NULL_ENTITY);
 
         /**
          * \brief The prefab an instance root comes from ("" for other objects)
          */
         std::string PrefabOf(Entity entity) const;
-
-        /**
-         * \brief The object and its children as a prefab named `name`
-         */
-        Prefab::Data CapturePrefab(Entity root, const std::string& name) const;
 
         /**
          * \brief Make an object the root of an instance of `name` (after saving
@@ -262,9 +261,9 @@ namespace Editor
          */
         struct Session
         {
-            std::vector<std::uint8_t> World;
-            std::vector<std::vector<std::uint8_t>> Undo;
-            std::vector<std::vector<std::uint8_t>> Redo;
+            Bytes World;
+            std::vector<Bytes> Undo;
+            std::vector<Bytes> Redo;
             bool Dirty = false;
             Entity Selected = NULL_ENTITY;
         };
@@ -488,10 +487,14 @@ namespace Editor
          * \brief The scene file's bytes, in WorldSerializer::FileFormat() (binary
          *        or plain text)
          */
-        std::vector<std::uint8_t> SaveSceneToBytes(const std::string& name) const;
+        Bytes SaveSceneToBytes(const std::string& name) const;
 
         // -- Undo / redo -----------------------------------------------------------
 
+        /**
+         * \brief Record the world before an edit: one undo step, and the
+         *        scene now has unsaved changes
+         */
         void RecordUndo();
         bool Undo();
         bool Redo();
@@ -527,23 +530,34 @@ namespace Editor
         static float Snap(float value, float step);
         Vec3 ClampToField(const Vec3& position) const;
 
+        /**
+         * \brief Where an object placed at `position` goes: on the field, on
+         *        the ground (y = 0)
+         */
+        Vec3 GroundPoint(const Vec3& position) const;
+
       private:
-        std::vector<std::uint8_t> Snapshot() const;
-        void Restore(const std::vector<std::uint8_t>& snapshot);
+        Bytes Snapshot() const;
+        void Restore(const Bytes& snapshot);
+        // A new or loaded document: no history, nothing selected, saved
+        void ResetDocument();
+        // Undo / Redo: go back to the last state of `from`, the current one goes to `to`
+        bool StepHistory(std::vector<Bytes>& from, std::vector<Bytes>& to);
         // One object (no children) at a world position, same world yaw
         Entity CopyObject(Entity source, const Vec3& position);
-        // Place without an undo step
+        // Create without an undo step
         Entity PlaceObject(ObjectKind kind, const Vec3& position, const PlaceSettings& settings);
         Entity DuplicateTree(Entity source, const Vec3& offset, Entity parent);
-        void PushUndo(std::vector<std::uint8_t> snapshot);
+        void PushUndo(Bytes snapshot);
         // Entity fields pointing at a removed object are cleared
         void ClearReferencesTo(Entity removed);
         void WorldReplaced();
         bool CanEdit(Entity entity) const;
+        bool HasShaders(Entity entity) const;
 
-        std::vector<std::vector<std::uint8_t>> m_UndoStack;
-        std::vector<std::vector<std::uint8_t>> m_RedoStack;
-        std::vector<std::uint8_t> m_PlaySnapshot;
+        std::vector<Bytes> m_UndoStack;
+        std::vector<Bytes> m_RedoStack;
+        Bytes m_PlaySnapshot;
         Entity m_Selected = NULL_ENTITY;
         bool m_Dirty = false;
         bool m_Playing = false;

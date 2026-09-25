@@ -211,8 +211,19 @@ class SceneEditorScene : public Scene
     void DuplicateSelected();
     void RotateSelected(float degrees);
     void RaiseSelected(float amount);
-    void CreateObject(Editor::ObjectKind kind, const Vec3& position, Entity parent, const std::string& model = "");
+    void CreateObject(Editor::ObjectKind kind,
+                      const Vec3& position,
+                      Entity parent,
+                      const std::string& model = "");
     void PlaceAsset(const Vec3& position);
+    void StopPlacing();
+    // Load a prefab file, with an error in the status bar when it fails
+    bool LoadPrefab(const std::string& name, Prefab::Data& data);
+    // Prefab instance actions (context menu and inspector)
+    void ResetInstance(Entity root);
+    void UnpackInstance(Entity root);
+    // Put the scene aside and show a prefab (null: a new one) on its own stage
+    void EnterPrefabMode(const Prefab::Data* prefab, const std::string& name);
     void RefreshSceneList();
     void RefreshAssets();
     std::string UniqueSceneName() const;
@@ -229,7 +240,12 @@ class SceneEditorScene : public Scene
     void RenderSceneList();
     void RenderStatusBar();
     void RenderOverlay();
-    void DrawOutline(Entity entity, float r, float g, float b);
+    // Points behind the editor's view can not be drawn
+    bool InFront(const Vec3& point) const;
+    void DrawWorldLine(const Vec3& a, const Vec3& b, const Color& color);
+    // Only when both ends are in front of the view
+    void DrawVisibleLine(const Vec3& a, const Vec3& b, const Color& color);
+    void DrawOutline(Entity entity, const Color& color);
     void DrawCross(Entity entity, const Color& color, float size);
     void DrawCameraGizmo(Entity entity, bool selected);
     void DrawLightGizmo(Entity entity, bool selected);
@@ -258,19 +274,30 @@ class SceneEditorScene : public Scene
      * \brief Foldable section header with an optional Remove button. True
      *        when the section is open. `removed` is set when Remove was clicked
      */
-    bool Section(const std::string& title, const std::string& summary, bool removable, float x, float width, bool& removed);
+    bool Section(const std::string& title,
+                 const std::string& summary,
+                 bool removable,
+                 float x,
+                 float width,
+                 bool& removed);
     /**
      * \brief Widget(s) of one reflected field, generated from its FieldInfo
      */
-    void RenderField(Entity e, const std::string& component, const Reflection::FieldInfo& field, float x, float width);
+    void RenderField(Entity e,
+                     const std::string& component,
+                     const Reflection::FieldInfo& field,
+                     float x,
+                     float width);
 
     // Widgets
-    int Stepper(float x,
-                float y,
-                float width,
-                const std::string& label,
-                const char* minus = "-",
-                const char* plus = "+");
+    /**
+     * \brief "label [<][>]" row: -1 / +1 when a button was clicked
+     */
+    int Stepper(float x, float y, float width, const std::string& label);
+    /**
+     * \brief The two step buttons ending at `right`: -1 / +1 when clicked
+     */
+    int StepButtons(float right, float y, const char* minus, const char* plus);
     /**
      * \brief "Label [typed value] [-][+]": true when the value was typed or
      *        stepped (value updated)
@@ -283,6 +310,20 @@ class SceneEditorScene : public Scene
                    float& value,
                    float step,
                    const char* format = "%.2f");
+    /**
+     * \brief "Label [typed text]": true when an edit was committed
+     */
+    bool TextRow(float x,
+                 float y,
+                 float width,
+                 const std::string& label,
+                 int fieldId,
+                 std::string& text,
+                 size_t maxChars = 32);
+    /**
+     * \brief "Label" and the colour swatches: index of the clicked one, -1 for none
+     */
+    int ColorRow(float x, float y, float width, const std::string& label, const Vec3& current);
     /**
      * \brief Vertical scrollbar on [x, bottom .. top]. `scroll` goes from 0
      *        (top) to content - view. Drag the thumb or click the track
@@ -315,6 +356,7 @@ class SceneEditorScene : public Scene
         Prefab,
         Model
     };
+    void StartPlacing(AssetKind kind, const std::string& name);
     AssetKind m_PlaceKind = AssetKind::None;
     std::string m_PlaceName;
     // An asset row is being dragged onto the scene view

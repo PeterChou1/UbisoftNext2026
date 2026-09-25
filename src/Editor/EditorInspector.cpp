@@ -28,11 +28,9 @@
 #include "Mesh.h"
 #include "Reflection/ComponentCatalog.h"
 #include "SceneEditorScene.h"
-#include "ShaderLibrary.h"
-
-#include "ShaderLibrary.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Scripting/ScriptSystem.h"
+#include "ShaderLibrary.h"
 #include "Transform.h"
 #include "UIState.h"
 #include "World/SceneComponents.h"
@@ -42,7 +40,6 @@
 extern ECSManager ECS;
 extern GameManager GameSceneManager;
 
-using Editor::ObjectKind;
 using SceneObjects::BodyType;
 using namespace EditorStyle;
 
@@ -66,8 +63,12 @@ bool SceneEditorScene::Row(float height, float& y)
     return y >= m_ViewBottom - 0.5f && y + height <= m_ViewTop + 0.5f;
 }
 
-bool SceneEditorScene::Section(
-        const std::string& title, const std::string& summary, bool removable, float x, float width, bool& removed)
+bool SceneEditorScene::Section(const std::string& title,
+                               const std::string& summary,
+                               bool removable,
+                               float x,
+                               float width,
+                               bool& removed)
 {
     removed = false;
     bool open = m_Folded.count(title) == 0;
@@ -77,7 +78,8 @@ bool SceneEditorScene::Section(
     float headW = removable ? width - REMOVE_W - 4.0f : width;
     DrawPanel(x - 4.0f, y, width + 8.0f, WIDGET_H, SECTION_FILL, SECTION_FILL);
     // Click the title to fold / unfold the section
-    if (m_UI->leftClick && Inside(m_UI->mouseX, m_UI->mouseY, x, y, headW, WIDGET_H) && !m_UI->IsTyping())
+    if (m_UI->leftClick && Inside(m_UI->mouseX, m_UI->mouseY, x, y, headW, WIDGET_H) &&
+        !m_UI->IsTyping())
     {
         open = !open;
         if (open)
@@ -126,7 +128,11 @@ void SceneEditorScene::RenderInspector()
             Text(x, RowY(y), "right click to create one", TEXT_DIM);
     }
     m_InspectorContent = start - m_RowCursor;
-    Scrollbar(SCROLL_INSPECTOR, left + INSPECTOR_W - SCROLLBAR_W - 6.0f, m_ViewBottom, m_ViewTop, m_InspectorContent,
+    Scrollbar(SCROLL_INSPECTOR,
+              left + INSPECTOR_W - SCROLLBAR_W - 6.0f,
+              m_ViewBottom,
+              m_ViewTop,
+              m_InspectorContent,
               m_InspectorScroll);
 }
 
@@ -136,10 +142,20 @@ void SceneEditorScene::RenderPlayingInspector(float x, float width)
     if (Row(WIDGET_H, y))
         Text(x, RowY(y), "PLAYING", PLAY_TEXT, width);
     if (Row(WIDGET_H, y))
-        Text(x, RowY(y), "Scripts: " + std::to_string(GameSceneManager.Scripts().InstanceCount()), TEXT_DIM, width);
+        Text(x,
+             RowY(y),
+             "Scripts: " + std::to_string(GameSceneManager.Scripts().InstanceCount()),
+             TEXT_DIM,
+             width);
     // Live physics outlines (red: touching)
-    if (Row(WIDGET_H, y) &&
-        CheckBox(NextId(), x, y + 3.0f, m_ShowColliders, 16.0f, *m_UI, "Show colliders", width - 30.0f))
+    if (Row(WIDGET_H, y) && CheckBox(NextId(),
+                                     x,
+                                     y + 3.0f,
+                                     m_ShowColliders,
+                                     16.0f,
+                                     *m_UI,
+                                     "Show colliders",
+                                     width - 30.0f))
         ToggleColliders();
     for (const std::string& missing : GameSceneManager.Scripts().MissingScripts())
     {
@@ -178,12 +194,9 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         if (Row(WIDGET_H, y))
         {
             // Name: type a new one (must be unique)
-            Text(x, RowY(y), "Name", TEXT, LABEL_W - 4.0f);
             std::string name = m_Editor.NameOf(e);
-            FieldDrawn(ID_FIELD_NAME);
-            if (TextField(ID_FIELD_NAME, x + LABEL_W, y, width - LABEL_W, WIDGET_H, *m_UI, name) ==
-                        TextFieldEvent::Committed &&
-                name != m_Editor.NameOf(e) && !m_Editor.Rename(e, name))
+            if (TextRow(x, y, width, "Name", ID_FIELD_NAME, name) && name != m_Editor.NameOf(e) &&
+                !m_Editor.Rename(e, name))
                 SetStatus("Can not rename to '" + name + "' (empty or already used)", true);
         }
         if (Row(WIDGET_H, y))
@@ -194,14 +207,17 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
             Text(x, RowY(y), kind + "  #" + std::to_string(e), TEXT_DIM, width * 0.55f);
             std::size_t children = m_Editor.ChildrenOf(e).size();
             if (children > 0)
-                Text(x + width * 0.6f, RowY(y), std::to_string(children) + (children == 1 ? " child" : " children"),
-                     TEXT_DIM, width * 0.4f);
+                Text(x + width * 0.6f,
+                     RowY(y),
+                     std::to_string(children) + (children == 1 ? " child" : " children"),
+                     TEXT_DIM,
+                     width * 0.4f);
         }
         if (Row(WIDGET_H, y))
         {
             std::string tag = ECS.GetComponent<SceneObject>(e).Tag;
-            if ((d = Stepper(x, y, width, "Tag " + TagLabel(tag), "<", ">")) != 0)
-                m_Editor.SetTag(e, TAGS[Cycle(IndexOf(TAGS, tag), d, TAG_COUNT)]);
+            if ((d = Stepper(x, y, width, "Tag " + DashIfEmpty(tag))) != 0)
+                m_Editor.SetTag(e, CycleIn(TAGS, tag, d));
         }
     }
 
@@ -214,17 +230,11 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
             EditPrefab(prefab);
         else if (Button(NextId(), ix + third + 4.0f, y, *m_UI, third, WIDGET_H, "Reset"))
         {
-            Prefab::Data data;
-            std::string error;
-            if (!Prefab::LoadFile(Prefab::PathOf(prefab, m_PrefabDirectory), data, error))
-                SetStatus("Can not load prefab " + prefab + ": " + error, true);
-            else if (m_Editor.ResetToPrefab(e, data) != NULL_ENTITY)
-                SetStatus("Reset to prefab " + prefab);
+            ResetInstance(e);
             return;
         }
-        else if (Button(NextId(), ix + 2.0f * (third + 4.0f), y, *m_UI, third, WIDGET_H, "Unpack") &&
-                 m_Editor.UnpackPrefab(e))
-            SetStatus(m_Editor.NameOf(e) + " is no longer linked to " + prefab);
+        else if (Button(NextId(), ix + 2.0f * (third + 4.0f), y, *m_UI, third, WIDGET_H, "Unpack"))
+            UnpackInstance(e);
     }
 
     // -- Transform -------------------------------------------------------------------------
@@ -238,13 +248,10 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
             {
                 // Parent: type an object's name ("-" = top level), or drag it
                 // in the Hierarchy
-                std::string parentName = parent == NULL_ENTITY ? std::string("-") : m_Editor.NameOf(parent);
+                std::string parentName =
+                        parent == NULL_ENTITY ? std::string("-") : m_Editor.NameOf(parent);
                 std::string typed = parentName;
-                Text(ix, RowY(y), "Parent", TEXT, LABEL_W - 4.0f);
-                FieldDrawn(ID_FIELD_PARENT);
-                if (TextField(ID_FIELD_PARENT, ix + LABEL_W, y, iw - LABEL_W, WIDGET_H, *m_UI, typed) ==
-                            TextFieldEvent::Committed &&
-                    typed != parentName)
+                if (TextRow(ix, y, iw, "Parent", ID_FIELD_PARENT, typed) && typed != parentName)
                 {
                     bool none = typed.empty() || typed == "-";
                     Entity target = none ? NULL_ENTITY : SceneObjects::FindByName(typed);
@@ -266,58 +273,53 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
                 m_Editor.SetHeight(e, py);
             if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Pos Z", ID_FIELD_POS_Z, pz, SNAP_STEP))
                 m_Editor.Move(e, Vec3(p.X, p.Y, pz));
-            if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Rot", ID_FIELD_ROT, yaw, ROTATE_STEP, "%.0f"))
+            if (Row(WIDGET_H, y) &&
+                NumberRow(ix, y, iw, "Rot", ID_FIELD_ROT, yaw, ROTATE_STEP, "%.0f"))
                 m_Editor.SetYaw(e, yaw);
             if (!isShape)
             {
                 // Models and empties: the transform's scale (an empty's scale
                 // also scales its children)
                 float scale = ECS.GetComponent<Transform>(e).LocalScale.X;
-                if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Scale", ID_FIELD_SCALE, scale, SIZE_STEP))
+                if (Row(WIDGET_H, y) &&
+                    NumberRow(ix, y, iw, "Scale", ID_FIELD_SCALE, scale, SIZE_STEP))
                     m_Editor.SetSize(e, scale, scale);
             }
         }
     }
 
     // -- Shape2D ------------------------------------------------------------------------------
-    if (isShape && Section("Shape2D", Editor::ObjectKindName(m_Editor.KindOf(e)), false, x, width, removed))
+    if (isShape &&
+        Section("Shape2D", Editor::ObjectKindName(m_Editor.KindOf(e)), false, x, width, removed))
     {
         Shape2D shape = ECS.GetComponent<Shape2D>(e);
         bool round = shape.Type == Shape2DType::Circle || shape.Type == Shape2DType::Polygon;
-        float w = shape.Width, h = shape.Height, thick = shape.Thickness, sides = static_cast<float>(shape.Sides);
-        if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, round ? "Size" : "Width", ID_FIELD_WIDTH, w, SIZE_STEP))
+        float w = shape.Width, h = shape.Height, thick = shape.Thickness,
+              sides = static_cast<float>(shape.Sides);
+        if (Row(WIDGET_H, y) &&
+            NumberRow(ix, y, iw, round ? "Size" : "Width", ID_FIELD_WIDTH, w, SIZE_STEP))
             m_Editor.SetSize(e, w, shape.Height);
-        if (!round && Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Height", ID_FIELD_HEIGHT, h, SIZE_STEP))
+        if (!round && Row(WIDGET_H, y) &&
+            NumberRow(ix, y, iw, "Height", ID_FIELD_HEIGHT, h, SIZE_STEP))
             m_Editor.SetSize(e, shape.Width, h);
         if (shape.Type == Shape2DType::Polygon && Row(WIDGET_H, y) &&
             NumberRow(ix, y, iw, "Sides", ID_FIELD_SIDES, sides, 1.0f, "%.0f"))
             m_Editor.SetSides(e, static_cast<int>(std::lround(sides)));
-        if (!isField && Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Thick", ID_FIELD_THICK, thick, 0.05f))
+        if (!isField && Row(WIDGET_H, y) &&
+            NumberRow(ix, y, iw, "Thick", ID_FIELD_THICK, thick, 0.05f))
             m_Editor.SetThickness(e, thick);
-        if (Row(WIDGET_H, y))
-        {
-            Text(ix, RowY(y), "Color", TEXT, LABEL_W - 4.0f);
-            float step = std::min(SWATCH + 3.0f, (iw - LABEL_W) / static_cast<float>(COLOR_COUNT));
-            for (int i = 0; i < COLOR_COUNT; ++i)
-            {
-                float sx = ix + LABEL_W + i * step;
-                if (ColorSwatch(NextId(), sx, y + 2.0f, step - 3.0f, ToColor(COLORS[i]), SameColor(shape.Color, COLORS[i]),
-                                *m_UI))
-                    m_Editor.SetColor(e, COLORS[i]);
-            }
-        }
+        int color = -1;
+        if (Row(WIDGET_H, y) && (color = ColorRow(ix, y, iw, "Color", shape.Color)) >= 0)
+            m_Editor.SetColor(e, COLORS[color]);
     }
 
     // -- Mesh ------------------------------------------------------------------------------------
     if (isModel)
     {
         const std::string model = ECS.GetComponent<Mesh>(e).Model;
-        if (Section("Mesh", model, false, x, width, removed) && !m_Models.empty() && Row(WIDGET_H, y) &&
-            (d = Stepper(ix, y, iw, "Model " + model, "<", ">")) != 0)
-        {
-            int count = static_cast<int>(m_Models.size());
-            m_Editor.SetModel(e, m_Models[Cycle(IndexOf(m_Models, model), d, count)]);
-        }
+        if (Section("Mesh", model, false, x, width, removed) && !m_Models.empty() &&
+            Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Model " + model)) != 0)
+            m_Editor.SetModel(e, CycleIn(m_Models, model, d));
     }
     if (isField)
         return;
@@ -334,7 +336,8 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         {
             const auto& fragments = ShaderLibrary::FragmentShaders();
             const auto& vertices = ShaderLibrary::VertexShaders();
-            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Frag " + ShaderLibrary::Name(fragment), "<", ">")) != 0)
+            if (Row(WIDGET_H, y) &&
+                (d = Stepper(ix, y, iw, "Frag " + ShaderLibrary::Name(fragment))) != 0)
             {
                 int count = static_cast<int>(fragments.size());
                 int index = 0;
@@ -345,11 +348,12 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
                 m_Editor.SetFragmentShader(e, next.Value);
                 SetStatus(std::string("Fragment shader ") + next.Name + ": " + next.Description);
             }
-            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Vert " + ShaderLibrary::Name(vertex), "<", ">")) != 0)
+            if (Row(WIDGET_H, y) &&
+                (d = Stepper(ix, y, iw, "Vert " + ShaderLibrary::Name(vertex))) != 0)
             {
                 int count = static_cast<int>(vertices.size());
-                const auto& next =
-                        vertices[static_cast<std::size_t>(Cycle(static_cast<int>(vertex), d, count))];
+                const auto& next = vertices[static_cast<std::size_t>(
+                        Cycle(static_cast<int>(vertex), d, count))];
                 m_Editor.SetVertexShader(e, next.Value);
                 SetStatus(std::string("Vertex shader ") + next.Name + ": " + next.Description);
             }
@@ -360,7 +364,11 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
     BodyType body = SceneObjects::GetBodyType(e);
     if (body != BodyType::None)
     {
-        bool open = Section(Editor::SceneEditor::COMPONENT_RIGIDBODY, SceneObjects::BodyTypeName(body), true, x, width,
+        bool open = Section(Editor::SceneEditor::COMPONENT_RIGIDBODY,
+                            SceneObjects::BodyTypeName(body),
+                            true,
+                            x,
+                            width,
                             removed);
         if (removed)
         {
@@ -370,7 +378,7 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         }
         // Static / Dynamic / Trigger (None is Remove)
         if (open && Row(WIDGET_H, y) &&
-            (d = Stepper(ix, y, iw, std::string("Body ") + SceneObjects::BodyTypeName(body), "<", ">")) != 0)
+            (d = Stepper(ix, y, iw, std::string("Body ") + SceneObjects::BodyTypeName(body))) != 0)
         {
             int count = static_cast<int>(BodyType::Count) - 1;
             int index = Cycle(static_cast<int>(body) - 1, d, count);
@@ -381,23 +389,26 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         {
             static const char* const COLLIDERS[] = {"Auto", "Box", "Circle", "Polygon"};
             ColliderShape collider = SceneObjects::ColliderShapeOf(e);
-            std::string label = std::string("Collider ") + COLLIDERS[static_cast<int>(collider.Type)];
+            std::string label =
+                    std::string("Collider ") + COLLIDERS[static_cast<int>(collider.Type)];
             if (collider.Type == ColliderShapeType::Auto)
                 label += std::string(" (") +
                          COLLIDERS[static_cast<int>(SceneObjects::EffectiveColliderShape(e))] + ")";
-            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, label, "<", ">")) != 0)
+            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, label)) != 0)
             {
-                auto next = static_cast<ColliderShapeType>(Cycle(static_cast<int>(collider.Type), d, 4));
+                auto next = static_cast<ColliderShapeType>(
+                        Cycle(static_cast<int>(collider.Type), d, 4));
                 m_Editor.SetColliderShape(e, next, collider.Scale);
                 SetStatus(std::string("Collider shape ") + COLLIDERS[static_cast<int>(next)]);
             }
             float scale = collider.Scale;
-            if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Extent", ID_FIELD_COLLIDER_SCALE, scale, 0.1f))
+            if (Row(WIDGET_H, y) &&
+                NumberRow(ix, y, iw, "Extent", ID_FIELD_COLLIDER_SCALE, scale, 0.1f))
                 m_Editor.SetColliderShape(e, collider.Type, scale);
         }
     }
 
-    // -- Script ------------------------------------------------------------------------------------
+    // -- Script -----------------------------------------------------------------------------------
     std::string script = m_Editor.GetScript(e);
     if (!script.empty())
     {
@@ -411,11 +422,9 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         if (open)
         {
             std::vector<std::string> scripts = ScriptRegistry::Get().Names(false);
-            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Script " + script, "<", ">")) != 0 && !scripts.empty())
-            {
-                int count = static_cast<int>(scripts.size());
-                m_Editor.SetScript(e, scripts[Cycle(IndexOf(scripts, script), d, count)]);
-            }
+            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Script " + script)) != 0 &&
+                !scripts.empty())
+                m_Editor.SetScript(e, CycleIn(scripts, script, d));
             if (const ScriptInfo* info = ScriptRegistry::Get().Find(script))
             {
                 int index = 0;
@@ -433,7 +442,7 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         }
     }
 
-    // -- The project's components (reflected) ------------------------------------------------------
+    // -- The project's components (reflected) -----------------------------------------------------
     for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
     {
         if (!entry.Has(ECS, e))
@@ -452,7 +461,7 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         }
     }
 
-    // -- Add Component, Duplicate / Delete --------------------------------------------------------------
+    // -- Add Component, Duplicate / Delete --------------------------------------------------------
     m_RowCursor -= 6.0f;
     if (Row(BUTTON_H, y) && Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Add Component"))
     {
@@ -483,8 +492,11 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
     }
 }
 
-void SceneEditorScene::RenderField(
-        Entity e, const std::string& component, const Reflection::FieldInfo& field, float x, float width)
+void SceneEditorScene::RenderField(Entity e,
+                                   const std::string& component,
+                                   const Reflection::FieldInfo& field,
+                                   float x,
+                                   float width)
 {
     using Reflection::FieldType;
     using Reflection::FieldValue;
@@ -495,8 +507,9 @@ void SceneEditorScene::RenderField(
     // Text box ids are taken whether the rows are visible or not: they stay
     // the same while the inspector scrolls
     int ids[3] = {0, 0, 0};
-    bool typed = field.Type == FieldType::Int || field.Type == FieldType::Float || field.Type == FieldType::String ||
-                 field.Type == FieldType::Entity || field.Type == FieldType::Vec2 || field.Type == FieldType::Vec3;
+    bool typed = field.Type == FieldType::Int || field.Type == FieldType::Float ||
+                 field.Type == FieldType::String || field.Type == FieldType::Entity ||
+                 field.Type == FieldType::Vec2 || field.Type == FieldType::Vec3;
     if (typed && !field.ReadOnly)
     {
         for (int i = 0; i < rows; ++i)
@@ -510,8 +523,9 @@ void SceneEditorScene::RenderField(
     };
     auto entityName = [&](const FieldValue& v) {
         auto target = static_cast<Entity>(std::get<std::int64_t>(v));
-        return m_Editor.IsObject(target) ? (m_Editor.IsField(target) ? std::string("Field") : m_Editor.NameOf(target))
-                                         : std::string("-");
+        return m_Editor.IsObject(target)
+                       ? (m_Editor.IsField(target) ? std::string("Field") : m_Editor.NameOf(target))
+                       : std::string("-");
     };
     auto tooltip = [&](float rowY) {
         // Hovering a field shows its tooltip in the status bar
@@ -525,10 +539,11 @@ void SceneEditorScene::RenderField(
         if (!Row(WIDGET_H, y))
             return;
         tooltip(y);
-        std::string shown = field.Type == FieldType::Enum     ? field.OptionName(std::get<std::int64_t>(value))
+        std::string shown = field.Type == FieldType::Enum
+                                    ? field.OptionName(std::get<std::int64_t>(value))
                             : field.Type == FieldType::Entity ? entityName(value)
                                                               : Reflection::ToString(value);
-        Text(x, RowY(y), label, TEXT_DIM, LABEL_W - 4.0f);
+        RowLabel(x, y, label, TEXT_DIM);
         Text(x + LABEL_W, RowY(y), shown, TEXT_DIM, width - LABEL_W);
         return;
     }
@@ -536,7 +551,8 @@ void SceneEditorScene::RenderField(
     if (field.Type == FieldType::Vec2 || field.Type == FieldType::Vec3)
     {
         bool three = field.Type == FieldType::Vec3;
-        Vec3 v = three ? std::get<Vec3>(value) : Vec3(std::get<Vec2>(value).X, std::get<Vec2>(value).Y, 0.0f);
+        Vec3 v = three ? std::get<Vec3>(value)
+                       : Vec3(std::get<Vec2>(value).X, std::get<Vec2>(value).Y, 0.0f);
         float* axes[3] = {&v.X, &v.Y, &v.Z};
         const char* names[3] = {"X", "Y", "Z"};
         auto step = static_cast<float>(field.StepOrDefault());
@@ -547,7 +563,8 @@ void SceneEditorScene::RenderField(
             if (!Row(WIDGET_H, y))
                 continue;
             tooltip(y);
-            if (NumberRow(x, y, width, field.Label + " " + names[i], ids[i], *axes[i], step, format))
+            if (NumberRow(
+                        x, y, width, field.Label + " " + names[i], ids[i], *axes[i], step, format))
                 changed = true;
         }
         if (changed)
@@ -562,7 +579,7 @@ void SceneEditorScene::RenderField(
     {
     case FieldType::Bool: {
         bool b = std::get<bool>(value);
-        Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
+        RowLabel(x, y, label);
         if (CheckBox(NextId(), x + LABEL_W, y + 3.0f, b, 16.0f, *m_UI))
             set(!b);
         break;
@@ -570,7 +587,8 @@ void SceneEditorScene::RenderField(
     case FieldType::Int:
     case FieldType::Float: {
         bool isInt = field.Type == FieldType::Int;
-        double number = isInt ? static_cast<double>(std::get<std::int64_t>(value)) : std::get<double>(value);
+        double number = isInt ? static_cast<double>(std::get<std::int64_t>(value))
+                              : std::get<double>(value);
         auto shown = static_cast<float>(number);
         double step = field.StepOrDefault();
         const char* format = isInt ? "%.0f" : (step < 0.01 ? "%.3f" : "%.2f");
@@ -580,11 +598,7 @@ void SceneEditorScene::RenderField(
     }
     case FieldType::String: {
         std::string text = std::get<std::string>(value);
-        Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
-        FieldDrawn(ids[0]);
-        if (TextField(ids[0], x + LABEL_W, y, width - LABEL_W, WIDGET_H, *m_UI, text, TextFilter::Any, 64) ==
-                    TextFieldEvent::Committed &&
-            text != std::get<std::string>(value))
+        if (TextRow(x, y, width, label, ids[0], text, 64) && text != std::get<std::string>(value))
             set(text);
         break;
     }
@@ -592,11 +606,7 @@ void SceneEditorScene::RenderField(
         // Type the name of the object to point at ("-" or empty = none)
         std::string text = entityName(value);
         std::string before = text;
-        Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
-        FieldDrawn(ids[0]);
-        if (TextField(ids[0], x + LABEL_W, y, width - LABEL_W, WIDGET_H, *m_UI, text, TextFilter::Any, 64) ==
-                    TextFieldEvent::Committed &&
-            text != before)
+        if (TextRow(x, y, width, label, ids[0], text, 64) && text != before)
         {
             if (text.empty() || text == "-")
                 set(static_cast<std::int64_t>(NULL_ENTITY));
@@ -609,7 +619,7 @@ void SceneEditorScene::RenderField(
     }
     case FieldType::Enum: {
         std::int64_t current = std::get<std::int64_t>(value);
-        int d = Stepper(x, y, width, label + " " + field.OptionName(current), "<", ">");
+        int d = Stepper(x, y, width, label + " " + field.OptionName(current));
         if (d != 0)
         {
             auto count = static_cast<int>(field.EnumMax - field.EnumMin + 1);
@@ -619,15 +629,9 @@ void SceneEditorScene::RenderField(
         break;
     }
     case FieldType::Color: {
-        Vec3 color = std::get<Vec3>(value);
-        Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
-        float step = std::min(SWATCH + 3.0f, (width - LABEL_W) / static_cast<float>(COLOR_COUNT));
-        for (int i = 0; i < COLOR_COUNT; ++i)
-        {
-            float sx = x + LABEL_W + i * step;
-            if (ColorSwatch(NextId(), sx, y + 2.0f, step - 3.0f, ToColor(COLORS[i]), SameColor(color, COLORS[i]), *m_UI))
-                set(COLORS[i]);
-        }
+        int color = ColorRow(x, y, width, label, std::get<Vec3>(value));
+        if (color >= 0)
+            set(COLORS[color]);
         break;
     }
     default:
@@ -649,12 +653,8 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
 
     std::vector<std::string> scripts = WithNone(ScriptRegistry::Get().Names(true));
     std::string script = settings->SceneScript;
-    std::string scriptLabel = script.empty() ? "-" : script;
-    if (Row(WIDGET_H, y) && (d = Stepper(x, y, width, "Script " + scriptLabel, "<", ">")) != 0)
-    {
-        int count = static_cast<int>(scripts.size());
-        m_Editor.SetSceneScript(scripts[Cycle(IndexOf(scripts, script), d, count)]);
-    }
+    if (Row(WIDGET_H, y) && (d = Stepper(x, y, width, "Script " + DashIfEmpty(script))) != 0)
+        m_Editor.SetSceneScript(CycleIn(scripts, script, d));
     if (const ScriptInfo* info = ScriptRegistry::Get().Find(settings->SceneScript))
     {
         int index = 0;
@@ -663,9 +663,13 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
             if (index >= MAX_PARAM_FIELDS)
                 break;
             float value = m_Editor.GetSceneParam(param.Name);
-            if (Row(WIDGET_H, y) &&
-                NumberRow(x + SECTION_INDENT, y, width - SECTION_INDENT, param.Name, ID_FIELD_SCENE_PARAM + index,
-                          value, param.Step))
+            if (Row(WIDGET_H, y) && NumberRow(x + SECTION_INDENT,
+                                              y,
+                                              width - SECTION_INDENT,
+                                              param.Name,
+                                              ID_FIELD_SCENE_PARAM + index,
+                                              value,
+                                              param.Step))
                 m_Editor.SetSceneParam(param.Name, value);
             ++index;
         }
@@ -674,9 +678,11 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
     m_RowCursor -= 6.0f;
     float fieldW = settings->FieldWidth;
     float fieldH = settings->FieldHeight;
-    if (Row(WIDGET_H, y) && NumberRow(x, y, width, "Field W", ID_FIELD_FIELD_W, fieldW, 2.0f, "%.0f"))
+    if (Row(WIDGET_H, y) &&
+        NumberRow(x, y, width, "Field W", ID_FIELD_FIELD_W, fieldW, 2.0f, "%.0f"))
         m_Editor.SetFieldSize(fieldW, settings->FieldHeight);
-    if (Row(WIDGET_H, y) && NumberRow(x, y, width, "Field H", ID_FIELD_FIELD_H, fieldH, 2.0f, "%.0f"))
+    if (Row(WIDGET_H, y) &&
+        NumberRow(x, y, width, "Field H", ID_FIELD_FIELD_H, fieldH, 2.0f, "%.0f"))
         m_Editor.SetFieldSize(settings->FieldWidth, fieldH);
 
     m_RowCursor -= 6.0f;
@@ -693,28 +699,44 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
 
     // Physics debug outlines of every body (B)
     m_RowCursor -= 6.0f;
-    if (Row(WIDGET_H, y) &&
-        CheckBox(NextId(), x, y + 3.0f, m_ShowColliders, 16.0f, *m_UI, "Show all colliders (B)", width - 30.0f))
+    if (Row(WIDGET_H, y) && CheckBox(NextId(),
+                                     x,
+                                     y + 3.0f,
+                                     m_ShowColliders,
+                                     16.0f,
+                                     *m_UI,
+                                     "Show all colliders (B)",
+                                     width - 30.0f))
         ToggleColliders();
 
     // Scene files in plain text (readable / diffable) or binary
     bool text = Serialization::WorldSerializer::FileFormat() == Serialization::SaveFormat::Text;
-    if (Row(WIDGET_H, y) && CheckBox(NextId(), x, y + 3.0f, text, 16.0f, *m_UI, "Plain text files", width - 30.0f))
+    if (Row(WIDGET_H, y) &&
+        CheckBox(NextId(), x, y + 3.0f, text, 16.0f, *m_UI, "Plain text files", width - 30.0f))
     {
         text = !text;
         Serialization::WorldSerializer::SetFileFormat(text ? Serialization::SaveFormat::Text
                                                            : Serialization::SaveFormat::Binary);
-        SetStatus(text ? "Scenes are saved as plain text (Save to write it)" : "Scenes are saved as binary");
+        SetStatus(text ? "Scenes are saved as plain text (Save to write it)"
+                       : "Scenes are saved as binary");
     }
     if (Row(WIDGET_H, y))
-        Text(x, RowY(y), std::string("Snap to grid (G): ") + (m_Snap ? "on" : "off"), TEXT_DIM, width);
+        Text(x,
+             RowY(y),
+             std::string("Snap to grid (G): ") + (m_Snap ? "on" : "off"),
+             TEXT_DIM,
+             width);
 
     m_RowCursor -= 6.0f;
     if (Row(WIDGET_H, y))
         Text(x, RowY(y), "Objects " + std::to_string(m_Editor.Objects().size()), TEXT_DIM, width);
     if (Row(WIDGET_H, y))
-        Text(x, RowY(y), "Undo " + std::to_string(m_Editor.UndoCount()) + "  Redo " + std::to_string(m_Editor.RedoCount()),
-             TEXT_DIM, width);
+        Text(x,
+             RowY(y),
+             "Undo " + std::to_string(m_Editor.UndoCount()) + "  Redo " +
+                     std::to_string(m_Editor.RedoCount()),
+             TEXT_DIM,
+             width);
     std::vector<std::string> issues = m_Editor.Validate();
     if (issues.empty())
     {
