@@ -7,7 +7,9 @@
 // unit tests / AuthorScenes tool drive the same API from code.
 //
 // A scene is a field (a large flat rectangle) with objects placed on it:
-// basic 2D shapes (rectangle, circle, triangle, regular polygon) or 3D models.
+// basic 2D shapes (rectangle, circle, triangle, regular polygon), 3D models or
+// empty transforms (no shape: groups, markers, spawn points). Objects form a
+// hierarchy through their Transforms: a child moves with its parent.
 // Every object is an ECS entity built by SceneObjects (World/SceneObjects.h);
 // C++ scripts are attached by name with editable parameters.
 //
@@ -40,6 +42,8 @@ namespace Editor
         Triangle,
         Polygon,
         Model,
+        // Only a Transform (and a name): groups other objects, marks points
+        Empty,
         Count
     };
 
@@ -103,7 +107,9 @@ namespace Editor
         Entity Place(ObjectKind kind, const Vec3& position, const PlaceSettings& settings = {});
 
         /**
-         * \brief Copy of an object (same shape, body, tag, script) next to it
+         * \brief Copy of an object (same shape, body, tag, script, components)
+         *        next to it, with copies of all of its children. The copy has
+         *        the same parent as the original
          */
         Entity Duplicate(Entity entity);
 
@@ -138,9 +144,46 @@ namespace Editor
 
         std::string NameOf(Entity entity) const;
 
+        // Positions and rotations are in world space: moving a parent carries
+        // its children along, moving a child moves it alone
         bool Move(Entity entity, const Vec3& position, bool recordUndo = true);
         bool SetYaw(Entity entity, float degrees);
+
+        /**
+         * \brief Delete an object and all of its children
+         */
         bool Remove(Entity entity);
+
+        // -- Hierarchy -------------------------------------------------------------
+
+        /**
+         * \brief Make `child` a child of `parent` (NULL_ENTITY: back to the top
+         *        of the scene). The child keeps its place in the world. Refused
+         *        for the field (neither parent nor child) and for loops (an
+         *        object under one of its own children)
+         */
+        bool SetParent(Entity child, Entity parent);
+
+        /**
+         * \brief New empty object at a world position, as a child of `parent`
+         *        (NULL_ENTITY: top level). One undo step; it is selected
+         */
+        Entity AddEmpty(const Vec3& position, Entity parent = NULL_ENTITY);
+
+        /**
+         * \brief Parent object, NULL_ENTITY for a top level object
+         */
+        Entity ParentOf(Entity entity) const;
+
+        /**
+         * \brief Child objects, in order
+         */
+        std::vector<Entity> ChildrenOf(Entity entity) const;
+
+        /**
+         * \brief Top level objects (no parent), the field first
+         */
+        std::vector<Entity> RootObjects() const;
 
         /**
          * \brief Shape footprint (Width x Height, circles / polygons use Width).
@@ -306,6 +349,9 @@ namespace Editor
       private:
         std::vector<std::uint8_t> Snapshot() const;
         void Restore(const std::vector<std::uint8_t>& snapshot);
+        // One object (no children) at a world position, same world yaw
+        Entity CopyObject(Entity source, const Vec3& position);
+        Entity DuplicateTree(Entity source, const Vec3& offset, Entity parent);
         void PushUndo(std::vector<std::uint8_t> snapshot);
         // Entity fields pointing at a removed object are cleared
         void ClearReferencesTo(Entity removed);

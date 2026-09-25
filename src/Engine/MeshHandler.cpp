@@ -367,8 +367,8 @@ void MeshHandler::AddMesh(
     // Retrieve the mesh data from the AssetServer
     MeshInstance instance = AssetServer::GetInstance().GetModel(mesh.Model);
 
-    // Transform vertices into world space
-    instance.transform(transform);
+    // Transform vertices into world space (through the parents of a child)
+    instance.transform(transform.GetWorldTransform());
 
     // Ensure each vertex has the correct shader ID
     for (auto& vertex : instance.vertices)

@@ -5,6 +5,41 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 10. Scene hierarchy tree and empty transforms
+
+- **Hierarchy tab** (left panel, next to the Palette): every object as a
+  tree of Transforms, children indented under their parent.
+  - Click a row to select the object. Selecting in the field reveals its
+    row: its parents unfold and the tree scrolls to it.
+  - Drag a row onto another to make it a child, or onto **SCENE** for the
+    top level.
+  - Fold / unfold branches with **- / +**; the tree scrolls when long.
+  - **New Empty** adds an empty under the selected object.
+- **Empty transforms:**
+  - **6 Empty** in the palette (key **6**) places an object that is only a
+    Transform, for groups, markers, spawn points and script holders.
+  - The editor draws it as a light blue cross, and nothing in the game.
+  - It can be picked, dragged, scaled, parented, and given scripts and
+    components.
+- **Parent field** in the inspector: type a parent's name, or `-` for the
+  top level. The viewport shows lines from the selection to its parent and
+  children.
+- **Children follow their parent:**
+  - drawing, picking, outlines and physics bodies all use the world pose;
+  - positions and yaws in the editor and in scripts are world values;
+  - a child keeps its place in the world when its parent changes.
+- **Duplicate and Delete** work on whole branches, and each change of
+  parent is one undo step.
+- **Engine fixes:**
+  - The parent / child transform math was broken: the world position loop
+    followed the first parent forever, and offsets were rotated by the
+    child's rotation instead of the parent's.
+  - `SetGlobalRotation` was wrong for children.
+  - Scene files with broken or looping parent links are repaired on load.
+- The `sandbox` scene has an example: an empty `Orbit` spun by the
+  `Rotator` script carries two moons.
+- 13 new tests (175 in total).
+
 ## 9. Components: add / remove in the editor, generated inspectors, saved by name
 
 - **Reflection (`Engine/Reflection/Reflection.h`):** a component describes

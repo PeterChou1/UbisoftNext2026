@@ -1,5 +1,10 @@
 #include "SceneSerialization.h"
 
+#include "../Log.h"
+#include "../World/SceneObjects.h"
+
+extern ECSManager ECS;
+
 namespace Serialization
 {
     // The names below are written into scene files. Never rename them, bump the
@@ -31,6 +36,14 @@ namespace Serialization
             SerializationRegistry r;
             RegisterEngineSerializers(r);
             RegisterSceneSerializers(r);
+            // A damaged or hand edited file can hold parent links that do not
+            // match: fix them so no system follows a dead parent or a loop
+            r.AddPostLoadCallback([](ECSManager& ecs) {
+                if (&ecs != &ECS)
+                    return;
+                if (int fixes = SceneObjects::RepairHierarchy(); fixes > 0)
+                    LOG_WARN("Serialization", "Repaired %d broken parent / child links", fixes);
+            });
             return r;
         }();
         return registry;

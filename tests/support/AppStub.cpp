@@ -73,6 +73,8 @@ namespace App
                 state.Frame[i + 2] = b;
             }
         }
+        else
+            state.Lines.push_back({sx, sy, ex, ey, r, g, b});
     }
 
     void Print(const float x,

@@ -94,6 +94,183 @@ namespace SceneObjects
         return e;
     }
 
+    Entity CreateEmpty(const std::string& name, const Vec3& position, float yawDegrees)
+    {
+        Entity e = ECS.CreateEntity();
+        ECS.AddComponent<Transform>(e, MakeTransform(position, yawDegrees));
+        ECS.AddComponent<SceneObject>(e, {name.empty() ? UniqueName("Empty") : name, ""});
+        return e;
+    }
+
+    bool IsEmpty(Entity entity)
+    {
+        return ECS.IsEntityAlive(entity) && ECS.HasComponent<Transform>(entity) &&
+               !ECS.HasComponent<Shape2D>(entity) && !ECS.HasComponent<Mesh>(entity);
+    }
+
+    namespace
+    {
+        bool HasTransform(Entity e)
+        {
+            return e != NULL_ENTITY && ECS.IsEntityAlive(e) && ECS.HasComponent<Transform>(e);
+        }
+
+        void Unlink(Entity child)
+        {
+            Transform& t = ECS.GetComponent<Transform>(child);
+            if (HasTransform(t.Parent))
+            {
+                std::vector<Entity>& siblings = ECS.GetComponent<Transform>(t.Parent).Children;
+                siblings.erase(std::remove(siblings.begin(), siblings.end(), child), siblings.end());
+            }
+            t.Parent = NULL_ENTITY;
+        }
+    } // namespace
+
+    bool SetParent(Entity child, Entity parent)
+    {
+        if (!HasTransform(child) || (parent != NULL_ENTITY && !HasTransform(parent)))
+            return false;
+        if (parent == child || IsAncestor(child, parent))
+            return false;
+        Transform& t = ECS.GetComponent<Transform>(child);
+        if (t.Parent == parent)
+            return true;
+
+        // Where the child is in the world, and the new parent's frame
+        Transform world = t.GetWorldTransform();
+        Unlink(child);
+        Transform::Pose frame{Vec3(0, 0, 0), Quat(0, 0, 0, 1), Vec3(1, 1, 1)};
+        if (parent != NULL_ENTITY)
+        {
+            Transform& p = ECS.GetComponent<Transform>(parent);
+            p.Children.push_back(child);
+            t.Parent = parent;
+            frame = t.ParentPose();
+        }
+        // Same world pose, expressed in the parent's frame
+        auto unscale = [](float v, float s) { return std::fabs(s) > 1e-6f ? v / s : v; };
+        Quat inverse = frame.Rotation.Inverse();
+        Vec3 offset = inverse.RotatePoint(world.LocalPosition - frame.Position);
+        Vec3 position(unscale(offset.X, frame.Scale.X), unscale(offset.Y, frame.Scale.Y), unscale(offset.Z, frame.Scale.Z));
+        Vec3 scale(unscale(world.LocalScale.X, frame.Scale.X),
+                   unscale(world.LocalScale.Y, frame.Scale.Y),
+                   unscale(world.LocalScale.Z, frame.Scale.Z));
+        Quat rotation = inverse * world.LocalRotation;
+        rotation.Normalize();
+        t.SetLocalPose(position, rotation, scale);
+        return true;
+    }
+
+    Entity GetParent(Entity entity)
+    {
+        if (!HasTransform(entity))
+            return NULL_ENTITY;
+        Entity parent = ECS.GetComponent<Transform>(entity).Parent;
+        return HasTransform(parent) ? parent : NULL_ENTITY;
+    }
+
+    std::vector<Entity> GetChildren(Entity entity)
+    {
+        std::vector<Entity> result;
+        if (!HasTransform(entity))
+            return result;
+        for (Entity child : ECS.GetComponent<Transform>(entity).Children)
+        {
+            if (HasTransform(child))
+                result.push_back(child);
+        }
+        return result;
+    }
+
+    bool IsAncestor(Entity ancestor, Entity entity)
+    {
+        if (ancestor == NULL_ENTITY)
+            return false;
+        Entity it = GetParent(entity);
+        // Bounded walk: never loops forever on a damaged hierarchy
+        for (std::size_t steps = 0; it != NULL_ENTITY && steps <= MAX_ENTITIES; ++steps)
+        {
+            if (it == ancestor)
+                return true;
+            it = GetParent(it);
+        }
+        return false;
+    }
+
+    int RepairHierarchy()
+    {
+        int fixes = 0;
+        std::vector<Entity> living = ECS.GetLivingEntities();
+        for (Entity e : living)
+        {
+            if (!ECS.HasComponent<Transform>(e))
+                continue;
+            Transform& t = ECS.GetComponent<Transform>(e);
+            // Children: alive, with a Transform, pointing back, listed once
+            std::vector<Entity> kept;
+            for (Entity child : t.Children)
+            {
+                bool valid = HasTransform(child) && ECS.GetComponent<Transform>(child).Parent == e &&
+                             std::find(kept.begin(), kept.end(), child) == kept.end();
+                if (valid)
+                    kept.push_back(child);
+                else
+                    ++fixes;
+            }
+            t.Children = kept;
+        }
+        for (Entity e : living)
+        {
+            if (!ECS.HasComponent<Transform>(e))
+                continue;
+            Transform& t = ECS.GetComponent<Transform>(e);
+            if (t.Parent == NULL_ENTITY)
+                continue;
+            if (!HasTransform(t.Parent) || t.Parent == e)
+            {
+                t.Parent = NULL_ENTITY;
+                ++fixes;
+                continue;
+            }
+            std::vector<Entity>& siblings = ECS.GetComponent<Transform>(t.Parent).Children;
+            if (std::find(siblings.begin(), siblings.end(), e) == siblings.end())
+            {
+                siblings.push_back(e);
+                ++fixes;
+            }
+        }
+        // Loops: walking up from an entity must end at a root
+        for (Entity e : living)
+        {
+            if (!ECS.HasComponent<Transform>(e))
+                continue;
+            std::vector<Entity> path;
+            Entity it = e;
+            while (it != NULL_ENTITY)
+            {
+                if (std::find(path.begin(), path.end(), it) != path.end())
+                {
+                    // `it` closes a loop: cut it from its parent
+                    Unlink(it);
+                    ++fixes;
+                    break;
+                }
+                path.push_back(it);
+                it = ECS.GetComponent<Transform>(it).Parent;
+            }
+        }
+        if (fixes > 0)
+        {
+            for (Entity e : living)
+            {
+                if (ECS.HasComponent<Transform>(e))
+                    ECS.GetComponent<Transform>(e).IsDirty = true;
+            }
+        }
+        return fixes;
+    }
+
     void SetBodyType(Entity entity, BodyType type)
     {
         if (ECS.HasComponent<RigidBody>(entity))
@@ -135,7 +312,7 @@ namespace SceneObjects
 
     float GetYaw(Entity entity)
     {
-        float degrees = ECS.GetComponent<Transform>(entity).LocalRotation.GetPitch2D() * RAD_TO_DEG;
+        float degrees = ECS.GetComponent<Transform>(entity).GetWorldRotation().GetPitch2D() * RAD_TO_DEG;
         degrees = std::fmod(degrees, 360.0f);
         if (degrees < 0.0f)
             degrees += 360.0f;
@@ -146,12 +323,12 @@ namespace SceneObjects
 
     Vec3 GetPosition(Entity entity)
     {
-        return ECS.GetComponent<Transform>(entity).LocalPosition;
+        return ECS.GetComponent<Transform>(entity).GetWorldPosition();
     }
 
     void SetPosition(Entity entity, const Vec3& position)
     {
-        ECS.GetComponent<Transform>(entity).SetLocalPosition(position);
+        ECS.GetComponent<Transform>(entity).SetWorldPosition(position);
     }
 
     Entity FindByName(const std::string& name)
@@ -193,9 +370,17 @@ namespace SceneObjects
             return;
         if (ECS.HasComponent<Transform>(entity))
         {
+            Unlink(entity);
             std::vector<Entity> children = ECS.GetComponent<Transform>(entity).Children;
             for (Entity child : children)
-                Destroy(child);
+            {
+                // Children already destroyed on their own are skipped
+                if (HasTransform(child) && ECS.GetComponent<Transform>(child).Parent == entity)
+                {
+                    ECS.GetComponent<Transform>(child).Parent = NULL_ENTITY;
+                    Destroy(child);
+                }
+            }
         }
         ECS.DestroyEntity(entity);
     }
@@ -204,7 +389,14 @@ namespace SceneObjects
     {
         if (!ECS.HasComponent<Transform>(entity))
             return false;
-        Transform& t = ECS.GetComponent<Transform>(entity);
+        // World frame of the object (parents included)
+        Transform t = ECS.GetComponent<Transform>(entity).GetWorldTransform();
+        if (IsEmpty(entity))
+        {
+            Vec3 d = worldPoint - t.LocalPosition;
+            float radius = EMPTY_PICK_RADIUS + margin;
+            return d.X * d.X + d.Z * d.Z <= radius * radius;
+        }
         // Into the object's local frame (undoes position, rotation and scale).
         // Transform::Inverse is a rigid inverse (transpose) that is wrong for
         // scaled objects, so project on the Affine axes instead: the columns
@@ -231,9 +423,10 @@ namespace SceneObjects
     std::vector<Vec3> WorldOutline(Entity entity)
     {
         std::vector<Vec3> outline;
-        if (!ECS.HasComponent<Transform>(entity))
+        // Empties have no footprint (the editor draws them as a cross)
+        if (!ECS.HasComponent<Transform>(entity) || IsEmpty(entity))
             return outline;
-        Transform& t = ECS.GetComponent<Transform>(entity);
+        Transform t = ECS.GetComponent<Transform>(entity).GetWorldTransform();
         std::vector<Vec2> local;
         if (ECS.HasComponent<Shape2D>(entity))
         {

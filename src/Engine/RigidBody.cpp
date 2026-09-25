@@ -81,24 +81,27 @@ void RigidBody::SetStatic()
 
 void RigidBody::SyncTransform(Transform& transform)
 {
+    // Bodies live in world space: a child's body follows its parents
+    Vec3 position = transform.GetWorldPosition();
+    Quat rotation = transform.GetWorldRotation();
     switch (transform.Plane)
     {
     case YZ: {
-        Position.X = transform.LocalPosition.Y;
-        Position.Y = transform.LocalPosition.Z;
-        Angular = transform.LocalRotation.GetRoll2D();
+        Position.X = position.Y;
+        Position.Y = position.Z;
+        Angular = rotation.GetRoll2D();
         break;
     }
     case XZ: {
-        Position.X = transform.LocalPosition.X;
-        Position.Y = transform.LocalPosition.Z;
-        Angular = -transform.LocalRotation.GetPitch2D();
+        Position.X = position.X;
+        Position.Y = position.Z;
+        Angular = -rotation.GetPitch2D();
         break;
     }
     case XY: {
-        Position.X = transform.LocalPosition.X;
-        Position.Y = transform.LocalPosition.Y;
-        Angular = transform.LocalRotation.GetYaw2D();
+        Position.X = position.X;
+        Position.Y = position.Y;
+        Angular = rotation.GetYaw2D();
         break;
     }
     }
@@ -110,23 +113,25 @@ void RigidBody::ForwardTransform(Transform& transform) const
         return;
 
     // transform.SetPosition2D(Position);
+    // World position (the same as the local one for a root transform)
+    Vec3 current = transform.GetWorldPosition();
     switch (transform.Plane)
     {
     case YZ: {
-        Vec3 Loc = Vec3(transform.LocalPosition.X, Position.X, Position.Y);
-        transform.SetLocalPosition(Loc);
+        Vec3 Loc = Vec3(current.X, Position.X, Position.Y);
+        transform.SetWorldPosition(Loc);
         transform.UpdateLocalRow(AngularDelta);
         break;
     }
     case XZ: {
-        Vec3 Loc = Vec3(Position.X, transform.LocalPosition.Y, Position.Y);
-        transform.SetLocalPosition(Loc);
+        Vec3 Loc = Vec3(Position.X, current.Y, Position.Y);
+        transform.SetWorldPosition(Loc);
         transform.UpdateLocalPitch(AngularDelta);
         break;
     }
     case XY: {
-        Vec3 Loc = Vec3(Position.X, Position.Y, transform.LocalPosition.Z);
-        transform.SetLocalPosition(Loc);
+        Vec3 Loc = Vec3(Position.X, Position.Y, current.Z);
+        transform.SetWorldPosition(Loc);
         transform.UpdateLocalYaw(AngularDelta);
     }
     }

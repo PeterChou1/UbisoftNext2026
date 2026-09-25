@@ -2,6 +2,107 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Scene hierarchy and empty transforms
+
+### How the hierarchy fits the ECS
+
+- The hierarchy is not a new system. It is the `Transform` component's
+  `Parent` / `Children` fields, which the save files already stored.
+  - Local values (`LocalPosition` / `LocalRotation` / `LocalScale`, and
+    `Affine`) are relative to the parent.
+  - The world pose applies every ancestor: scale, rotate, translate.
+- Systems that need world space ask the Transform:
+  - **Rendering:** `MeshHandler` builds and updates meshes with
+    `GetWorldTransform()`. `UpdateChild` marks the whole branch dirty when a
+    parent changes, so children are re-transformed in the same frame.
+  - **Physics:** `RigidBody::SyncTransform` reads the world position and
+    rotation. `ForwardTransform` writes back through `SetWorldPosition`.
+  - **Picking and outlines:** `SceneObjects::Contains` / `WorldOutline` use
+    the world frame.
+  - **Scripts and the editor:** `SceneObjects::GetPosition / SetPosition /
+    GetYaw / SetYaw` are world values.
+- For a root Transform all of these return exactly the local values, so
+  nothing changes for objects without a parent. The committed scenes still
+  render and simulate identically.
+
+### Engine (`Transform`, `SceneObjects`)
+
+- **Transform math fixes:**
+  - `GetWorldPosition` looked up the first parent on every step of its loop
+    (it never reached the grandparents).
+  - `GetWorldRotation` multiplied in the wrong order, with the same loop
+    bug.
+  - `GetWorldTransform` rotated the child's offset by the child's own
+    rotation instead of the parent's.
+  - `SetGlobalRotation` applied the rotation twice to children.
+
+  All four now share one implementation (`ApplyAncestors`). It is bounded,
+  so damaged data can't loop forever.
+- **New Transform members:** `ParentPose()`, `SetWorldPosition()` and
+  `SetLocalPose()`. `UpdateChild` skips children that no longer exist
+  instead of asserting.
+- **`SceneObjects`:**
+  - `CreateEmpty` / `IsEmpty`: an object with only a Transform and a
+    SceneObject.
+  - `SetParent(child, parent)`: keeps the world pose, refuses loops and
+    self-parenting, and updates both `Children` lists.
+  - `GetParent`, `GetChildren`, `IsAncestor`.
+  - `RepairHierarchy()` fixes dead parents, children that don't point back,
+    duplicate entries and loops.
+  - `Destroy` removes the object from its parent's children first. It still
+    destroys the whole branch.
+  - An empty is picked within `EMPTY_PICK_RADIUS` and has no outline.
+- **Loading:** the scene registry runs `RepairHierarchy` after every load,
+  with a log warning when it fixed something. A hand-edited file with a
+  parent loop loads without hanging any system.
+
+### Editor
+
+- **Core:**
+  - `ObjectKind::Empty` (`Place` never gives an empty a body), and
+    `AddEmpty(position, parent)` as a single undo step.
+  - `SetParent`, which refuses the field and loops, and records no undo
+    step when nothing changes.
+  - `ParentOf`, `ChildrenOf`, `RootObjects` (the field first).
+  - `Duplicate` copies the whole branch (`DuplicateTree` / `CopyObject`),
+    keeping relative positions and world scale; the copy stays under the
+    same parent.
+  - `Remove` deletes the branch and clears Entity fields pointing into it.
+  - The Components tab's Transform row shows "in Parent" or "n children".
+- **GUI:**
+  - The left panel has **Palette / Hierarchy** tabs. Six palette kinds fit
+    the room of five (22 px buttons).
+  - The tree (`RenderHierarchy`, `HierarchyRows`) is a depth-first list
+    with folding, selection highlight, reveal-on-select and scrolling. Rows
+    are dragged onto rows or onto SCENE, with a drop hint in the status bar
+    and error messages for refused moves.
+  - Key **6** places empties.
+  - The Properties tab has a **Parent** field and a children count. Empties
+    show only a Scale row, which scales their children.
+  - The overlay draws empties as crosses (`DrawCross`; the selected one is
+    larger and in the accent colour) and links from the selection to its
+    parent and children.
+- **Sample scene:** `sandbox` has `Orbit` (an empty with a `Rotator`) and
+  two child moons.
+
+### Tests
+
+- `tests/HierarchyTests.cpp` has 11 tests:
+  - world math checked against the Affine matrix products;
+  - SetParent keeping the world pose, and parents carrying their children;
+  - loops refused, destroy and detach, repairs, and a looping text file;
+  - children drawn, picked and simulated in world space;
+  - empties;
+  - editor parent / undo, branch duplicate and delete, empties picking,
+    scaling and saving;
+  - the sandbox orbit, whose render mesh is checked in the vertex buffer.
+- Two GUI tests drive the tree with the mouse: select, drag to parent, the
+  loop refused, fold, drop on SCENE, New Empty. They also cover key 6, the
+  cross lines, and the Parent field.
+- The test AppStub now records overlay lines.
+- Mutation check: rotating offsets by the child's rotation again (the old
+  bug) fails 4 tests.
+
 ## Components: reflection, generic serialization, editor add / remove
 
 ### Reflection (`src/Engine/Reflection/Reflection.h/.cpp`)

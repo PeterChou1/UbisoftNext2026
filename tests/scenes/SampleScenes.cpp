@@ -173,6 +173,19 @@ namespace
         editor.SetField(player, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Player));
         editor.SetField(player, ComponentNames::Faction, "Title", std::string("Hero"));
 
+        // Hierarchy: an empty spun by a Rotator carries its two children
+        // around it
+        Entity orbit = editor.AddEmpty({7, 0, 1});
+        editor.Rename(orbit, "Orbit");
+        editor.SetScript(orbit, ScriptNames::Rotator);
+        editor.SetScriptParam(orbit, "Speed", 60.0f);
+        for (int i = 0; i < 2; ++i)
+        {
+            Entity moon = editor.Place(ObjectKind::Circle, {5.0f + 4.0f * i, 0, 1}, Brush(0.8f, 0.8f, YELLOW, BodyType::None));
+            editor.Rename(moon, "Moon_" + std::to_string(i + 1));
+            editor.SetParent(moon, orbit);
+        }
+
         // 3D models from data/models on the same field
         PlaceSettings model;
         model.Model = "Box";
@@ -214,7 +227,7 @@ namespace SampleScenes
                 {"empty", "Just the field", Empty},
                 {"level_1", "CollectGame level 1: pickups and walls", Level1},
                 {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
-                {"sandbox", "Every shape type, crates, a chaser, 3D models and components", Sandbox},
+                {"sandbox", "Every shape type, crates, a chaser, 3D models, components and a hierarchy", Sandbox},
                 {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel, true},
         };
         return scenes;

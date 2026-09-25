@@ -33,6 +33,13 @@ namespace AppStub
         // Every string printed during the current frame, with its position
         std::vector<PrintedText> Printed;
         size_t LinesDrawn = 0;
+        // Lines drawn this frame by the UI / overlays (not the renderer's
+        // 1 px pixel lines)
+        struct DrawnLine
+        {
+            float X1, Y1, X2, Y2, R, G, B;
+        };
+        std::vector<DrawnLine> Lines;
         struct DrawnTriangle
         {
             Vec2 Screen[3]; // NDC x, y of each corner (after the w divide)

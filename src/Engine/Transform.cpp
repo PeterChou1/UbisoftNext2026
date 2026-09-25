@@ -3,6 +3,8 @@
 #include "ECSManager.h"
 #include "stdafx.h"
 
+#include <cmath>
+
 extern ECSManager ECS;
 
 Vec3 GetScale(const Mat4& M)
@@ -22,11 +24,47 @@ void UpdateChild(std::vector<Entity> children)
 
     for (Entity child : children)
     {
-        assert(ECS.HasComponent<Transform>(child));
+        // A child destroyed without detaching it first is skipped
+        if (!ECS.IsEntityAlive(child) || !ECS.HasComponent<Transform>(child))
+            continue;
         Transform& T = ECS.GetComponent<Transform>(child);
         T.IsDirty = true;
         UpdateChild(T.Children);
     }
+}
+
+namespace
+{
+    // Deepest hierarchy followed (guards against cycles in damaged data)
+    constexpr int MAX_DEPTH = 256;
+
+    Vec3 MulScale(const Vec3& a, const Vec3& b) { return Vec3(a.X * b.X, a.Y * b.Y, a.Z * b.Z); }
+
+    /**
+     * \brief Apply the ancestors starting at `parent` to a local pose:
+     *        each ancestor scales, rotates, then translates (its Affine)
+     */
+    void ApplyAncestors(Entity parent, Vec3& position, Quat& rotation, Vec3& scale)
+    {
+        Entity it = parent;
+        for (int depth = 0; it != NULL_ENTITY && depth < MAX_DEPTH; ++depth)
+        {
+            if (!ECS.IsEntityAlive(it) || !ECS.HasComponent<Transform>(it))
+                break;
+            const Transform& P = ECS.GetComponent<Transform>(it);
+            position = P.LocalRotation.RotatePoint(MulScale(P.LocalScale, position)) + P.LocalPosition;
+            rotation = P.LocalRotation * rotation;
+            scale = MulScale(P.LocalScale, scale);
+            it = P.Parent;
+        }
+    }
+} // namespace
+
+Transform::Pose Transform::ParentPose() const
+{
+    Pose pose{Vec3(0, 0, 0), Quat(0, 0, 0, 1), Vec3(1, 1, 1)};
+    ApplyAncestors(Parent, pose.Position, pose.Rotation, pose.Scale);
+    return pose;
 }
 
 Transform::Transform()
@@ -154,60 +192,72 @@ Transform::Transform(const Vec3& pos, const Vec3& target, const Vec3& up)
     Inverse = Affine.AffineInverse();
 }
 
+// The world pose of a child is its local pose with every ancestor applied
+// (scale, rotate, translate). These used to follow the wrong entity after the
+// first parent and rotate the offset by the child's rotation instead of the
+// parent's
+
 Vec3 Transform::GetWorldPosition()
 {
-    Vec3 worldPos = LocalPosition;
-    Entity Iterator = Parent;
-    while (Iterator != NULL_ENTITY)
-    {
-        Transform T = ECS.GetComponent<Transform>(Parent);
-        worldPos.X = worldPos.X * T.LocalScale.X;
-        worldPos.Y = worldPos.Y * T.LocalScale.Y;
-        worldPos.Z = worldPos.Z * T.LocalScale.Z;
-        worldPos = T.LocalRotation.RotatePoint(worldPos);
-        worldPos += T.LocalPosition;
-        Iterator = T.Parent;
-    }
-    return worldPos;
+    if (Parent == NULL_ENTITY)
+        return LocalPosition;
+    Vec3 position = LocalPosition;
+    Quat rotation = LocalRotation;
+    Vec3 scale = LocalScale;
+    ApplyAncestors(Parent, position, rotation, scale);
+    return position;
 }
 
 Quat Transform::GetWorldRotation()
 {
-
-    Quat Rot = LocalRotation;
-    Entity Iterator = Parent;
-    while (Iterator != NULL_ENTITY)
-    {
-        Transform T = ECS.GetComponent<Transform>(Parent);
-        Rot = Rot * T.LocalRotation;
-        Iterator = T.Parent;
-    }
-    return Rot;
+    if (Parent == NULL_ENTITY)
+        return LocalRotation;
+    Vec3 position = LocalPosition;
+    Quat rotation = LocalRotation;
+    Vec3 scale = LocalScale;
+    ApplyAncestors(Parent, position, rotation, scale);
+    return rotation;
 }
 
 Transform Transform::GetWorldTransform()
 {
-    const Transform worldTransform = *this;
-    const Entity Iterator = Parent;
+    if (Parent == NULL_ENTITY)
+        return *this;
+    Vec3 position = LocalPosition;
+    Quat rotation = LocalRotation;
+    Vec3 scale = LocalScale;
+    ApplyAncestors(Parent, position, rotation, scale);
+    Transform world(position, rotation, scale);
+    world.Plane = Plane;
+    return world;
+}
 
-    if (Iterator != NULL_ENTITY)
+void Transform::SetWorldPosition(const Vec3& position)
+{
+    if (Parent == NULL_ENTITY)
     {
-        const Transform worldParent = ECS.GetComponent<Transform>(Iterator).GetWorldTransform();
-        Vec3 Scale = worldTransform.LocalScale;
-        Scale.X *= worldParent.LocalScale.X;
-        Scale.Y *= worldParent.LocalScale.Y;
-        Scale.Z *= worldParent.LocalScale.Z;
-        Quat Rot = worldParent.LocalRotation * worldTransform.LocalRotation;
-        Vec3 Position = worldTransform.LocalPosition;
-        Position.X *= worldParent.LocalScale.X;
-        Position.Y *= worldParent.LocalScale.Y;
-        Position.Z *= worldParent.LocalScale.Z;
-        Position = worldTransform.LocalRotation.RotatePoint(Position);
-        Position = Position + worldParent.LocalPosition;
-        Transform T = Transform(Position, Rot, Scale);
-        return T;
+        SetLocalPosition(position);
+        return;
     }
-    return *this;
+    // Undo the parents: translate, rotate, then scale back
+    Pose parent = ParentPose();
+    Vec3 local = parent.Rotation.Inverse().RotatePoint(position - parent.Position);
+    auto unscale = [](float v, float s) { return std::fabs(s) > 1e-6f ? v / s : v; };
+    SetLocalPosition(Vec3(unscale(local.X, parent.Scale.X),
+                          unscale(local.Y, parent.Scale.Y),
+                          unscale(local.Z, parent.Scale.Z)));
+}
+
+void Transform::SetLocalPose(const Vec3& position, const Quat& rotation, const Vec3& scale)
+{
+    Transform pose(position, rotation, scale);
+    LocalPosition = pose.LocalPosition;
+    LocalRotation = pose.LocalRotation;
+    LocalScale = pose.LocalScale;
+    Affine = pose.Affine;
+    Inverse = pose.Inverse;
+    IsDirty = true;
+    UpdateChild(Children);
 }
 
 void Transform::SetParentEntity(Entity parent, Entity children)
@@ -259,7 +309,10 @@ void Transform::SetGlobalRotation(Quat rot)
 {
     if (Parent != NULL_ENTITY)
     {
-        Update(Vec3(), rot);
+        // Local rotation = inverse(parents' rotation) * world rotation
+        Quat local = ParentPose().Rotation.Inverse() * rot;
+        Update(Vec3(), LocalRotation.Inverse() * local);
+        return;
     }
     Quat parent = GetWorldRotation();
     Quat invParent = parent.Inverse();

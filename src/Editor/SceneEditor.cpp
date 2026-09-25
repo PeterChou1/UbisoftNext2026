@@ -36,8 +36,13 @@ namespace Editor
             return Serialization::WorldSerializer(Serialization::GetSceneSerializationRegistry());
         }
 
+        // Empties are small targets: they win over the objects around them
+        constexpr float EMPTY_AREA = 0.01f;
+
         float FootprintArea(Entity e)
         {
+            if (SceneObjects::IsEmpty(e))
+                return EMPTY_AREA;
             if (ECS.HasComponent<Shape2D>(e))
             {
                 const Shape2D& s = ECS.GetComponent<Shape2D>(e);
@@ -63,6 +68,8 @@ namespace Editor
             return "Polygon";
         case ObjectKind::Model:
             return "Model";
+        case ObjectKind::Empty:
+            return "Empty";
         default:
             return "?";
         }
@@ -112,7 +119,13 @@ namespace Editor
         Vec3 p = ClampToField(position);
         p.Y = 0.0f;
         Entity e = NULL_ENTITY;
-        if (kind == ObjectKind::Model)
+        if (kind == ObjectKind::Empty)
+        {
+            // Just a transform: no body, it has nothing to collide with
+            e = SceneObjects::CreateEmpty(SceneObjects::UniqueName(ObjectKindName(kind)), p, settings.YawDegrees);
+            ECS.GetComponent<SceneObject>(e).Tag = settings.Tag;
+        }
+        else if (kind == ObjectKind::Model)
         {
             e = SceneObjects::CreateModel(SceneObjects::UniqueName(settings.Model),
                                           settings.Model,
@@ -149,10 +162,36 @@ namespace Editor
         if (!CanEdit(source))
             return NULL_ENTITY;
         RecordUndo();
-        Vec3 position = ClampToField(SceneObjects::GetPosition(source) + DUPLICATE_OFFSET);
+        Vec3 from = SceneObjects::GetPosition(source);
+        Vec3 offset = ClampToField(from + DUPLICATE_OFFSET) - from;
+        offset.Y = 0.0f;
+        Entity copy = DuplicateTree(source, offset, ParentOf(source));
+        m_Dirty = true;
+        m_Selected = copy;
+        return copy;
+    }
+
+    Entity SceneEditor::DuplicateTree(Entity source, const Vec3& offset, Entity parent)
+    {
+        Entity copy = CopyObject(source, SceneObjects::GetPosition(source) + offset);
+        if (parent != NULL_ENTITY)
+            SceneObjects::SetParent(copy, parent);
+        for (Entity child : ChildrenOf(source))
+            DuplicateTree(child, offset, copy);
+        return copy;
+    }
+
+    Entity SceneEditor::CopyObject(Entity source, const Vec3& position)
+    {
         const SceneObject& object = ECS.GetComponent<SceneObject>(source);
         Entity copy = NULL_ENTITY;
-        if (ECS.HasComponent<Shape2D>(source))
+        if (SceneObjects::IsEmpty(source))
+        {
+            copy = SceneObjects::CreateEmpty(SceneObjects::UniqueName(object.Name), position, SceneObjects::GetYaw(source));
+            ECS.GetComponent<SceneObject>(copy).Tag = object.Tag;
+            SceneObjects::SetBodyType(copy, SceneObjects::GetBodyType(source));
+        }
+        else if (ECS.HasComponent<Shape2D>(source))
         {
             SceneObjects::ShapeDesc desc;
             desc.Name = SceneObjects::UniqueName(object.Name);
@@ -165,11 +204,12 @@ namespace Editor
         }
         else
         {
+            // World scale: SetParent turns it back into the parent's scale
             copy = SceneObjects::CreateModel(SceneObjects::UniqueName(object.Name),
                                              ECS.GetComponent<Mesh>(source).Model,
                                              position,
                                              SceneObjects::GetYaw(source),
-                                             ECS.GetComponent<Transform>(source).LocalScale.X);
+                                             ECS.GetComponent<Transform>(source).GetWorldTransform().LocalScale.X);
             ECS.GetComponent<SceneObject>(copy).Tag = object.Tag;
             SceneObjects::SetBodyType(copy, SceneObjects::GetBodyType(source));
         }
@@ -180,8 +220,6 @@ namespace Editor
             if (entry.Has(ECS, source))
                 entry.Copy(ECS, source, copy);
         }
-        m_Dirty = true;
-        m_Selected = copy;
         return copy;
     }
 
@@ -214,6 +252,8 @@ namespace Editor
 
     ObjectKind SceneEditor::KindOf(Entity entity) const
     {
+        if (IsObject(entity) && SceneObjects::IsEmpty(entity))
+            return ObjectKind::Empty;
         if (IsObject(entity) && ECS.HasComponent<Shape2D>(entity))
             return static_cast<ObjectKind>(ECS.GetComponent<Shape2D>(entity).Type);
         return ObjectKind::Model;
@@ -261,7 +301,8 @@ namespace Editor
             // the top down: the first hit is the surface the user sees
             float base = SceneObjects::GetPosition(e).Y;
             float height = ECS.HasComponent<Shape2D>(e) ? ECS.GetComponent<Shape2D>(e).Thickness
-                                                         : ECS.GetComponent<Transform>(e).LocalScale.Y;
+                           : SceneObjects::IsEmpty(e) ? 0.0f
+                                                      : ECS.GetComponent<Transform>(e).GetWorldTransform().LocalScale.Y;
             height = std::max(height, 0.0f);
             bool hit = false;
             float at = base;
@@ -319,13 +360,84 @@ namespace Editor
         if (!CanEdit(entity))
             return false;
         RecordUndo();
-        ClearReferencesTo(entity);
+        // The object and its children go: nothing may point at them
+        std::vector<Entity> removed = {entity};
+        for (std::size_t i = 0; i < removed.size(); ++i)
+        {
+            for (Entity child : ChildrenOf(removed[i]))
+                removed.push_back(child);
+        }
+        for (Entity e : removed)
+            ClearReferencesTo(e);
         // No FlushECS: the render systems pick the deletion up next frame
         SceneObjects::Destroy(entity);
-        if (m_Selected == entity)
+        if (std::find(removed.begin(), removed.end(), m_Selected) != removed.end())
             m_Selected = NULL_ENTITY;
         m_Dirty = true;
         return true;
+    }
+
+    bool SceneEditor::SetParent(Entity child, Entity parent)
+    {
+        if (!CanEdit(child) || (parent != NULL_ENTITY && !CanEdit(parent)))
+            return false;
+        if (parent == child || SceneObjects::IsAncestor(child, parent))
+            return false;
+        if (ParentOf(child) == parent)
+            return true;
+        std::vector<std::uint8_t> snapshot = Snapshot();
+        if (!SceneObjects::SetParent(child, parent))
+            return false;
+        PushUndo(std::move(snapshot));
+        m_Dirty = true;
+        return true;
+    }
+
+    Entity SceneEditor::AddEmpty(const Vec3& position, Entity parent)
+    {
+        if (parent != NULL_ENTITY && !CanEdit(parent))
+            return NULL_ENTITY;
+        RecordUndo();
+        Vec3 p = ClampToField(position);
+        p.Y = 0.0f;
+        Entity e = SceneObjects::CreateEmpty(SceneObjects::UniqueName(ObjectKindName(ObjectKind::Empty)), p);
+        if (parent != NULL_ENTITY)
+            SceneObjects::SetParent(e, parent);
+        m_Dirty = true;
+        m_Selected = e;
+        return e;
+    }
+
+    Entity SceneEditor::ParentOf(Entity entity) const
+    {
+        Entity parent = SceneObjects::GetParent(entity);
+        return IsObject(parent) ? parent : NULL_ENTITY;
+    }
+
+    std::vector<Entity> SceneEditor::ChildrenOf(Entity entity) const
+    {
+        std::vector<Entity> result;
+        for (Entity child : SceneObjects::GetChildren(entity))
+        {
+            if (IsObject(child))
+                result.push_back(child);
+        }
+        return result;
+    }
+
+    std::vector<Entity> SceneEditor::RootObjects() const
+    {
+        std::vector<Entity> roots;
+        for (Entity e : Objects())
+        {
+            if (ParentOf(e) != NULL_ENTITY)
+                continue;
+            if (IsField(e))
+                roots.insert(roots.begin(), e);
+            else
+                roots.push_back(e);
+        }
+        return roots;
     }
 
     bool SceneEditor::SetSize(Entity entity, float width, float height)
@@ -512,7 +624,13 @@ namespace Editor
             result.push_back(view);
         };
         const SceneObject& object = ECS.GetComponent<SceneObject>(entity);
-        builtIn("Transform", false, "");
+        std::size_t children = ChildrenOf(entity).size();
+        Entity parent = ParentOf(entity);
+        builtIn("Transform",
+                false,
+                parent != NULL_ENTITY ? "in " + NameOf(parent)
+                : children > 0        ? std::to_string(children) + " children"
+                                      : "");
         builtIn("SceneObject", false, object.Tag.empty() ? "" : "tag " + object.Tag);
         if (ECS.HasComponent<Shape2D>(entity))
             builtIn("Shape2D", false, ObjectKindName(KindOf(entity)));

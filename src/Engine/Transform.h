@@ -97,17 +97,40 @@ struct Transform
      */
 
     /**
+     * \brief Position / rotation / scale of the parents combined (identity
+     *        for a root transform)
+     */
+    struct Pose
+    {
+        Vec3 Position;
+        Quat Rotation;
+        Vec3 Scale;
+    };
+    Pose ParentPose() const;
+
+    /**
      * \brief Get world position with every parent transformation applied
      */
     Vec3 GetWorldPosition();
 
     /**
-     * \brief
+     * \brief Move to a world position (converted into the parent's space)
+     */
+    void SetWorldPosition(const Vec3& position);
+
+    /**
+     * \brief Replace the local position, rotation and scale at once
+     */
+    void SetLocalPose(const Vec3& position, const Quat& rotation, const Vec3& scale);
+
+    /**
+     * \brief Rotation with every parent rotation applied
      */
     Quat GetWorldRotation();
 
     /**
-     * \brief
+     * \brief The transform in world space (its Affine maps local points to
+     *        the world). A root transform is returned unchanged
      */
     Transform GetWorldTransform();
 

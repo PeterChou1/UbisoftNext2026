@@ -17,11 +17,12 @@ and play it in the Game.
 +---------------------------------------------------------------------------+
 | [scene v]  New Revert Save Undo Redo   Play  Scene     Name [my_level] *  |
 +-----------+-------------------------------------------------+-------------+
-| PALETTE   |                                                 | INSPECTOR   |
+|[Pal][Hier]|                                                 | INSPECTOR   |
 |  Select   |                                                 |  name       |
-|  1 Rect   |            the field (your scene)               |  position   |
-|  2 Circle |                                                 |  size       |
-|  ...      |                                                 |  colour     |
+|  1 Rect   |            the field (your scene)               |  parent     |
+|  2 Circle |                                                 |  position   |
+|  ...      |                                                 |  size       |
+|  6 Empty  |                                                 |  colour     |
 |  BRUSH    |                                                 |  body / tag |
 |  colours  |                                                 |  script     |
 +-----------+-------------------------------------------------+-------------+
@@ -31,8 +32,10 @@ and play it in the Game.
 
 - **Scene list** (top left): every scene file in `data/scenes`. Pick one to
   open it.
-- **Palette** (left): what you place. **Brush**: the settings new objects
-  get.
+- **Left panel**, two tabs:
+  - **Palette**: what you place. **Brush**: the settings new objects get.
+  - **Hierarchy**: every object of the scene as a tree, children under
+    their parent (section 5).
 - **Field** (middle): your scene, seen by the game's 3D renderer.
   - Move the camera with **W A S D**, zoom with **Z / C**.
 - **Inspector** (right): edit the selected object (**Object** tab) or the
@@ -64,7 +67,7 @@ There are three ways to place an object:
 
 | Way | How |
 |---|---|
-| Click | Click a shape in the palette (or press **1**-**5**), then click the field. You keep placing that shape until you right click or press **Space** |
+| Click | Click a shape in the palette (or press **1**-**6**), then click the field. You keep placing that shape until you right click or press **Space** |
 | Drag from the palette | Press a palette button, keep the mouse button down, drag onto the field and release where you want the object |
 | Place and drag | While placing, press on the field and keep the button down: the new object follows the mouse until you release |
 
@@ -103,6 +106,12 @@ The model is copied into `data/models/` and selected in the brush, with the
 - **Re-importing:** importing the same file twice reuses the first copy, and
   a different file with the same name gets a numbered name (`tree_2`).
 
+**6 Empty** places an empty object: only a position and a rotation, drawn
+in the editor as a light blue cross (nothing in the game). Use empties as:
+- **groups**: the parent of other objects (section 5);
+- **markers**: spawn points or waypoints;
+- **holders**: for a script or components that belong to no shape.
+
 ## 4. Select and move objects
 
 - **Select:** click an object. It gets a yellow outline and appears in the
@@ -110,7 +119,7 @@ The model is copied into `data/models/` and selected in the brush, with the
   tall object.
 - **Move:**
   - Drag the object with the mouse. One drag is one undo step.
-  - Or type the position in the inspector (next section).
+  - Or type the position in the inspector (section 6).
 - **Rotate:** **R** turns it 15°, or type an angle in **Rot**.
 - **Duplicate:** **F**. **Delete:** **X**.
 - **Deselect:** right click.
@@ -120,11 +129,61 @@ size in the **Scene** tab.
 
 ---
 
-## 5. Type exact values
+## 5. The hierarchy: parents and children
+
+Every object has a **Transform** (position, rotation, scale). A Transform
+can have a parent: the child is then placed **relative to its parent**.
+Moving, turning or scaling the parent carries its children along, and
+deleting it deletes them too.
+
+Open the **Hierarchy** tab at the top of the left panel:
+
+```
+[Palette][Hierarchy]
+[     New Empty    ]
+SCENE   6 objects
+  Field
+- Tank
+    Hull
+  - Turret
+      Barrel
+  Crate
+```
+
+| Action | How |
+|---|---|
+| Select an object | Click its row (selecting in the field also highlights its row, and unfolds its parents) |
+| Make an object a child | Drag its row onto another row |
+| Back to the top level | Drag its row onto **SCENE** |
+| Fold / unfold children | The **-** / **+** in front of a parent |
+| Add an empty | **New Empty**: under the selected object, or at the view's centre when nothing is selected |
+| Scroll a long tree | **^** / **v** at the bottom |
+
+The **Parent** box in the inspector (Properties) does the same by name:
+type the parent's name and press **Enter**, or type `-` for the top level.
+
+- **World positions:** a child keeps its place in the world when it gets a
+  new parent. **Pos X / Pos Z** and **Rot** are always world values, so
+  dragging a child in the field moves only that child.
+- **Links:** in the field, the selected object shows lines to its parent
+  (orange) and to its children (blue).
+- **Refused:** an object can't go under one of its own children (that would
+  be a loop). The field can't be a parent or a child.
+- **Duplicate (F)** copies the object with all of its children. Every
+  change of parent is one undo step.
+
+> Example: in the `sandbox` scene, the empty `Orbit` has the `Rotator`
+> script and two children, `Moon_1` and `Moon_2`. On **Play**, the script
+> turns only `Orbit`, and the moons circle around it.
+
+---
+
+## 6. Type exact values
 
 Every number in the inspector is an input box:
 
 - Name
+- Parent (an object's name, or `-`)
 - Pos X / Pos Z
 - Rot
 - Width / Height / Size / Sides / Thick / Scale
@@ -148,7 +207,7 @@ one undo step.
 
 ---
 
-## 6. Physics body and tag
+## 7. Physics body and tag
 
 In the inspector:
 
@@ -166,7 +225,7 @@ In the inspector:
 
 ---
 
-## 7. Give objects behaviour (scripts)
+## 8. Give objects behaviour (scripts)
 
 1. Select an object and use **Script < >** to choose a C++ script, e.g.
    `Rotator`, `Patrol` or `PlayerController`.
@@ -219,7 +278,7 @@ lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
 
 ---
 
-## 8. Test it
+## 9. Test it
 
 - Press **Play** (or **P**). Physics and scripts run inside the editor and
   the keyboard goes to the scripts, so WASD moves your player.
@@ -228,7 +287,7 @@ lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
 
 ---
 
-## 9. Save, open, revert
+## 10. Save, open, revert
 
 | Action | How |
 |---|---|
@@ -245,7 +304,7 @@ same way: the editor and the Game recognise the format by themselves.
 
 ---
 
-## 10. Play it in the Game
+## 11. Play it in the Game
 
 Run the **Game**. Its menu lists every scene in `data/scenes`, including
 yours. Click it to play, and press **Esc** to go back to the menu.
@@ -258,7 +317,7 @@ yours. Click it to play, and press **Esc** to go back to the menu.
 |---|---|
 | W A S D | pan the camera |
 | Z / C | zoom in / out |
-| 1 - 5 | place Rectangle, Circle, Triangle, Polygon, Model |
+| 1 - 6 | place Rectangle, Circle, Triangle, Polygon, Model, Empty |
 | Space | back to Select |
 | Right click | deselect / stop placing |
 | R | rotate the selection 15° |

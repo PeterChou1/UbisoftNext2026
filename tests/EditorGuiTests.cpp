@@ -756,3 +756,154 @@ TEST_CASE("Editor GUI: built in components are added and removed from the Compon
     CHECK(FindText("The field has no components", INSPECTOR_X) != nullptr);
     Gui().ShowComponents(false);
 }
+
+namespace
+{
+    bool Near(float a, float b, float eps = 1e-3f) { return std::fabs(a - b) <= eps; }
+
+    // A row of the hierarchy tree (left panel) showing `name`
+    const AppStub::State::PrintedText* TreeRow(const std::string& name)
+    {
+        for (const auto& printed : AppStub::Get().Printed)
+        {
+            if (printed.Text == name && printed.X < 180.0f && printed.Y > 50.0f)
+                return &printed;
+        }
+        return nullptr;
+    }
+
+    // Press a tree row, drag it and release it over `to` (screen point)
+    void DragRow(const AppStub::State::PrintedText& row, float toX, float toY)
+    {
+        float fromX = row.X + 10.0f;
+        float fromY = row.Y + 4.0f;
+        Press(fromX, fromY);
+        AppStub::Get().MouseX = fromX + 3.0f;
+        AppStub::Get().MouseY = (fromY + toY) * 0.5f;
+        TestEnvironment::RunFrame(FRAME_MS);
+        AppStub::Get().MouseX = toX;
+        AppStub::Get().MouseY = toY;
+        TestEnvironment::RunFrame(FRAME_MS);
+        Release();
+        // The tree shows the new parent from the next frame on
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
+} // namespace
+
+TEST_CASE("Editor GUI: the hierarchy tree shows parents and children, drag rows to parent them")
+{
+    OpenEditor();
+    Entity rect = Core().Place(Editor::ObjectKind::Rectangle, {0, 0, 0});
+    Entity circle = Core().Place(Editor::ObjectKind::Circle, {4, 0, 0});
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(ClickButton("Hierarchy"));
+    CHECK(FindText("SCENE") != nullptr);
+    const auto* field = TreeRow("Field");
+    const auto* rectRow = TreeRow("Rectangle");
+    const auto* circleRow = TreeRow("Circle");
+    REQUIRE(field != nullptr);
+    REQUIRE(rectRow != nullptr);
+    REQUIRE(circleRow != nullptr);
+    // Top level objects, the field first, one row each
+    CHECK(field->Y > rectRow->Y);
+    CHECK(rectRow->Y > circleRow->Y);
+    CHECK_EQ(rectRow->X, circleRow->X);
+
+    // Clicking a row selects the object
+    Click(rectRow->X + 10.0f, rectRow->Y + 4.0f);
+    CHECK_EQ(Core().Selected(), rect);
+
+    // Drag Circle onto Rectangle: it becomes its child, indented under it
+    rectRow = TreeRow("Rectangle");
+    circleRow = TreeRow("Circle");
+    DragRow(*circleRow, rectRow->X + 20.0f, rectRow->Y + 4.0f);
+    CHECK_EQ(Core().ParentOf(circle), rect);
+    CHECK(AppStub::WasPrinted("Circle is now a child of Rectangle"));
+    CHECK(Near(SceneObjects::GetPosition(circle).X, 4.0f));
+    rectRow = TreeRow("Rectangle");
+    circleRow = TreeRow("Circle");
+    REQUIRE(circleRow != nullptr);
+    CHECK(circleRow->X > rectRow->X);
+
+    // Rectangle can not go under its own child
+    DragRow(*rectRow, circleRow->X + 10.0f, circleRow->Y + 4.0f);
+    CHECK_EQ(Core().ParentOf(rect), NULL_ENTITY);
+    CHECK(AppStub::WasPrinted("Can not put Rectangle under Circle"));
+
+    // Fold Rectangle: its child's row disappears
+    rectRow = TreeRow("Rectangle");
+    const auto* fold = FindText("-", -1.0f);
+    REQUIRE(fold != nullptr);
+    CHECK(fold->X < rectRow->X);
+    Click(fold->X + 2.0f, fold->Y + 4.0f);
+    CHECK(TreeRow("Circle") == nullptr);
+    REQUIRE(ClickButton("+"));
+    REQUIRE(TreeRow("Circle") != nullptr);
+
+    // Drop Circle on SCENE: top level again
+    const auto* scene = FindText("SCENE");
+    DragRow(*TreeRow("Circle"), scene->X + 10.0f, scene->Y + 4.0f);
+    CHECK_EQ(Core().ParentOf(circle), NULL_ENTITY);
+    CHECK(AppStub::WasPrinted("Circle is now a top level object"));
+
+    // Selecting in the viewport shows the row selected in the tree; undo
+    // brings the parent link back
+    REQUIRE(Core().Undo());
+    CHECK_EQ(Core().ParentOf(circle), rect);
+    Gui().ShowHierarchy(false);
+}
+
+TEST_CASE("Editor GUI: New Empty, key 6, crosses and the Parent field")
+{
+    OpenEditor();
+    Entity rect = Core().Place(Editor::ObjectKind::Rectangle, {-4, 0, 0});
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(ClickButton("Hierarchy"));
+    // New Empty with Rectangle selected: an empty under it, at its position
+    REQUIRE(ClickButton("New Empty"));
+    Entity empty = Core().Selected();
+    REQUIRE(SceneObjects::IsEmpty(empty));
+    CHECK_EQ(Core().ParentOf(empty), rect);
+    CHECK(Near(SceneObjects::GetPosition(empty).X, -4.0f));
+    CHECK(TreeRow("Empty") != nullptr);
+
+    // Empties are drawn as a cross in the viewport, at their position
+    Core().Select(NULL_ENTITY);
+    TestEnvironment::RunFrame(FRAME_MS);
+    Vec2 at = ScreenOf(SceneObjects::GetPosition(empty));
+    int crossLines = 0;
+    for (const auto& line : AppStub::Get().Lines)
+    {
+        float mx = (line.X1 + line.X2) * 0.5f;
+        float my = (line.Y1 + line.Y2) * 0.5f;
+        if (std::fabs(mx - at.X) < 1.0f && std::fabs(my - at.Y) < 1.0f)
+            ++crossLines;
+    }
+    CHECK(crossLines >= 2);
+
+    // Key 6 places empties, clicking the cross selects it
+    Gui().ShowHierarchy(false);
+    PressKey(App::KEY_6);
+    CHECK(FindText("> 6 Empty") != nullptr);
+    ClickGround({5, 0, 3});
+    Entity placed = OnlyObject() == NULL_ENTITY ? Core().Selected() : OnlyObject();
+    REQUIRE(SceneObjects::IsEmpty(placed));
+    CHECK(Near(SceneObjects::GetPosition(placed).X, 5.0f));
+    PressKey(App::KEY_SPACE);
+    Core().Select(NULL_ENTITY);
+    ClickGround({5.1f, 0, 3});
+    CHECK_EQ(Core().Selected(), placed);
+
+    // The Properties tab: type the parent's name ("-" = top level)
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(TypeInto("Parent", "Rectangle\r", INSPECTOR_X));
+    CHECK_EQ(Core().ParentOf(placed), rect);
+    CHECK(Near(SceneObjects::GetPosition(placed).X, 5.0f));
+    REQUIRE(TypeInto("Parent", "nobody\r", INSPECTOR_X));
+    CHECK(AppStub::WasPrinted("No object named nobody"));
+    REQUIRE(TypeInto("Parent", "-\r", INSPECTOR_X));
+    CHECK_EQ(Core().ParentOf(placed), NULL_ENTITY);
+    // Empties have no size / colour, only a scale
+    CHECK(FindText("Scale", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Width", INSPECTOR_X) == nullptr);
+}

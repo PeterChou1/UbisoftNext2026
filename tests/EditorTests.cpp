@@ -85,7 +85,8 @@ TEST_CASE("Editor: place every kind of object")
         CHECK(editor.KindOf(e) == kind);
         CHECK_EQ(editor.Selected(), e);
         CHECK_EQ(ECS.GetComponent<SceneObject>(e).Tag, std::string("Wall"));
-        CHECK(SceneObjects::GetBodyType(e) == BodyType::Static);
+        // Empties are only a transform: no body, whatever the brush says
+        CHECK(SceneObjects::GetBodyType(e) == (kind == ObjectKind::Empty ? BodyType::None : BodyType::Static));
         CHECK_EQ(SceneObjects::GetYaw(e), 45.0f);
         // Objects stand on the field (y = 0)
         CHECK_EQ(SceneObjects::GetPosition(e).Y, 0.0f);
@@ -95,6 +96,13 @@ TEST_CASE("Editor: place every kind of object")
             CHECK_EQ(ECS.GetComponent<Mesh>(e).Model, std::string("Box"));
             CHECK_EQ(ECS.GetComponent<Transform>(e).LocalScale.X, 1.5f);
             CHECK_EQ(editor.NameOf(e), std::string("Box"));
+        }
+        else if (kind == ObjectKind::Empty)
+        {
+            CHECK(SceneObjects::IsEmpty(e));
+            CHECK(!ECS.HasComponent<Shape2D>(e));
+            CHECK(!ECS.HasComponent<Mesh>(e));
+            CHECK_EQ(editor.NameOf(e), std::string("Empty"));
         }
         else
         {
@@ -106,7 +114,7 @@ TEST_CASE("Editor: place every kind of object")
             CHECK_EQ(editor.NameOf(e), std::string(Editor::ObjectKindName(kind)));
         }
     }
-    CHECK_EQ(editor.Objects().size(), size_t(6));
+    CHECK_EQ(editor.Objects().size(), size_t(7));
     CHECK(editor.IsDirty());
     CHECK(editor.Validate().empty());
 

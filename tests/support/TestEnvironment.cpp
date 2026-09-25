@@ -50,6 +50,7 @@ namespace TestEnvironment
         // Text and lines are recorded per frame, the mouse / keys persist
         AppStub::Get().Printed.clear();
         AppStub::Get().LinesDrawn = 0;
+        AppStub::Get().Lines.clear();
         AppStub::Get().Triangles.clear();
         GameSceneManager.Update(deltaMilliseconds);
         GameSceneManager.Render();

@@ -13,7 +13,8 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 - Immediate mode gui library
 - Save system: binary, versioned serialization of the whole world
 - **SceneEditor**: a separate program to author scenes from basic 2D shapes (rectangle, circle, triangle,
-  polygon) and 3D models placed on a field, with physics bodies, tags and C++ scripts
+  polygon), 3D models and empty transforms placed on a field and arranged in a parent / child hierarchy, with physics
+  bodies, tags, components and C++ scripts
 - **Game**: a separate program that plays the authored scenes, driven by C++ scripts
   (per object scripts and scene scripts, running on top of the ECS)
 - **Reflected components**: describe a component's fields once (`REFLECT`). The editor then generates its inspector
@@ -79,15 +80,18 @@ Both programs must run from the repository root (the build does this) to find `d
 
 * **New** creates a scene (added to the scene list and saved). Rename it by clicking the **Name** box (top right).
   Pick a scene in the list (top left) to open it, **Save** saves it, **Revert** reloads it.
-* Place shapes: click a palette shape (or keys **1-5**) then click the field, or drag a palette shape onto the field.
+* Place shapes: click a palette shape (or keys **1-6**) then click the field, or drag a palette shape onto the field.
   Press + drag places and positions in one go. Right click stops placing.
 * Click an object to select it, drag it to move it. In the inspector click any value (name, position, rotation,
   size, script parameters...) and type it, **Enter** applies. The **- / +** buttons step values.
+* **Hierarchy** (left panel tab): the scene's objects as a tree of Transforms, children under their parent. Drag a row
+  onto another to parent it, onto SCENE to make it top level; a parent carries its children when it moves / turns /
+  scales. **6 Empty** / **New Empty** place empty transforms (groups, markers, spawn points), drawn as a cross.
 * **Components** (inspector tab): add / remove components (`Health`, `Faction`, `Waypoint`, your own, a RigidBody or
   a Script) and edit their fields with widgets generated from the component's description. See
   [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 * The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
-* Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
+* Keys: WASD pan, Z/C zoom, 1-6 place, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
 * **Custom models:** drop an `.obj` (+ `.mtl`) in `data/import/`, type its name in the palette's **IMPORT .OBJ** box and
   press Enter (or type a full path). It is copied to `data/models/` and ready to place. See

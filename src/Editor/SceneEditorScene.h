@@ -9,8 +9,8 @@
 //   +-------------------------------------------------------------------------+
 //   | [scene v] New Revert Save Undo Redo  Play  Scene   Name [my_level] *     |
 //   +----------+-------------------------------------------------+------------+
-//   | PALETTE  |                                                 | INSPECTOR  |
-//   |  Select  |          field seen by the 3D renderer          | typed and  |
+//   | PALETTE /|                                                 | INSPECTOR  |
+//   | HIERARCHY|          field seen by the 3D renderer          | typed and  |
 //   |  shapes  |  click = place / select, drag = move, drag a    | stepped    |
 //   |  BRUSH   |  palette shape onto the field to drop it there  | values,    |
 //   |          |                                                 | components |
@@ -24,6 +24,11 @@
 //
 // Play runs the scene's C++ scripts inside the editor (physics, scripts,
 // particles on). Stop restores the scene exactly as it was before Play.
+//
+// The left panel has two tabs: the Palette (what to place, the brush) and the
+// Hierarchy, the scene's objects as a tree of Transforms (a child under its
+// parent). Drag a row onto another to make it a child, onto SCENE to make it a
+// top level object. Empty objects (just a Transform) are drawn as a cross.
 //
 // The object inspector has two tabs: Properties (shape, body, tag, script) and
 // Components, where components are added / removed and every reflected field
@@ -44,6 +49,7 @@
 #include <vector>
 
 class Camera;
+struct Color;
 class Lighting;
 class GameOptions;
 class UIState;
@@ -74,6 +80,23 @@ class SceneEditorScene : public Scene
      * \brief Show the Components tab (true) or the Properties tab
      */
     void ShowComponents(bool show) { m_ShowComponents = show; }
+
+    /**
+     * \brief Show the Hierarchy tab (true) or the Palette in the left panel
+     */
+    void ShowHierarchy(bool show) { m_ShowHierarchy = show; }
+
+    /**
+     * \brief Rows of the hierarchy tree as drawn: object and depth (collapsed
+     *        branches are left out)
+     */
+    std::vector<std::pair<Entity, int>> HierarchyRows() const;
+
+    /**
+     * \brief Create an empty object under the selected one (or at the view's
+     *        centre when nothing is selected), what "New Empty" does
+     */
+    Entity AddEmpty();
 
     bool Import(const std::string& path)
     {
@@ -138,7 +161,10 @@ class SceneEditorScene : public Scene
     // -- Drawing -------------------------------------------------------------------
     bool RenderToolbar();
     void RenderSceneList();
-    void RenderPalette();
+    void RenderLeftPanel();
+    void RenderPalette(float x, float y);
+    void RenderHierarchy(float x, float y);
+    void DrawCross(Entity entity, const Color& color, float size);
     void RenderInspector();
     void RenderObjectInspector(float x, float& y);
     void RenderObjectProperties(Entity e, float x, float& y);
@@ -200,6 +226,20 @@ class SceneEditorScene : public Scene
     int m_NextFieldId = 0;
     // Tooltip of the field under the mouse (status bar)
     std::string m_Hint;
+
+    // -- Hierarchy tab -------------------------------------------------------------
+    bool m_ShowHierarchy = false;
+    // Objects whose children are hidden in the tree
+    std::set<Entity> m_Collapsed;
+    // First row shown (the tree scrolls when it is longer than the panel)
+    int m_TreeScroll = 0;
+    // Row pressed in the tree, and whether it is being dragged onto another
+    Entity m_TreePressed = NULL_ENTITY;
+    bool m_TreeDragging = false;
+    float m_TreePressX = 0.0f;
+    float m_TreePressY = 0.0f;
+    // Selection the tree last showed (to reveal a newly selected object)
+    Entity m_TreeSelected = NULL_ENTITY;
 
     Vec3 m_CamTarget = {0, 0, 0};
     float m_CamDistance = 30.0f;

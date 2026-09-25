@@ -69,6 +69,56 @@ namespace SceneObjects
                        float scale = 1.0f);
 
     /**
+     * \brief Create an empty object: just a Transform and a SceneObject. It
+     *        draws nothing in the game; use it to group objects (as their
+     *        parent), as a spawn point or marker, or to hold components and
+     *        scripts. The editor shows it as a cross
+     */
+    Entity CreateEmpty(const std::string& name, const Vec3& position, float yawDegrees = 0.0f);
+
+    /**
+     * \brief True for objects without a shape or a model (CreateEmpty)
+     */
+    bool IsEmpty(Entity entity);
+
+    // Radius around an empty's position that picks it
+    constexpr float EMPTY_PICK_RADIUS = 0.4f;
+
+    // -- Hierarchy -------------------------------------------------------------
+    //
+    // Transform::Parent / Children link objects into a tree. A child's
+    // Transform is relative to its parent: moving, turning or scaling the
+    // parent carries the children along. Positions and yaws given to the
+    // functions of this file are in world space.
+
+    /**
+     * \brief Make `child` a child of `parent` (NULL_ENTITY = a root object).
+     *        The child keeps its place in the world. False (nothing changed)
+     *        when the link would make a loop or an entity has no Transform
+     */
+    bool SetParent(Entity child, Entity parent);
+
+    Entity GetParent(Entity entity);
+
+    /**
+     * \brief Children in their order (living entities with a Transform)
+     */
+    std::vector<Entity> GetChildren(Entity entity);
+
+    /**
+     * \brief True if `ancestor` is the parent of `entity`, or its parent's
+     *        parent, and so on
+     */
+    bool IsAncestor(Entity ancestor, Entity entity);
+
+    /**
+     * \brief Fix broken links (e.g. from a hand edited file): parents that do
+     *        not exist or do not list the child, children that are dead or
+     *        belong to another parent, loops. Returns the number of fixes
+     */
+    int RepairHierarchy();
+
+    /**
      * \brief Replace the object's RigidBody so it matches its shape and the
      *        requested body type (call after changing the shape or its size)
      */
@@ -84,10 +134,14 @@ namespace SceneObjects
     void SetYaw(Entity entity, float degrees);
 
     /**
-     * \brief Rotation around the up axis in degrees, in [0, 360)
+     * \brief Rotation around the up axis in degrees, in [0, 360), in the
+     *        world (parents included). SetYaw also takes a world yaw
      */
     float GetYaw(Entity entity);
 
+    /**
+     * \brief World position (parents included)
+     */
     Vec3 GetPosition(Entity entity);
 
     void SetPosition(Entity entity, const Vec3& position);
@@ -105,7 +159,8 @@ namespace SceneObjects
     std::string UniqueName(const std::string& base);
 
     /**
-     * \brief Destroy an entity and all of its Transform children
+     * \brief Destroy an entity and all of its Transform children (it is
+     *        removed from its parent's children first)
      */
     void Destroy(Entity entity);
 

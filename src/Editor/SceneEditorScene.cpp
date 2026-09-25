@@ -49,6 +49,11 @@ namespace
     const Color ACCENT = {1.0f, 0.82f, 0.25f};
     const Color ERROR_TEXT = {1.0f, 0.4f, 0.35f};
     const Color PLAY_TEXT = {0.4f, 1.0f, 0.5f};
+    // Empties (crosses) and the selection's hierarchy links in the viewport
+    const Color EMPTY_CROSS = {0.55f, 0.85f, 1.0f};
+    const Color PARENT_LINK = {1.0f, 0.55f, 0.25f};
+    const Color CHILD_LINK = {0.45f, 0.75f, 1.0f};
+    constexpr float CROSS_SIZE = 0.5f;
 
     // -- Camera ------------------------------------------------------------------------
     constexpr float PAN_SPEED = 18.0f;
@@ -79,6 +84,7 @@ namespace
     constexpr int ID_FIELD_SIDES = 16;
     constexpr int ID_FIELD_THICK = 17;
     constexpr int ID_FIELD_SCALE = 18;
+    constexpr int ID_FIELD_PARENT = 19;
     constexpr int ID_FIELD_PARAM = 20;
     constexpr int ID_FIELD_LAST_OBJECT = 39;
     // Scene tab fields
@@ -245,7 +251,7 @@ void SceneEditorScene::Render()
     }
 
     RenderOverlay();
-    RenderPalette();
+    RenderLeftPanel();
     RenderInspector();
     RenderStatusBar();
     if (!RenderToolbar())
@@ -288,7 +294,9 @@ void SceneEditorScene::UpdateCamera(float deltaSeconds)
 
 void SceneEditorScene::UpdateShortcuts()
 {
-    const App::Key kindKeys[] = {App::KEY_1, App::KEY_2, App::KEY_3, App::KEY_4, App::KEY_5};
+    const App::Key kindKeys[] = {App::KEY_1, App::KEY_2, App::KEY_3, App::KEY_4, App::KEY_5, App::KEY_6};
+    static_assert(sizeof(kindKeys) / sizeof(kindKeys[0]) == static_cast<int>(ObjectKind::Count),
+                  "One key per object kind");
     for (int i = 0; i < static_cast<int>(ObjectKind::Count); ++i)
     {
         if (Input::WasPressed(kindKeys[i]))
@@ -793,35 +801,52 @@ void SceneEditorScene::RenderSceneList()
     OpenScene(picked);
 }
 
-void SceneEditorScene::RenderPalette()
+void SceneEditorScene::RenderLeftPanel()
 {
     if (m_Editor.IsPlaying())
         return;
     float top = SCREEN_H - TOOLBAR_H;
     DrawPanel(0, STATUS_H, PALETTE_W, top - STATUS_H, PANEL_FILL, PANEL_BORDER);
     float x = 10.0f;
-    float width = PALETTE_W - 20.0f;
     float y = top - 26.0f;
-    Text(x, y, "PALETTE", ACCENT);
+    // Tabs: Palette (what to place) / Hierarchy (the scene's tree)
+    float tabW = (PALETTE_W - 24.0f) * 0.5f;
+    if (Button(NextId(), x, y - 7.0f, *m_UI, tabW, 22.0f, "Palette"))
+        m_ShowHierarchy = false;
+    if (Button(NextId(), x + tabW + 4.0f, y - 7.0f, *m_UI, tabW, 22.0f, "Hierarchy"))
+        m_ShowHierarchy = true;
+    float lineX = m_ShowHierarchy ? x + tabW + 4.0f : x;
+    App::DrawLine(lineX, y - 9.0f, lineX + tabW, y - 9.0f, ACCENT.R, ACCENT.G, ACCENT.B);
     y -= 32.0f;
+    if (m_ShowHierarchy)
+        RenderHierarchy(x, y);
+    else
+        RenderPalette(x, y);
+}
 
+void SceneEditorScene::RenderPalette(float x, float y)
+{
+    float width = PALETTE_W - 20.0f;
     if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, m_Tool == Tool::Select ? "> Select" : "Select"))
         m_Tool = Tool::Select;
     y -= BUTTON_H + 4.0f;
+    // Slightly smaller buttons: six kinds in the room of five
+    constexpr float KIND_H = 22.0f;
     for (int i = 0; i < static_cast<int>(ObjectKind::Count); ++i)
     {
         ObjectKind kind = static_cast<ObjectKind>(i);
         std::string label = std::to_string(i + 1) + " " + Editor::ObjectKindName(kind);
         if (m_Tool == Tool::Place && m_Kind == kind)
             label = "> " + label;
-        if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, label))
+        if (Button(NextId(), x, y, *m_UI, width, KIND_H, label))
         {
             SelectKind(kind);
             // Keep the button down and drag it onto the field to drop it there
             m_PaletteDrag = true;
         }
-        y -= BUTTON_H + 4.0f;
+        y -= KIND_H + 3.0f;
     }
+    y -= 1.0f;
 
     y -= 8.0f;
     Text(x, y, "BRUSH", ACCENT);
@@ -883,6 +908,230 @@ void SceneEditorScene::RenderPalette()
     y -= 28.0f;
     if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Import model") && !imported)
         ImportModel();
+}
+
+//-----------------------------------------------------------------------------
+// Hierarchy
+//-----------------------------------------------------------------------------
+
+namespace
+{
+    constexpr float TREE_ROW_H = 20.0f;
+    constexpr float TREE_INDENT = 12.0f;
+    constexpr float FOLD_W = 14.0f;
+    // Mouse travel that turns a press on a row into a drag
+    constexpr float TREE_DRAG_START = 5.0f;
+    const Color EMPTY_COLOR = {0.55f, 0.85f, 1.0f};
+    const Color ROW_SELECTED = {0.30f, 0.27f, 0.12f};
+    const Color ROW_TARGET = {0.16f, 0.30f, 0.20f};
+} // namespace
+
+std::vector<std::pair<Entity, int>> SceneEditorScene::HierarchyRows() const
+{
+    std::vector<std::pair<Entity, int>> rows;
+    // Depth first: each object, then (unless collapsed) its children
+    std::vector<std::pair<Entity, int>> stack;
+    std::vector<Entity> roots = m_Editor.RootObjects();
+    for (auto it = roots.rbegin(); it != roots.rend(); ++it)
+        stack.emplace_back(*it, 0);
+    while (!stack.empty())
+    {
+        auto [e, depth] = stack.back();
+        stack.pop_back();
+        rows.emplace_back(e, depth);
+        if (m_Collapsed.count(e) != 0)
+            continue;
+        std::vector<Entity> children = m_Editor.ChildrenOf(e);
+        for (auto it = children.rbegin(); it != children.rend(); ++it)
+            stack.emplace_back(*it, depth + 1);
+    }
+    return rows;
+}
+
+Entity SceneEditorScene::AddEmpty()
+{
+    Entity selected = m_Editor.Selected();
+    bool under = selected != NULL_ENTITY && !m_Editor.IsField(selected);
+    Vec3 at = under ? SceneObjects::GetPosition(selected) : m_Editor.ClampToField(m_CamTarget);
+    at.Y = 0.0f;
+    Entity e = m_Editor.AddEmpty(SnapPoint(at), under ? selected : NULL_ENTITY);
+    if (e == NULL_ENTITY)
+        return NULL_ENTITY;
+    SetStatus("Added " + m_Editor.NameOf(e) + (under ? " under " + m_Editor.NameOf(selected) : std::string()));
+    return e;
+}
+
+void SceneEditorScene::RenderHierarchy(float x, float y)
+{
+    float width = PALETTE_W - 20.0f;
+    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "New Empty"))
+        AddEmpty();
+    y -= BUTTON_H + 8.0f;
+
+    // Forget folds of objects that no longer exist
+    for (auto it = m_Collapsed.begin(); it != m_Collapsed.end();)
+        it = m_Editor.IsObject(*it) ? std::next(it) : m_Collapsed.erase(it);
+
+    std::vector<std::pair<Entity, int>> rows = HierarchyRows();
+    float mx = m_UI->mouseX;
+    float my = m_UI->mouseY;
+
+    // A newly selected object is revealed: its parents unfold, the tree
+    // scrolls to it
+    Entity selected = m_Editor.Selected();
+    bool reveal = selected != m_TreeSelected && selected != NULL_ENTITY;
+    m_TreeSelected = selected;
+    if (reveal)
+    {
+        bool unfolded = false;
+        for (Entity p = m_Editor.ParentOf(selected); p != NULL_ENTITY; p = m_Editor.ParentOf(p))
+            unfolded = m_Collapsed.erase(p) != 0 || unfolded;
+        if (unfolded)
+            rows = HierarchyRows();
+    }
+
+    // SCENE header: drop a row here to make it a top level object
+    float headerY = y;
+    bool overHeader = mx >= x && mx <= x + width && my >= headerY - 4.0f && my <= headerY + TREE_ROW_H - 4.0f;
+    if (m_TreeDragging && overHeader)
+        DrawPanel(x - 2.0f, headerY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_TARGET, ROW_TARGET);
+    Text(x, headerY + 2.0f, "SCENE", ACCENT);
+    Text(x + 50.0f, headerY + 2.0f, std::to_string(m_Editor.Objects().size()) + " objects", TEXT_DIM);
+    y -= TREE_ROW_H + 2.0f;
+
+    float bottom = STATUS_H + 34.0f;
+    int visible = std::max(1, static_cast<int>((y - bottom) / TREE_ROW_H) + 1);
+    int count = static_cast<int>(rows.size());
+    if (reveal)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            if (rows[i].first != selected)
+                continue;
+            if (i < m_TreeScroll)
+                m_TreeScroll = i;
+            else if (i >= m_TreeScroll + visible)
+                m_TreeScroll = i - visible + 1;
+        }
+    }
+    m_TreeScroll = std::clamp(m_TreeScroll, 0, std::max(0, count - visible));
+
+    Entity hovered = NULL_ENTITY;
+    for (int i = m_TreeScroll; i < count && i < m_TreeScroll + visible; ++i)
+    {
+        auto [e, depth] = rows[i];
+        float rowY = y - (i - m_TreeScroll) * TREE_ROW_H;
+        float indent = x + depth * TREE_INDENT;
+        bool over = mx >= x && mx <= x + width && my >= rowY - 4.0f && my < rowY + TREE_ROW_H - 4.0f;
+        if (over)
+            hovered = e;
+        if (e == selected)
+            DrawPanel(x - 2.0f, rowY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_SELECTED, ROW_SELECTED);
+        else if (m_TreeDragging && over && e != m_TreePressed)
+            DrawPanel(x - 2.0f, rowY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_TARGET, ROW_TARGET);
+
+        // Fold toggle of an object with children
+        bool hasChildren = !m_Editor.ChildrenOf(e).empty();
+        bool folded = m_Collapsed.count(e) != 0;
+        bool overFold = hasChildren && mx >= indent && mx <= indent + FOLD_W;
+        if (hasChildren && Button(NextId(), indent, rowY - 2.0f, *m_UI, FOLD_W, 16.0f, folded ? "+" : "-"))
+        {
+            if (folded)
+                m_Collapsed.erase(e);
+            else
+                m_Collapsed.insert(e);
+        }
+        std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
+        auto maxChars = static_cast<std::size_t>(std::max(3.0f, (x + width - indent - FOLD_W - 4.0f) / 7.0f));
+        if (name.size() > maxChars)
+            name = name.substr(0, maxChars - 1) + "~";
+        const Color& color = m_Editor.IsField(e) ? TEXT_DIM : (SceneObjects::IsEmpty(e) ? EMPTY_COLOR : TEXT);
+        Text(indent + FOLD_W + 4.0f, rowY + 2.0f, name, color);
+
+        // Press: select (and maybe start dragging it onto another row)
+        if (over && !overFold && m_UI->leftClick && !m_UI->IsTyping())
+        {
+            m_Editor.Select(e);
+            m_TreeSelected = e;
+            m_TreePressed = e;
+            m_TreeDragging = false;
+            m_TreePressX = mx;
+            m_TreePressY = my;
+        }
+    }
+
+    // Scroll buttons when the tree is longer than the panel
+    if (count > visible)
+    {
+        float by = STATUS_H + 6.0f;
+        float half = (width - 4.0f) * 0.5f;
+        if (Button(NextId(), x, by, *m_UI, half, 22.0f, "^"))
+            m_TreeScroll = std::max(0, m_TreeScroll - visible / 2);
+        if (Button(NextId(), x + half + 4.0f, by, *m_UI, half, 22.0f, "v"))
+            m_TreeScroll = std::min(count - visible, m_TreeScroll + visible / 2);
+    }
+
+    // Drag and drop: parent the pressed object to the row it is dropped on
+    if (m_TreePressed == NULL_ENTITY)
+        return;
+    if (m_UI->mouseLeftDown)
+    {
+        if (std::fabs(mx - m_TreePressX) > TREE_DRAG_START || std::fabs(my - m_TreePressY) > TREE_DRAG_START)
+            m_TreeDragging = m_Editor.ParentOf(m_TreePressed) != NULL_ENTITY || !m_Editor.IsField(m_TreePressed);
+        if (m_TreeDragging)
+        {
+            m_Hint = "Drop " + m_Editor.NameOf(m_TreePressed) +
+                     " on an object to make it its child, on SCENE for the top level";
+            Text(mx + 12.0f, my - 4.0f, m_Editor.NameOf(m_TreePressed), ACCENT);
+        }
+        return;
+    }
+    // Released
+    Entity dragged = m_TreePressed;
+    bool dropped = m_TreeDragging;
+    m_TreePressed = NULL_ENTITY;
+    m_TreeDragging = false;
+    if (!dropped)
+        return;
+    if (overHeader)
+    {
+        if (m_Editor.ParentOf(dragged) == NULL_ENTITY)
+            return;
+        if (m_Editor.SetParent(dragged, NULL_ENTITY))
+            SetStatus(m_Editor.NameOf(dragged) + " is now a top level object");
+        return;
+    }
+    if (hovered == NULL_ENTITY || hovered == dragged)
+        return;
+    if (m_Editor.SetParent(dragged, hovered))
+    {
+        m_Collapsed.erase(hovered);
+        SetStatus(m_Editor.NameOf(dragged) + " is now a child of " + m_Editor.NameOf(hovered));
+    }
+    else if (m_Editor.IsField(dragged) || m_Editor.IsField(hovered))
+        SetStatus("The field can not be a parent or a child", true);
+    else
+        SetStatus("Can not put " + m_Editor.NameOf(dragged) + " under " + m_Editor.NameOf(hovered) +
+                          " (it is one of its children)",
+                  true);
+}
+
+void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
+{
+    // An empty is a cross on the ground turned with the object, and a short
+    // post showing its height
+    Transform world = ECS.GetComponent<Transform>(entity).GetWorldTransform();
+    Vec3 c = world.LocalPosition;
+    Vec3 right = world.LocalRotation.RotatePoint(Vec3(size, 0.0f, 0.0f));
+    Vec3 forward = world.LocalRotation.RotatePoint(Vec3(0.0f, 0.0f, size));
+    auto line = [&](const Vec3& a, const Vec3& b) {
+        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
+        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
+        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
+    };
+    line(c - right, c + right);
+    line(c - forward, c + forward);
+    line(c, c + Vec3(0.0f, size, 0.0f));
 }
 
 void SceneEditorScene::ImportModel()
@@ -998,6 +1247,30 @@ void SceneEditorScene::RenderObjectProperties(Entity e, float x, float& y)
             SetStatus("Can not rename to '" + name + "' (empty or already used)", true);
         y -= ROW_H;
         Text(x, y + 7.0f, kind + "  #" + std::to_string(e), TEXT_DIM);
+        std::size_t children = m_Editor.ChildrenOf(e).size();
+        if (children > 0)
+            Text(x + 120.0f, y + 7.0f, std::to_string(children) + (children == 1 ? " child" : " children"), TEXT_DIM);
+        y -= ROW_H;
+
+        // Parent: type an object's name ("-" = top level), or drag it in the
+        // Hierarchy tab
+        Entity parent = m_Editor.ParentOf(e);
+        std::string parentName = parent == NULL_ENTITY ? std::string("-") : m_Editor.NameOf(parent);
+        std::string typed = parentName;
+        Text(x, y + 7.0f, "Parent");
+        if (TextField(ID_FIELD_PARENT, x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, typed) ==
+                    TextFieldEvent::Committed &&
+            typed != parentName)
+        {
+            Entity target = typed.empty() || typed == "-" ? NULL_ENTITY : SceneObjects::FindByName(typed);
+            if (target == NULL_ENTITY && !(typed.empty() || typed == "-"))
+                SetStatus("No object named " + typed, true);
+            else if (!m_Editor.SetParent(e, target))
+                SetStatus("Can not put " + m_Editor.NameOf(e) + " under " + typed, true);
+            else
+                SetStatus(target == NULL_ENTITY ? m_Editor.NameOf(e) + " is now a top level object"
+                                                : m_Editor.NameOf(e) + " is now a child of " + typed);
+        }
         y -= ROW_H;
 
         // Position / rotation
@@ -1051,11 +1324,13 @@ void SceneEditorScene::RenderObjectProperties(Entity e, float x, float& y)
     }
     else
     {
+        // Models and empties: the transform's scale (an empty's scale also
+        // scales its children)
         float scale = ECS.GetComponent<Transform>(e).LocalScale.X;
         if (NumberRow(x, y, width, "Scale", ID_FIELD_SCALE, scale, SIZE_STEP))
             m_Editor.SetSize(e, scale, scale);
         y -= ROW_H;
-        if (!m_Models.empty())
+        if (!m_Models.empty() && ECS.HasComponent<Mesh>(e))
         {
             const std::string& model = ECS.GetComponent<Mesh>(e).Model;
             int d = 0;
@@ -1427,7 +1702,7 @@ void SceneEditorScene::RenderStatusBar()
         Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT);
     const char* hints = m_Editor.IsPlaying()
                                 ? "P stop  (the keyboard goes to the scene's scripts)"
-                                : "WASD pan Z/C zoom 1-5 shape Space select R rotate F dup X del U/Y undo P play (click a value to type)";
+                                : "WASD pan Z/C zoom 1-6 place Space select R rotate F dup X del U/Y undo P play (click a value to type)";
     // The tooltip of the component field under the mouse replaces the hints
     if (!m_Hint.empty())
         Text(10.0f, 8.0f, m_Hint, ACCENT);
@@ -1451,8 +1726,30 @@ void SceneEditorScene::RenderOverlay()
     if (m_Editor.IsPlaying())
         return;
     Entity selected = m_Editor.Selected();
+    // Empty objects: a cross where they are (they have nothing else to show)
+    for (Entity e : m_Editor.Objects())
+    {
+        if (SceneObjects::IsEmpty(e) && e != selected)
+            DrawCross(e, EMPTY_CROSS, CROSS_SIZE);
+    }
     if (selected != NULL_ENTITY)
-        DrawOutline(selected, ACCENT.R, ACCENT.G, ACCENT.B);
+    {
+        if (SceneObjects::IsEmpty(selected))
+            DrawCross(selected, ACCENT, CROSS_SIZE * 1.4f);
+        else
+            DrawOutline(selected, ACCENT.R, ACCENT.G, ACCENT.B);
+        // Hierarchy links of the selection: to its parent and its children
+        auto link = [&](Entity a, Entity b, const Color& c) {
+            Vec2 sa = m_Cam->WorldPointToScreenSpace(SceneObjects::GetPosition(a));
+            Vec2 sb = m_Cam->WorldPointToScreenSpace(SceneObjects::GetPosition(b));
+            App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, c.R, c.G, c.B);
+        };
+        Entity parent = m_Editor.ParentOf(selected);
+        if (parent != NULL_ENTITY)
+            link(selected, parent, PARENT_LINK);
+        for (Entity child : m_Editor.ChildrenOf(selected))
+            link(selected, child, CHILD_LINK);
+    }
 
     if (MouseOverUI() || m_Dragging)
         return;
@@ -1471,6 +1768,11 @@ void SceneEditorScene::RenderOverlay()
     {
         Entity hovered = PickUnderMouse();
         if (hovered != NULL_ENTITY && hovered != selected && !m_Editor.IsField(hovered))
-            DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
+        {
+            if (SceneObjects::IsEmpty(hovered))
+                DrawCross(hovered, TEXT, CROSS_SIZE * 1.2f);
+            else
+                DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
+        }
     }
 }
