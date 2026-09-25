@@ -2,9 +2,8 @@
 // VisitorManager.h
 //---------------------------------------------------------------------------------
 //
-// Manages All Visitor In the ECS System See Visitor.h for more information
-// This class maps every Visitor to an Entity Signature that it is keeping track
-// of
+// Manages all Visitors of the ECS System (see Visitor.h), one per set of
+// component types, and keeps their entities up to date
 //
 #pragma once
 
@@ -12,119 +11,78 @@
 #include "Visitor.h"
 
 #include <cassert>
-#include <memory>
-#include <type_traits>
+#include <typeinfo>
 #include <unordered_map>
 
 class VisitorManager
 {
   public:
-    template <typename T>
-    bool IsVisitorRegistered()
+    /**
+     * \brief The Visitor of the component types Ts, nullptr if not registered
+     */
+    template <typename... Ts>
+    Visitor* Find()
     {
-
-        const char* typeName = typeid(T).name();
-
-        return m_Visitor.find(typeName) != m_Visitor.end();
+        auto visitor = m_Visitors.find(Key<Ts...>());
+        return visitor == m_Visitors.end() ? nullptr : &visitor->second;
     }
 
-    template <typename T>
-    std::shared_ptr<T> GetVisitor()
+    template <typename... Ts>
+    Visitor& Register(Signature requirements)
     {
-        static_assert(std::is_base_of<VisitorBase, T>::value, "T must derive from visitor");
-        const char* typeName = typeid(T).name();
-        assert(m_Visitor.find(typeName) != m_Visitor.end() && "Getting System that does not exist");
-        return std::dynamic_pointer_cast<T>(m_Visitor[typeName]);
-    }
-
-    template <typename T>
-    std::shared_ptr<T> RegisterVisitor()
-    {
-        static_assert(std::is_base_of<VisitorBase, T>::value, "T must derive from visitor");
-
-        const char* typeName = typeid(T).name();
-
-        assert(m_Visitor.find(typeName) == m_Visitor.end() && "Registering system more than once.");
-
-        auto visitor = std::make_shared<T>();
-
-        m_Visitor.insert({typeName, visitor});
+        assert(Find<Ts...>() == nullptr && "Registering system more than once.");
+        Visitor& visitor = m_Visitors[Key<Ts...>()];
+        visitor.Requirements = requirements;
         return visitor;
-    }
-
-    template <typename T>
-    void SetSignature(Signature signature)
-    {
-        const char* typeName = typeid(T).name();
-
-        assert(m_Visitor.find(typeName) != m_Visitor.end() && "System used before registered.");
-
-        // Set the signature for this system
-        m_Signatures.insert({typeName, signature});
     }
 
     void EntityDestroyed(Entity entity)
     {
-        for (auto const& pair : m_Visitor)
-        {
-            auto const& visitor = pair.second;
-            visitor->m_Entities.erase(entity);
-        }
+        for (auto& [key, visitor] : m_Visitors)
+            visitor.Entities.erase(entity);
     }
 
     void EntitySignatureDeleted(Entity entity, Signature entitySignature)
     {
-        for (auto const& pair : m_Visitor)
+        for (auto& [key, visitor] : m_Visitors)
         {
-            auto const& type = pair.first;
-            auto const& visitor = pair.second;
-            auto const& systemSignature = m_Signatures[type];
-
-            if ((entitySignature & systemSignature) == systemSignature)
-            {
-                visitor->m_DeletedEntities.insert(entity);
-            }
-        }
-    }
-
-    void FlushDeletedEntities()
-    {
-        for (auto const& pair : m_Visitor)
-        {
-            auto const& visitor = pair.second;
-            visitor->m_DeletedEntities.clear();
+            if ((entitySignature & visitor.Requirements) == visitor.Requirements)
+                visitor.DeletedEntities.insert(entity);
         }
     }
 
     void EntitySignatureChanged(Entity entity, Signature entitySignature)
     {
-        for (auto const& pair : m_Visitor)
+        for (auto& [key, visitor] : m_Visitors)
         {
-            auto const& type = pair.first;
-            auto const& visitor = pair.second;
-            auto const& systemSignature = m_Signatures[type];
-
-            if ((entitySignature & systemSignature) == systemSignature)
-            {
-                visitor->m_Entities.insert(entity);
-            }
+            if ((entitySignature & visitor.Requirements) == visitor.Requirements)
+                visitor.Entities.insert(entity);
             else
-            {
-                visitor->m_Entities.erase(entity);
-            }
+                visitor.Entities.erase(entity);
         }
     }
 
-    void Clear()
+    void FlushDeletedEntities()
     {
-        m_Signatures.clear();
-        m_Visitor.clear();
+        for (auto& [key, visitor] : m_Visitors)
+            visitor.DeletedEntities.clear();
     }
 
-  private:
-    // Map from type string pointer to a signature
-    std::unordered_map<const char*, Signature> m_Signatures{};
+    void Clear() { m_Visitors.clear(); }
 
-    // Map from type string pointer to a Visitor
-    std::unordered_map<const char*, std::shared_ptr<VisitorBase>> m_Visitor{};
+  private:
+    template <typename... Ts>
+    struct Components
+    {
+    };
+
+    // Visitors are identified by the type name of Components<Ts...>
+    template <typename... Ts>
+    static const char* Key()
+    {
+        return typeid(Components<Ts...>).name();
+    }
+
+    // (node based: references to the visitors stay valid)
+    std::unordered_map<const char*, Visitor> m_Visitors;
 };

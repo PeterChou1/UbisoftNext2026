@@ -12,17 +12,12 @@
 #include <vector>
 
 /**
- * \brief Find the minimum translation vector (MTV)
- *        between a circle and a polygon
- * \param center center of circle
- * \param radius radius of circle
- * \param poly points on the polygon
- * \param normals edge normals of the polygon
- * \param collisionNormal a reference to collision normal to output
- * \param overlapAmount penetration amount to output to
- * \return
+ * \brief Find the minimum translation vector (MTV) between a circle and a
+ *        polygon (points and edge normals)
+ * \return whether they intersect; if so collisionNormal and overlapAmount
+ *         hold the MTV
  */
-bool FindMTVCircle(Vec2& center,
+bool FindMTVCircle(const Vec2& center,
                    float radius,
                    const std::vector<Vec2>& poly,
                    const std::vector<Vec2>& normals,
@@ -30,15 +25,10 @@ bool FindMTVCircle(Vec2& center,
                    float& overlapAmount);
 
 /**
- * \brief Find the minimum translation vector (MTV)
- *        between a polygon and a polygon
- * \param poly1 points on the polygon1
- * \param poly2 points on the polygon2
- * \param normals1 edge normals of the polygon1
- * \param normals2 edge normals of the polygon2
- * \param collisionNormal a reference to collision normal to output
- * \param overlapAmount penetration amount to output to
- * \return
+ * \brief Find the minimum translation vector (MTV) between two polygons
+ *        (points and edge normals)
+ * \return whether they intersect; if so collisionNormal and overlapAmount
+ *         hold the MTV
  */
 bool FindMTVPolygon(const std::vector<Vec2>& poly1,
                     const std::vector<Vec2>& poly2,

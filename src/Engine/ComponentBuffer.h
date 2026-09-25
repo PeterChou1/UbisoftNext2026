@@ -2,8 +2,8 @@
 // ComponentBuffer.h
 //---------------------------------------------------------------------------------
 //
-//  Component Buffers are the core of the ECS implementation they store
-//  meant to store components in a contiguous array for fast cache access
+// The components of one type, packed in a contiguous array for fast cache
+// access
 //
 
 #pragma once
@@ -12,7 +12,9 @@
 
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <unordered_map>
+#include <utility>
 
 class IComponentBuffer
 {
@@ -25,65 +27,50 @@ template <typename T>
 class ComponentBuffer : public IComponentBuffer
 {
   public:
-    ComponentBuffer() {}
-
     void InsertData(Entity entity, T component)
     {
-        assert(m_EntityToIndexMap.find(entity) == m_EntityToIndexMap.end() &&
-               "Component added to same entity more than once.");
+        assert(!HasData(entity) && "Component added to same entity more than once.");
         // Put new entry at end
-        size_t newIndex = m_Size;
-        m_EntityToIndexMap[entity] = newIndex;
-        m_IndexToEntityMap[newIndex] = entity;
-        m_ComponentArray[newIndex] = component;
+        m_EntityToIndex[entity] = m_Size;
+        m_IndexToEntity[m_Size] = entity;
+        m_Components[m_Size] = std::move(component);
         ++m_Size;
     }
 
     void RemoveData(Entity entity)
     {
-        assert(m_EntityToIndexMap.find(entity) != m_EntityToIndexMap.end() &&
-               "Removing non-existent component.");
+        assert(HasData(entity) && "Removing non-existent component.");
 
-        // Copy element at end into deleted element's place to maintain density
-        size_t indexOfRemovedEntity = m_EntityToIndexMap[entity];
-        size_t indexOfLastElement = m_Size - 1;
-        m_ComponentArray[indexOfRemovedEntity] = m_ComponentArray[indexOfLastElement];
+        // Copy the last element into the removed one's place to keep the
+        // array dense
+        std::size_t removedIndex = m_EntityToIndex[entity];
+        std::size_t lastIndex = m_Size - 1;
+        m_Components[removedIndex] = m_Components[lastIndex];
 
-        // Update map to point to moved spot
-        Entity entityOfLastElement = m_IndexToEntityMap[indexOfLastElement];
-        m_EntityToIndexMap[entityOfLastElement] = indexOfRemovedEntity;
-        m_IndexToEntityMap[indexOfRemovedEntity] = entityOfLastElement;
-
-        m_EntityToIndexMap.erase(entity);
-        m_IndexToEntityMap.erase(indexOfLastElement);
-
+        Entity lastEntity = m_IndexToEntity[lastIndex];
+        m_EntityToIndex[lastEntity] = removedIndex;
+        m_IndexToEntity[removedIndex] = lastEntity;
+        m_EntityToIndex.erase(entity);
         --m_Size;
     }
 
-    bool HasData(Entity entity)
-    {
-        return m_EntityToIndexMap.find(entity) != m_EntityToIndexMap.end();
-    }
+    bool HasData(Entity entity) const { return m_EntityToIndex.count(entity) > 0; }
 
     T& GetData(Entity entity)
     {
-        assert(m_EntityToIndexMap.find(entity) != m_EntityToIndexMap.end() &&
-               "Retrieving non-existent component.");
-
-        return m_ComponentArray[m_EntityToIndexMap[entity]];
+        assert(HasData(entity) && "Retrieving non-existent component.");
+        return m_Components[m_EntityToIndex[entity]];
     }
 
     void EntityDestroyed(Entity entity) override
     {
-        if (m_EntityToIndexMap.find(entity) != m_EntityToIndexMap.end())
-        {
+        if (HasData(entity))
             RemoveData(entity);
-        }
     }
 
   private:
-    std::array<T, MAX_ENTITIES> m_ComponentArray{};
-    std::unordered_map<Entity, size_t> m_EntityToIndexMap{};
-    std::unordered_map<size_t, Entity> m_IndexToEntityMap{};
-    size_t m_Size{};
+    std::array<T, MAX_ENTITIES> m_Components{};
+    std::unordered_map<Entity, std::size_t> m_EntityToIndex;
+    std::array<Entity, MAX_ENTITIES> m_IndexToEntity{};
+    std::size_t m_Size{};
 };

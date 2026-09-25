@@ -4,16 +4,122 @@
 #include "Utils.h"
 #include "stdafx.h"
 
+#include <cassert>
 #include <cmath>
+#include <limits>
 
-bool Circle2CircleCollision(const Vec2& aPos, const Vec2& bPos, const Shape& a, const Shape& b)
+namespace
 {
-    float r = a.Radius + b.Radius;
-    r *= r;
-    float dx = aPos.X - bPos.X;
-    float dy = aPos.Y - bPos.Y;
-    return dx * dx + dy * dy <= r;
-}
+    // A polygon edge (V1 to V2) and its vertex furthest along the normal
+    struct Edge
+    {
+        Vec2 Furthest{};
+        Vec2 V1{};
+        Vec2 V2{};
+        Vec2 Direction{};
+
+        Edge() = default;
+
+        Edge(const Vec2& furthest, const Vec2& v1, const Vec2& v2)
+            : Furthest(furthest)
+            , V1(v1)
+            , V2(v2)
+            , Direction(v2 - v1)
+        {
+        }
+    };
+
+    /**
+     * \brief The edge next to the polygon's furthest vertex along the normal
+     *        that is the most perpendicular to it
+     */
+    Edge FindClosestEdgeToNormal(const Vec2& normal, const std::vector<Vec2>& poly)
+    {
+        float maxProjection = -std::numeric_limits<float>::infinity();
+        size_t index = 0;
+        for (size_t i = 0; i < poly.size(); i++)
+        {
+            float projection = normal.Dot(poly[i]);
+            if (projection > maxProjection)
+            {
+                maxProjection = projection;
+                index = i;
+            }
+        }
+
+        const Vec2& v = poly[index];
+        const Vec2& next = poly[(index + 1) % poly.size()];
+        const Vec2& previous = poly[index == 0 ? poly.size() - 1 : index - 1];
+
+        Vec2 left = v - next;
+        Vec2 right = v - previous;
+        left.Normalize();
+        right.Normalize();
+
+        if (right.Dot(normal) <= left.Dot(normal))
+            return Edge(v, previous, v);
+        return Edge(v, v, next);
+    }
+
+    // Up to 3 points, kept on the stack (this runs for every touching pair of
+    // polygons, every physics sub step)
+    struct ClippedPoints
+    {
+        Vec2 Points[3];
+        int Count = 0;
+        void push_back(const Vec2& p) { Points[Count++] = p; }
+    };
+
+    /**
+     * \brief The part of the segment v1 v2 on the positive side of n . x = o
+     */
+    ClippedPoints ClipPoints(const Vec2& v1, const Vec2& v2, const Vec2& n, float o)
+    {
+        ClippedPoints clipped;
+        float d1 = n.Dot(v1) - o;
+        float d2 = n.Dot(v2) - o;
+
+        if (d1 >= 0.0)
+            clipped.push_back(v1);
+        if (d2 >= 0.0)
+            clipped.push_back(v2);
+
+        if (d1 * d2 < 0.0)
+        {
+            float u = d1 / (d1 - d2);
+            clipped.push_back((v2 - v1) * u + v1);
+        }
+        return clipped;
+    }
+
+    /**
+     * \brief Clip the incident edge against the reference edge's side planes,
+     *        and keep the points past its face
+     */
+    void FindContactPoints(const Edge& ref, const Edge& inc, std::vector<Vec2>& contactPoints)
+    {
+        Vec2 refDirection = ref.Direction;
+        refDirection.Normalize();
+
+        float o1 = refDirection.Dot(ref.V1);
+        ClippedPoints cp1 = ClipPoints(inc.V1, inc.V2, refDirection, o1);
+        if (cp1.Count < 2)
+            return;
+
+        float o2 = refDirection.Dot(ref.V2);
+        ClippedPoints cp2 = ClipPoints(cp1.Points[0], cp1.Points[1], refDirection * -1.0f, -o2);
+        if (cp2.Count < 2)
+            return;
+
+        Vec2 refNormal = refDirection.Cross(-1.0f);
+        float maxDepth = refNormal.Dot(ref.Furthest);
+        for (int i = 0; i < 2; i++)
+        {
+            if (refNormal.Dot(cp2.Points[i]) - maxDepth >= 0.0)
+                contactPoints.push_back(cp2.Points[i]);
+        }
+    }
+} // namespace
 
 void Circle2Circle(Manifold& m, RigidBody& A, RigidBody& B)
 {
@@ -24,19 +130,15 @@ void Circle2Circle(Manifold& m, RigidBody& A, RigidBody& B)
 
     assert(AShape.GetShapeType() == CircleShape && BShape.GetShapeType() == CircleShape);
 
-    m.Collided = Circle2CircleCollision(APos, BPos, AShape, BShape);
-
-    if (!m.Collided)
-        return;
-
-    if (!A.Collidable || !B.Collidable)
+    float r = AShape.Radius + BShape.Radius;
+    float dx = APos.X - BPos.X;
+    float dy = APos.Y - BPos.Y;
+    m.Collided = dx * dx + dy * dy <= r * r;
+    if (!m.Collided || !A.Collidable || !B.Collidable)
         return;
 
     Vec2 n = APos - BPos;
-    float r = AShape.Radius + BShape.Radius;
-
     float distance = n.GetMagnitude();
-
     if (distance != 0.0f)
     {
         m.Penetration = r - distance;
@@ -51,191 +153,49 @@ void Circle2Circle(Manifold& m, RigidBody& A, RigidBody& B)
     }
 }
 
-struct Edge
-{
-    Vec2 v1{};
-    Vec2 v2{};
-    Vec2 max{};
-    Vec2 edgeV{};
-
-    Edge() = default;
-
-    Edge(Vec2 max, Vec2 v1, Vec2 v2)
-        : max(max)
-        , v1(v1)
-        , v2(v2)
-        , edgeV(v2 - v1)
-    {
-    }
-};
-
-void FindClosestEdgeToNormal(const Vec2& normal, const std::vector<Vec2>& poly, Edge& edge)
-{
-    float max_proj = -std::numeric_limits<float>::infinity();
-    int index = 0;
-    for (int i = 0; i < poly.size(); i++)
-    {
-        float proj = normal.Dot(poly[i]);
-        if (proj > max_proj)
-        {
-            max_proj = proj;
-            index = i;
-        }
-    }
-
-    Vec2 v = poly[index];
-    Vec2 v1 = poly[(index + 1) % poly.size()];
-    Vec2 v0 = poly[index == 0 ? poly.size() - 1 : index - 1];
-
-    Vec2 l = v - v1;
-    Vec2 r = v - v0;
-    l.Normalize();
-    r.Normalize();
-
-    if (r.Dot(normal) <= l.Dot(normal))
-    {
-        edge = Edge(v, v0, v);
-    }
-    else
-    {
-        edge = Edge(v, v, v1);
-    }
-}
-
-// Up to 3 points, kept on the stack (this runs for every touching pair of
-// polygons, every physics sub step)
-struct ClippedPoints
-{
-    Vec2 Points[3];
-    int Count = 0;
-    void push_back(const Vec2& p) { Points[Count++] = p; }
-    std::size_t size() const { return static_cast<std::size_t>(Count); }
-    Vec2& operator[](int i) { return Points[i]; }
-};
-
-ClippedPoints ClipPoints(Vec2& v1, Vec2& v2, Vec2& n, float o)
-{
-    ClippedPoints clippedPoints;
-    float d1 = n.Dot(v1) - o;
-    float d2 = n.Dot(v2) - o;
-
-    if (d1 >= 0.0)
-        clippedPoints.push_back(v1);
-    if (d2 >= 0.0)
-        clippedPoints.push_back(v2);
-
-    if (d1 * d2 < 0.0)
-    {
-        Vec2 e = v2 - v1;
-        float u = d1 / (d1 - d2);
-        e = e * u + v1;
-        clippedPoints.push_back(e);
-    }
-
-    return clippedPoints;
-}
-
-void FindContactPoints(Edge& ref, Edge& inc, std::vector<Vec2>& contactPoints)
-{
-    Vec2 refv = ref.edgeV;
-    refv.Normalize();
-    float o1 = refv.Dot(ref.v1);
-
-    auto cp1 = ClipPoints(inc.v1, inc.v2, refv, o1);
-
-    if (cp1.size() < 2)
-        return;
-
-    float o2 = refv.Dot(ref.v2);
-    Vec2 refi = refv * -1.0f;
-    auto cp2 = ClipPoints(cp1[0], cp1[1], refi, -o2);
-
-    if (cp2.size() < 2)
-        return;
-
-    Vec2 refNorm = refv.Cross(-1.0);
-
-    float maxDepth = refNorm.Dot(ref.max);
-
-    if (refNorm.Dot(cp2[0]) - maxDepth >= 0.0)
-    {
-        contactPoints.push_back(cp2[0]);
-    }
-    if (refNorm.Dot(cp2[1]) - maxDepth >= 0.0)
-    {
-        contactPoints.push_back(cp2[1]);
-    }
-}
-
 void Polygon2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
 {
-    Shape& AShape = A.Shape;
-    Shape& BShape = B.Shape;
-
+    const Shape& AShape = A.Shape;
+    const Shape& BShape = B.Shape;
     assert(AShape.GetShapeType() == PolygonShape && BShape.GetShapeType() == PolygonShape);
 
     const auto& polyA = AShape.PolygonPoints;
     const auto& polyB = BShape.PolygonPoints;
-
-    // find Minimum Translation Vector (MTV)
     m.Collided = FindMTVPolygon(
             polyA, polyB, AShape.EdgeNormals, BShape.EdgeNormals, m.Normal, m.Penetration);
-
-    if (!m.Collided)
+    if (!m.Collided || !A.Collidable || !B.Collidable)
         return;
 
-    if (!A.Collidable || !B.Collidable)
-        return;
-
-    Edge AEdge{};
-    Edge BEdge{};
-
-    FindClosestEdgeToNormal(m.Normal * -1.0, polyA, AEdge);
-    FindClosestEdgeToNormal(m.Normal, polyB, BEdge);
-
-    Edge ref, inc;
-    if (std::abs(AEdge.edgeV.Dot(m.Normal)) <= std::abs(BEdge.edgeV.Dot(m.Normal)))
-    {
-        ref = AEdge;
-        inc = BEdge;
-    }
+    Edge AEdge = FindClosestEdgeToNormal(m.Normal * -1.0f, polyA);
+    Edge BEdge = FindClosestEdgeToNormal(m.Normal, polyB);
+    // The edge most perpendicular to the normal is the reference one
+    if (std::abs(AEdge.Direction.Dot(m.Normal)) <= std::abs(BEdge.Direction.Dot(m.Normal)))
+        FindContactPoints(AEdge, BEdge, m.ContactPoints);
     else
-    {
-        ref = BEdge;
-        inc = AEdge;
-    }
-    m.ContactPoints.clear();
-    FindContactPoints(ref, inc, m.ContactPoints);
+        FindContactPoints(BEdge, AEdge, m.ContactPoints);
 }
 
-void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
+void Polygon2Circle(Manifold& m, RigidBody& A, RigidBody& B)
 {
-    Shape& AShape = A.Shape;
-    Shape& BShape = B.Shape;
+    const Shape& AShape = A.Shape;
+    const Shape& BShape = B.Shape;
     assert(AShape.GetShapeType() == PolygonShape && BShape.GetShapeType() == CircleShape);
-    std::vector<Vec2>& poly = AShape.PolygonPoints;
+    const std::vector<Vec2>& poly = AShape.PolygonPoints;
 
-    // Use SAT to find circle normal and penetration
     m.Collided = FindMTVCircle(
             B.Position, BShape.Radius, poly, AShape.EdgeNormals, m.Normal, m.Penetration);
-
-    if (!m.Collided)
+    if (!m.Collided || !A.Collidable || !B.Collidable)
         return;
 
-    if (!A.Collidable || !B.Collidable)
-        return;
-
+    // The contact is the point of the polygon's outline closest to the center
     float minSquaredDistance = std::numeric_limits<float>::infinity();
     Vec2 closest{};
     bool found = false;
-
-    for (int i = 0; i < poly.size(); i++)
+    for (size_t i = 0; i < poly.size(); i++)
     {
-        Vec2& point1 = poly[i];
-        Vec2& point2 = poly[(i + 1) % poly.size()];
-        Vec2 contactPoint = Utils::PointToLineSegment(B.Position, point1, point2);
+        Vec2 contactPoint =
+                Utils::PointToLineSegment(B.Position, poly[i], poly[(i + 1) % poly.size()]);
         float squaredDistance = (contactPoint - B.Position).GetMagnitudeSquared();
-
         if (squaredDistance < minSquaredDistance)
         {
             minSquaredDistance = squaredDistance;
@@ -244,11 +204,11 @@ void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
         }
     }
     if (found)
-        m.ContactPoints.assign(1, closest);
+        m.ContactPoints.push_back(closest);
 }
 
-void Polygon2Circle(Manifold& m, RigidBody& A, RigidBody& B)
+void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B)
 {
-    Circle2Polygon(m, B, A);
+    Polygon2Circle(m, B, A);
     m.Normal *= -1.0f;
 }

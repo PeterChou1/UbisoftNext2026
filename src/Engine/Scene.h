@@ -2,38 +2,37 @@
 // Scene.h
 //---------------------------------------------------------------------------------
 //
-// A Scene represents a discrete chunk in the game such as a level or a menu
-// every Scene is the game must subclass this class
+// A Scene represents a discrete chunk of the game such as a level or a menu.
+// Every Scene of the game subclasses this class
 //
 #pragma once
 
 class Scene
 {
   public:
-    Scene() = default;
-
     virtual ~Scene() = default;
 
     /**
-     * \brief Start is called once onm start up of this is used to register any
-     *        Resources and setup any Systems a Scene might need
+     * \brief Called once, when the scene is registered: register any
+     *        Resources and set up any Systems the Scene needs
      */
     virtual void Start() {}
 
     /**
-     * \brief Setup is called every time
+     * \brief Called every time the scene becomes the active one (on a
+     *        freshly reset ECS)
      */
     virtual void Setup() {}
 
     /**
-     * \brief calls every iteration of the game loop
+     * \brief Called every iteration of the game loop
      * \param deltaTime time in ms between this frame and the previous
      */
     virtual void Update(float deltaTime) {}
 
     /**
-     * \brief called after pipeline render is done use this to render some
-     *        custom graphics you need
+     * \brief Called after the render pipeline is done: draw any custom
+     *        graphics (UI) here
      */
     virtual void Render() {}
 

@@ -1,11 +1,20 @@
+//---------------------------------------------------------------------------------
+// Emitter.h
+//---------------------------------------------------------------------------------
+//
+// Particle emitters and the particles they spawn (see ParticleSystem)
+//
 #pragma once
+
 #include "Vec3.h"
 
 struct Particle
 {
     Vec3 direction;
     Vec3 Color;
+    // Its quad was created by the MeshHandler
     bool loaded;
+    // Seconds left
     float duration;
 };
 
@@ -18,19 +27,18 @@ enum EmitterType
 struct Emitter
 {
     EmitterType emitterType = Sphere;
-    // specifies how many particles the emitter will emit
-    int density = 1.0f;
-    // specifies how long the emitter will emit for
+    // particles emitted per frame
+    int density = 1;
+    // seconds the emitter emits for
     float duration = 1.0f;
-    // specify the speed of each individual particle
+    // speed of each particle (saved, not used by the ParticleSystem)
     float speed = 1.0f;
-    // specify the size of each particle
+    // size of each particle
     float size = 1.0f;
-    // specifies how long each particle will last
+    // seconds each particle lasts
     float particleTime = 1.0f;
-    // angle of cone
+    // half angle of the cone (degrees)
     float coneAngle;
     Vec3 direction;
     Vec3 color;
-    Emitter() = default;
 };

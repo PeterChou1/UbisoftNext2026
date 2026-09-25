@@ -2,50 +2,47 @@
 // AABB.h
 //---------------------------------------------------------------------------------
 //
-// Axis Align Bounding Box Used for cheap broad phase intersection test
+// Axis aligned bounding box, used for a cheap broad phase intersection test
 // before the narrow phase
 //
-
 #pragma once
+
 #include "Mat2.h"
 #include "Shape.h"
-#include "Utils.h"
 #include "Vec2.h"
 
 #include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <vector>
 
 struct AABB
 {
+    // The box around the body origin, and around its current position
     Vec2 OriginalMax{};
     Vec2 OriginalMin{};
-
     Vec2 Max{};
     Vec2 Min{};
 
     AABB() = default;
 
     /**
-     * \brief Computes AABB for Circle
-     * \param radius of circle
+     * \brief Box of a circle
      */
     AABB(float radius)
+        : OriginalMax(radius, radius)
+        , OriginalMin(-radius, -radius)
+        , Max(OriginalMax)
+        , Min(OriginalMin)
     {
-        OriginalMax = Vec2(radius, radius);
-        OriginalMin = Vec2(-radius, -radius);
-        Min = OriginalMin;
-        Max = OriginalMax;
     }
 
     /**
-     * \brief Compute AABB for a polygon
-     * \param points points in the polygon
+     * \brief Box of a polygon
      */
     AABB(const std::vector<Vec2>& points)
     {
         assert(!points.empty() && "Points Empty");
-        ComputeMaxPoints(points, OriginalMax, OriginalMin);
+        Bounds(points.data(), points.size(), OriginalMax, OriginalMin);
         Min = OriginalMin;
         Max = OriginalMax;
     }
@@ -62,61 +59,35 @@ struct AABB
                           Vec2(OriginalMin.X, OriginalMax.Y),
                           OriginalMin,
                           Vec2(OriginalMax.X, OriginalMin.Y)};
-        if (shapeType == CircleShape)
-        {
-            for (Vec2& point : points)
-                point += newPosition;
-        }
-        else
-        {
-            for (Vec2& point : points)
-            {
-                Vec2 local = point;
-                point = matrix * local + newPosition;
-            }
-        }
-        Max = points[0];
-        Min = points[0];
-        for (const Vec2& point : points)
-        {
-            if (point.X < Min.X)
-                Min.X = point.X;
-            if (point.Y < Min.Y)
-                Min.Y = point.Y;
-            if (point.X > Max.X)
-                Max.X = point.X;
-            if (point.Y > Max.Y)
-                Max.Y = point.Y;
-        }
+        for (Vec2& point : points)
+            point = shapeType == CircleShape ? point + newPosition : matrix * point + newPosition;
+        Bounds(points, 4, Max, Min);
     }
 
-    static void ComputeMaxPoints(const std::vector<Vec2>& points, Vec2& maxPoint, Vec2& minPoint)
+  private:
+    static void Bounds(const Vec2* points, std::size_t count, Vec2& max, Vec2& min)
     {
-        maxPoint = points[0];
-        minPoint = points[0];
-        for (const Vec2& point : points)
+        max = points[0];
+        min = points[0];
+        for (std::size_t i = 0; i < count; ++i)
         {
-            if (point.X < minPoint.X)
-                minPoint.X = point.X;
-            if (point.Y < minPoint.Y)
-                minPoint.Y = point.Y;
-            if (point.X > maxPoint.X)
-                maxPoint.X = point.X;
-            if (point.Y > maxPoint.Y)
-                maxPoint.Y = point.Y;
+            const Vec2& point = points[i];
+            if (point.X < min.X)
+                min.X = point.X;
+            if (point.Y < min.Y)
+                min.Y = point.Y;
+            if (point.X > max.X)
+                max.X = point.X;
+            if (point.Y > max.Y)
+                max.Y = point.Y;
         }
     }
 };
 
 /**
- * \brief AABB intersection test returns true depending if A and B
- *        are colliding
+ * \brief Whether the boxes A and B overlap
  */
-inline bool AABBTest(AABB& A, AABB& B)
+inline bool AABBTest(const AABB& A, const AABB& B)
 {
-    if (A.Max.X < B.Min.X || A.Min.X > B.Max.X)
-        return false;
-    if (A.Max.Y < B.Min.Y || A.Min.Y > B.Max.Y)
-        return false;
-    return true;
+    return !(A.Max.X < B.Min.X || A.Min.X > B.Max.X || A.Max.Y < B.Min.Y || A.Min.Y > B.Max.Y);
 }

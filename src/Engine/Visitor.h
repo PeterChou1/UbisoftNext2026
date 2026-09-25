@@ -2,36 +2,21 @@
 // Visitor.h
 //---------------------------------------------------------------------------------
 //
-// The Visitor Class represent the System of the Entity Component System
-// Each Visitor contains a list of Entities in the ECS System
-// that have certain components
+// A Visitor represents a System of the Entity Component System: it keeps
+// track of every Entity that holds a set of components
 //
 #pragma once
 
-#include "ComponentManager.h"
 #include "Entity.h"
 
-#include <memory>
 #include <set>
 
-class VisitorBase
+struct Visitor
 {
-  public:
-    std::set<Entity> m_Entities;
-    std::set<Entity> m_DeletedEntities;
-    virtual Signature GetRequirements(std::shared_ptr<ComponentManager> manager) = 0;
-};
-
-/**
- * \brief Keeps track of all Components with data types Ts
- * \tparam Ts
- */
-template <typename... Ts>
-class Visitor : public VisitorBase
-{
-  public:
-    Signature GetRequirements(std::shared_ptr<ComponentManager> manager)
-    {
-        return manager->GetSignature<Ts...>();
-    }
+    // The components an Entity needs to be visited
+    Signature Requirements;
+    std::set<Entity> Entities;
+    // Visited entities deleted (or that lost a component) since the last
+    // ECSManager::FlushECS
+    std::set<Entity> DeletedEntities;
 };

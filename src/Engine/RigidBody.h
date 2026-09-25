@@ -2,8 +2,8 @@
 // RigidBody.h
 //---------------------------------------------------------------------------------
 //
-// Represent a physics body in the physics System a rigid body can be a circle
-// or any concave polygon
+// A body of the 2D physics system: a circle or a convex polygon. Collider
+// provides category pair callbacks (see ColliderCallbackSystem)
 //
 #pragma once
 
@@ -17,35 +17,28 @@
 
 #include <vector>
 
-class Collider;
-
 class RigidBody
 {
   public:
     RigidBody() = default;
 
     /**
-     * \brief
-     * \param radius
+     * \brief Circle body
      */
     RigidBody(float radius);
 
     /**
-     * \brief Construct A Rectangle RigidBody Based on width and height
-     * \param width
-     * \param height
-     * \param weightMultiplier multiplies rectangle weights
+     * \brief Rectangle body, its mass multiplied by weightMultiplier
      */
     RigidBody(float width, float height, float weightMultiplier = 1.0f);
 
     /**
-     * \brief Construct a RigidBody based on
-     * \param polygons
+     * \brief Convex polygon body (points around the body origin)
      */
     RigidBody(std::vector<Vec2> polygons);
 
     /**
-     * \brief Setting the body to infinite mass
+     * \brief Give the body infinite mass
      */
     void SetStatic();
 
@@ -85,11 +78,11 @@ class RigidBody
 
     void IntegrateVelocityAngular(float deltaTime);
 
-    float InvMass() const;
+    float InvMass() const { return m_InvMass; }
 
-    float InvInertia() const;
+    float InvInertia() const { return m_InvInertia; }
 
-    float Restitution() const;
+    float Restitution() const { return m_Restitution; }
 
     // specify if rigid body is intersecting with any other rigidbody
     bool IsIntersecting = false;
@@ -115,6 +108,11 @@ class RigidBody
   private:
     // Grants the save system access to private state (see EngineSerialization.h)
     friend struct SerializationAccess;
+
+    /**
+     * \brief Mass, inertia and the default material
+     */
+    void SetMassProperties(float mass, float inertia);
 
     // immutable states
     float m_InvInertia{};

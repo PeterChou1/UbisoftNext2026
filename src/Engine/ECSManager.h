@@ -2,17 +2,13 @@
 // ECSManager.h
 //---------------------------------------------------------------------------------
 //
-// The ECSManager is the interface with which the Developer Interfaces
-// with the ECS System it manages the global state of the game
-// ECS stands for Entity Component System,
-// Broadly speaking:
+// The interface of the ECS (Entity Component System), which holds the global
+// state of the game. Broadly speaking:
 //   - Entities are containers for Components
-//   - Components are data class
-//   - Systems act on the Components
+//   - Components are data classes
+//   - Systems act on the Components (they Visit the entities holding some)
 //
-// The ECS System implementation currently allows for the addition
-// of resources which are globally unique entities that are instantiate once
-// per game
+// It also holds Resources: global objects created once per game
 //
 #pragma once
 
@@ -22,9 +18,13 @@
 #include "Resource.h"
 #include "VisitorManager.h"
 
+#include <cassert>
 #include <memory>
 #include <set>
+#include <type_traits>
 #include <typeinfo>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 class ECSManager
@@ -35,13 +35,12 @@ class ECSManager
      */
     void Init()
     {
-        // Create pointers to each manager
-        m_ComponentManager = std::make_shared<ComponentManager>();
-        m_EntityManager = std::make_shared<EntityManager>();
-        m_VisitorManager = std::make_shared<VisitorManager>();
+        m_ComponentManager = std::make_unique<ComponentManager>();
+        m_EntityManager = std::make_unique<EntityManager>();
+        m_VisitorManager = std::make_unique<VisitorManager>();
     }
 
-    size_t GetEntityCount() { return m_EntityManager->GetEntityCount(); }
+    size_t GetEntityCount() const { return m_EntityManager->GetEntityCount(); }
 
     /**
      * \brief Meant for internal use flushes deleted Entity list
@@ -53,13 +52,9 @@ class ECSManager
      */
     void Reset()
     {
-        m_ComponentManager->Clear();
-        m_EntityManager->Clear();
-        m_VisitorManager->Clear();
-        for (auto resource : m_Resources)
-        {
+        ClearWorld();
+        for (const auto& resource : m_Resources)
             resource->ResetResource();
-        }
     }
 
     /**
@@ -117,16 +112,7 @@ class ECSManager
     template <typename... Ts>
     std::set<Entity> Visit()
     {
-        std::shared_ptr<Visitor<Ts...>> v;
-        if (IsVisitorRegistered<Visitor<Ts...>>())
-        {
-            v = GetVisitor<Visitor<Ts...>>();
-        }
-        else
-        {
-            v = RegisterVisitor<Visitor<Ts...>>();
-        }
-        return v->m_Entities;
+        return GetVisitor<Ts...>().Entities;
     }
 
     /**
@@ -140,17 +126,7 @@ class ECSManager
     template <typename... Ts>
     std::set<Entity> VisitDeleted()
     {
-        std::shared_ptr<Visitor<Ts...>> v;
-        if (IsVisitorRegistered<Visitor<Ts...>>())
-        {
-            v = GetVisitor<Visitor<Ts...>>();
-        }
-        else
-        {
-            v = RegisterVisitor<Visitor<Ts...>>();
-        }
-
-        return v->m_DeletedEntities;
+        return GetVisitor<Ts...>().DeletedEntities;
     }
 
     /**
@@ -171,7 +147,7 @@ class ECSManager
     template <typename T>
     void AddComponent(Entity entity, T component)
     {
-        m_ComponentManager->AddComponent<T>(entity, component);
+        m_ComponentManager->AddComponent<T>(entity, std::move(component));
         auto signature = m_EntityManager->GetSignature(entity);
         signature.set(m_ComponentManager->GetComponentType<T>(), true);
         m_EntityManager->SetSignature(entity, signature);
@@ -248,53 +224,24 @@ class ECSManager
         return m_ResourceToIndex.find(typeid(T).name()) != m_ResourceToIndex.end();
     }
 
-    template <typename... Ts>
-    Signature GetSignature()
-    {
-        return m_ComponentManager->GetSignature<Ts...>();
-    }
-
   private:
-    template <typename T>
-    ComponentTypeID GetComponentType()
+    /**
+     * \brief The Visitor of Ts, registered (with its entities) on first use
+     */
+    template <typename... Ts>
+    Visitor& GetVisitor()
     {
-        return m_ComponentManager->GetComponentType<T>();
-    }
-
-    template <typename T>
-    std::shared_ptr<T> GetVisitor()
-    {
-        return m_VisitorManager->GetVisitor<T>();
-    }
-
-    template <typename T>
-    bool IsVisitorRegistered() const
-    {
-        return m_VisitorManager->IsVisitorRegistered<T>();
-    }
-
-    // Component methods
-    template <typename T>
-    void RegisterComponent()
-    {
-        m_ComponentManager->RegisterComponent<T>();
-    }
-
-    // System methods
-    template <typename T>
-    std::shared_ptr<T> RegisterVisitor()
-    {
-        std::shared_ptr<T> visitor = m_VisitorManager->RegisterVisitor<T>();
-        std::shared_ptr<VisitorBase> visitorBase = visitor;
-        Signature s = visitorBase->GetRequirements(m_ComponentManager);
-        m_VisitorManager->SetSignature<T>(s);
-        visitorBase->m_Entities = m_EntityManager->MatchSignature(s);
+        if (Visitor* visitor = m_VisitorManager->Find<Ts...>())
+            return *visitor;
+        Signature requirements = m_ComponentManager->GetSignature<Ts...>();
+        Visitor& visitor = m_VisitorManager->Register<Ts...>(requirements);
+        visitor.Entities = m_EntityManager->MatchSignature(requirements);
         return visitor;
     }
 
-    std::shared_ptr<ComponentManager> m_ComponentManager;
-    std::shared_ptr<EntityManager> m_EntityManager;
-    std::shared_ptr<VisitorManager> m_VisitorManager;
+    std::unique_ptr<ComponentManager> m_ComponentManager;
+    std::unique_ptr<EntityManager> m_EntityManager;
+    std::unique_ptr<VisitorManager> m_VisitorManager;
     std::unordered_map<const char*, size_t> m_ResourceToIndex;
     std::vector<std::shared_ptr<Resource>> m_Resources;
 };

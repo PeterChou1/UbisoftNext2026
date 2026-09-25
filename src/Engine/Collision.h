@@ -2,10 +2,12 @@
 // Collision.h
 //---------------------------------------------------------------------------------
 //
-// Implements Collision routines for all the shapes in the physics system
+// Narrow phase tests of every pair of shapes (named <shape of A>2<shape of B>):
+// fill the manifold's Collided flag, and its normal, penetration and contact
+// points when both bodies are collidable
 //
-
 #pragma once
+
 #include "Manifolds.h"
 #include "RigidBody.h"
 
@@ -13,6 +15,6 @@ void Circle2Circle(Manifold& m, RigidBody& A, RigidBody& B);
 
 void Polygon2Polygon(Manifold& m, RigidBody& A, RigidBody& B);
 
-void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B);
-
 void Polygon2Circle(Manifold& m, RigidBody& A, RigidBody& B);
+
+void Circle2Polygon(Manifold& m, RigidBody& A, RigidBody& B);

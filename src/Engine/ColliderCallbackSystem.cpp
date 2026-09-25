@@ -1,8 +1,10 @@
 #include "ColliderCallbackSystem.h"
 
+#include "ECSManager.h"
 #include "stdafx.h"
 
 #include <algorithm>
+#include <cassert>
 
 extern ECSManager ECS;
 
@@ -59,116 +61,93 @@ void ColliderCallbackSystem::UpdateContacts()
 
 bool ColliderCallbackSystem::HasRegisterCallback(CollisionPair pair)
 {
-    if (m_CallBackMap.find(pair) != m_CallBackMap.end())
-        return true;
-
-    std::swap(pair.first, pair.second);
-
-    return m_CallBackMap.find(pair) != m_CallBackMap.end();
+    return m_CallBackMap.count(pair) > 0 || m_CallBackMap.count({pair.second, pair.first}) > 0;
 }
 
 void ColliderCallbackSystem::SubmitForCallback(Entity A, Entity B)
 {
-    if (m_CollidePairs.find({A, B}) != m_CollidePairs.end() ||
-        m_CollidePairs.find({B, A}) != m_CollidePairs.end())
-        return;
+    // Each pair once, in the orientation first submitted
+    if (m_CollidePairs.count({B, A}) == 0)
+        m_CollidePairs.insert({A, B});
+}
 
-    m_CollidePairs.insert({A, B});
+template <typename Fn>
+bool ColliderCallbackSystem::Dispatch(Entity e1, Entity e2, Fn&& event)
+{
+    RigidBody& A = ECS.GetComponent<RigidBody>(e1);
+    RigidBody& B = ECS.GetComponent<RigidBody>(e2);
+    auto callback = m_CallBackMap.find({A.Category, B.Category});
+    if (callback != m_CallBackMap.end())
+    {
+        event(*callback->second, e1, e2, A, B);
+        return true;
+    }
+    callback = m_CallBackMap.find({B.Category, A.Category});
+    if (callback != m_CallBackMap.end())
+    {
+        event(*callback->second, e2, e1, B, A);
+        return true;
+    }
+    return false;
 }
 
 void ColliderCallbackSystem::Update()
 {
     UpdateContacts();
 
-    std::set<Entity> deleteEntity = ECS.VisitDeleted<RigidBody>();
+    // Callbacks may destroy bodies: the pairs of destroyed bodies are skipped
+    std::set<Entity> deleted = ECS.VisitDeleted<RigidBody>();
+    auto isDeleted = [&](const std::pair<Entity, Entity>& pair) {
+        return deleted.count(pair.first) > 0 || deleted.count(pair.second) > 0;
+    };
 
-    for (auto& entityPair : m_CollidePairs)
+    for (const auto& pair : m_CollidePairs)
     {
-        Entity e1 = entityPair.first;
-        Entity e2 = entityPair.second;
-        if (deleteEntity.find(e1) != deleteEntity.end() ||
-            deleteEntity.find(e2) != deleteEntity.end())
+        if (isDeleted(pair))
             continue;
+        assert(ECS.HasComponent<RigidBody>(pair.first) && "Not Possible");
+        assert(ECS.HasComponent<RigidBody>(pair.second) && "Not Possible");
 
-        assert(ECS.HasComponent<RigidBody>(e1) && "Not Possible");
-        assert(ECS.HasComponent<RigidBody>(e2) && "Not Possible");
-
-        RigidBody& A = ECS.GetComponent<RigidBody>(e1);
-        RigidBody& B = ECS.GetComponent<RigidBody>(e2);
-
-        CollisionPair pairA = {A.Category, B.Category};
-        CollisionPair pairB = {B.Category, A.Category};
-
-        if (m_CallBackMap.find(pairA) != m_CallBackMap.end())
-        {
-            if (m_PrevCollidePairs.find(entityPair) != m_PrevCollidePairs.end())
-            {
-                m_CallBackMap[pairA]->OnCollide(e1, e2, A, B);
-            }
-            else
-            {
-                m_CallBackMap[pairA]->OnCollideEnter(e1, e2, A, B);
-            }
-        }
-        else if (m_CallBackMap.find(pairB) != m_CallBackMap.end())
-        {
-            if (m_PrevCollidePairs.find(entityPair) != m_PrevCollidePairs.end())
-            {
-                m_CallBackMap[pairB]->OnCollide(e2, e1, B, A);
-            }
-            else
-            {
-                m_CallBackMap[pairB]->OnCollideEnter(e2, e1, B, A);
-            }
-        }
-        deleteEntity = ECS.VisitDeleted<RigidBody>();
+        const bool touching = m_PrevCollidePairs.count(pair) > 0;
+        if (Dispatch(pair.first,
+                     pair.second,
+                     [&](Collider& callback,
+                         Entity self,
+                         Entity other,
+                         RigidBody& selfBody,
+                         RigidBody& otherBody) {
+                         if (touching)
+                             callback.OnCollide(self, other, selfBody, otherBody);
+                         else
+                             callback.OnCollideEnter(self, other, selfBody, otherBody);
+                     }))
+            deleted = ECS.VisitDeleted<RigidBody>();
     }
 
-    for (auto& entityPair : m_PrevCollidePairs)
+    for (const auto& pair : m_PrevCollidePairs)
     {
-        Entity e1 = entityPair.first;
-        Entity e2 = entityPair.second;
-
-        if (deleteEntity.find(e1) != deleteEntity.end() ||
-            deleteEntity.find(e2) != deleteEntity.end())
+        if (isDeleted(pair) || m_CollidePairs.count(pair) > 0)
             continue;
-
-        if (!ECS.HasComponent<RigidBody>(e1) || !ECS.HasComponent<RigidBody>(e2))
+        if (!ECS.HasComponent<RigidBody>(pair.first) || !ECS.HasComponent<RigidBody>(pair.second))
             continue;
-
-        RigidBody& A = ECS.GetComponent<RigidBody>(e1);
-        RigidBody& B = ECS.GetComponent<RigidBody>(e2);
-
-        CollisionPair pairA = {A.Category, B.Category};
-        CollisionPair pairB = {B.Category, A.Category};
-
-        if (m_CallBackMap.find(pairA) != m_CallBackMap.end() &&
-            m_CollidePairs.find(entityPair) == m_CollidePairs.end())
-        {
-            m_CallBackMap[pairA]->OnCollideExit(e1, e2, A, B);
-        }
-        else if (m_CallBackMap.find(pairB) != m_CallBackMap.end() &&
-                 m_CollidePairs.find(entityPair) == m_CollidePairs.end())
-        {
-            m_CallBackMap[pairB]->OnCollideExit(e2, e1, B, A);
-        }
-        deleteEntity = ECS.VisitDeleted<RigidBody>();
+        if (Dispatch(pair.first,
+                     pair.second,
+                     [](Collider& callback,
+                        Entity self,
+                        Entity other,
+                        RigidBody& selfBody,
+                        RigidBody& otherBody) {
+                         callback.OnCollideExit(self, other, selfBody, otherBody);
+                     }))
+            deleted = ECS.VisitDeleted<RigidBody>();
     }
 
-    for (auto it = m_CollidePairs.begin(); it != m_CollidePairs.end();)
+    // This sub step's pairs (of bodies still alive) become the previous ones
+    m_PrevCollidePairs.clear();
+    for (const auto& pair : m_CollidePairs)
     {
-        if (deleteEntity.find(it->first) != deleteEntity.end() ||
-            deleteEntity.find(it->second) != deleteEntity.end())
-        {
-            it = m_CollidePairs.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
+        if (!isDeleted(pair))
+            m_PrevCollidePairs.insert(pair);
     }
-
-    // Resolve all collider callback clear for next loop
-    m_PrevCollidePairs = m_CollidePairs;
     m_CollidePairs.clear();
 }

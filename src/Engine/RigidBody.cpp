@@ -1,9 +1,9 @@
 #include "RigidBody.h"
 
-#include "app.h"
 #include "stdafx.h"
 
 #include <cassert>
+#include <utility>
 
 RigidBody::RigidBody(float radius)
 {
@@ -11,12 +11,7 @@ RigidBody::RigidBody(float radius)
     RigidBodyAABB = AABB(radius);
     float area = radius * radius * 3.141f;
     float mass = DEFAULT_DENSITY * area;
-    float inertia = 0.5f * mass * radius * radius;
-    m_InvMass = 1.0f / mass;
-    m_InvInertia = 1.0f / inertia;
-    m_Restitution = DEFAULT_RESTITUTION;
-    StaticFriction = DEFAULT_STATIC_FRICTION;
-    DynamicFriction = DEFAULT_DYNAMIC_FRICTION;
+    SetMassProperties(mass, 0.5f * mass * radius * radius);
 }
 
 RigidBody::RigidBody(float width, float height, float weightMultiplier)
@@ -25,12 +20,7 @@ RigidBody::RigidBody(float width, float height, float weightMultiplier)
     RigidBodyAABB = AABB(Shape.PolygonPoints);
     float area = width * height;
     float mass = area * DEFAULT_DENSITY * weightMultiplier;
-    float inertia = (1.0f / 12.0f) * mass * (width * width + height * height);
-    m_InvMass = 1.0f / mass;
-    m_InvInertia = 1.0f / inertia;
-    m_Restitution = DEFAULT_RESTITUTION;
-    StaticFriction = DEFAULT_STATIC_FRICTION;
-    DynamicFriction = DEFAULT_DYNAMIC_FRICTION;
+    SetMassProperties(mass, (1.0f / 12.0f) * mass * (width * width + height * height));
 }
 
 RigidBody::RigidBody(std::vector<Vec2> polygons)
@@ -50,11 +40,14 @@ RigidBody::RigidBody(std::vector<Vec2> polygons)
         const Vec2& b = p[(i + 1) % p.size()];
         float cross = a.X * b.Y - b.X * a.Y;
         area += cross * 0.5f;
-        inertiaSum += cross * (a.X * a.X + a.X * b.X + b.X * b.X + a.Y * a.Y + a.Y * b.Y +
-                               b.Y * b.Y);
+        inertiaSum +=
+                cross * (a.X * a.X + a.X * b.X + b.X * b.X + a.Y * a.Y + a.Y * b.Y + b.Y * b.Y);
     }
-    float mass = DEFAULT_DENSITY * area;
-    float inertia = DEFAULT_DENSITY * inertiaSum / 12.0f;
+    SetMassProperties(DEFAULT_DENSITY * area, DEFAULT_DENSITY * inertiaSum / 12.0f);
+}
+
+void RigidBody::SetMassProperties(float mass, float inertia)
+{
     m_InvMass = 1.0f / mass;
     m_InvInertia = 1.0f / inertia;
     m_Restitution = DEFAULT_RESTITUTION;
@@ -75,24 +68,18 @@ void RigidBody::SyncTransform(Transform& transform)
     Quat rotation = transform.GetWorldRotation();
     switch (transform.Plane)
     {
-    case YZ: {
-        Position.X = position.Y;
-        Position.Y = position.Z;
+    case YZ:
+        Position = Vec2(position.Y, position.Z);
         Angular = rotation.GetRoll2D();
         break;
-    }
-    case XZ: {
-        Position.X = position.X;
-        Position.Y = position.Z;
+    case XZ:
+        Position = Vec2(position.X, position.Z);
         Angular = -rotation.GetPitch2D();
         break;
-    }
-    case XY: {
-        Position.X = position.X;
-        Position.Y = position.Y;
+    case XY:
+        Position = Vec2(position.X, position.Y);
         Angular = rotation.GetYaw2D();
         break;
-    }
     }
 }
 
@@ -101,35 +88,26 @@ void RigidBody::ForwardTransform(Transform& transform) const
     if (!Collidable)
         return;
 
-    // transform.SetPosition2D(Position);
-    // World position (the same as the local one for a root transform)
-    Vec3 current = transform.GetWorldPosition();
+    ForwardPosition(transform);
     switch (transform.Plane)
     {
-    case YZ: {
-        Vec3 Loc = Vec3(current.X, Position.X, Position.Y);
-        transform.SetWorldPosition(Loc);
+    case YZ:
         transform.UpdateLocalRow(AngularDelta);
         break;
-    }
-    case XZ: {
-        Vec3 Loc = Vec3(Position.X, current.Y, Position.Y);
-        transform.SetWorldPosition(Loc);
+    case XZ:
         // SyncTransform reads Angular = -pitch on this plane: turning the
         // transform by +delta made a spinning body turn the other way
         transform.UpdateLocalPitch(TransformTurn(transform.Plane, AngularDelta));
         break;
-    }
-    case XY: {
-        Vec3 Loc = Vec3(Position.X, Position.Y, current.Z);
-        transform.SetWorldPosition(Loc);
+    case XY:
         transform.UpdateLocalYaw(AngularDelta);
-    }
+        break;
     }
 }
 
 void RigidBody::ForwardPosition(Transform& transform) const
 {
+    // World position (the same as the local one for a root transform)
     Vec3 current = transform.GetWorldPosition();
     switch (transform.Plane)
     {
@@ -160,21 +138,17 @@ Vec3 RigidBody::RotationAxis(SlicePlane plane)
     case XZ:
         return Vec3(0, 1, 0);
     default:
-        return Vec3(0.0f, 0.0f, 1.0);
+        return Vec3(0, 0, 1);
     }
 }
 
 void RigidBody::RecomputeGeometry()
 {
-    if (Shape.GetShapeType() == CircleShape)
-    {
-        Shape.RecomputePoints(Mat2(), Position);
-        RigidBodyAABB.RecomputeAABB(Position, Mat2(), CircleShape);
-        return;
-    }
-    Mat2 rotation = Utils::RotationMatrix(Angular);
+    // (a circle has no points to turn, its box does not rotate)
+    const ShapeType type = Shape.GetShapeType();
+    Mat2 rotation = type == CircleShape ? Mat2() : Utils::RotationMatrix(Angular);
     Shape.RecomputePoints(rotation, Position);
-    RigidBodyAABB.RecomputeAABB(Position, rotation, PolygonShape);
+    RigidBodyAABB.RecomputeAABB(Position, rotation, type);
 }
 
 void RigidBody::ApplyImpulseAngular(const Vec2& impulse, const Vec2& contactVector)
@@ -190,19 +164,4 @@ void RigidBody::IntegrateVelocityAngular(float deltaTime)
     Position += Velocity * deltaTime;
     AngularDelta = AngularVelocity * deltaTime;
     Angular += AngularDelta;
-}
-
-float RigidBody::InvMass() const
-{
-    return m_InvMass;
-}
-
-float RigidBody::InvInertia() const
-{
-    return m_InvInertia;
-}
-
-float RigidBody::Restitution() const
-{
-    return m_Restitution;
 }

@@ -116,6 +116,8 @@ class GameManager
   private:
     void ProcessRequests();
 
+    Scene& ActiveScene();
+
     std::string m_ActiveScene;
     std::string m_CurrentScenePath;
     std::string m_PendingSave;

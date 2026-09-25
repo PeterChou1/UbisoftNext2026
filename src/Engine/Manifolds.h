@@ -1,9 +1,9 @@
 //---------------------------------------------------------------------------------
-// Manifold.h
+// Manifolds.h
 //---------------------------------------------------------------------------------
 //
-// A manifold represents Collision information generated whenever two shapes
-// in the physics system
+// A manifold holds the collision information of two bodies (see Collision.h)
+// and resolves their collision
 //
 #pragma once
 
@@ -15,7 +15,10 @@
 class Manifold
 {
   public:
-    Manifold(Entity idA, Entity idB, RigidBody& A, RigidBody& B);
+    /**
+     * \brief Runs the narrow phase test of A and B
+     */
+    Manifold(Entity entityA, Entity entityB, RigidBody& A, RigidBody& B);
 
     /**
      * \brief Resolve Collision accounting for rotation
@@ -29,8 +32,8 @@ class Manifold
      */
     void PositionCorrection();
 
-    Entity idA;
-    Entity idB;
+    Entity EntityA;
+    Entity EntityB;
     RigidBody& A;
     RigidBody& B;
     // whether or not A and B collided
