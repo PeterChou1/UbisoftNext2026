@@ -14,11 +14,8 @@ struct SIMDTriangle
 {
     SIMDFloat B0{}, C0{}, B1{}, C1{}, B2{}, C2{};
     SIMDFloat InvDet;
-    SIMDVec3 Normal1, Normal2, Normal3;
     SIMDVec2 V1, V2, V3;
     SIMDFloat InvW1, InvW2, InvW3;
-    SIMDFloat Z1, Z2, Z3;
-    SIMDVec2 Tex1, Tex2, Tex3;
 
     SIMDTriangle(const Triangle& t);
 

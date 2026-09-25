@@ -8,28 +8,15 @@
 #pragma once
 
 #include "Assets.h"
-#include "BlingPhong.h"
-#include "DefaultVertexShader.h"
-#include "EffectShadersSIMD.h"
-#include "EffectVertexShaders.h"
+#include "Entity.h"
 #include "FragShaderTag.h"
-#include "Log.h"
+#include "FragmentShader.h"
 #include "Material.h"
 #include "MeshInstance.h"
-#include "NormalShaderSIMD.h"
-#include "OutlineShaderSIMD.h"
-#include "ParticleShaderSIMD.h"
-#include "RedShaderSIMD.h"
-#include "ShapeShaderSIMD.h"
-#include "ToonShaderSIMD.h"
-#include "UnlitSIMD.h"
-#include "Utils.h"
 #include "VertShaderTag.h"
 #include "VertexShader.h"
 
-#include <algorithm>
-#include <filesystem>
-#include <set>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -43,14 +30,10 @@ class AssetServer
     AssetServer(AssetServer& other) = delete;
     void operator=(const AssetServer&) = delete;
 
-    /**
-     * \brief The Asset Server is A Global Singleton that is instantiated only
-     * once GetInstance retrieves this Object \return
-     */
+    // The global instance
     static AssetServer& GetInstance()
     {
         static AssetServer instance;
-
         return instance;
     }
 
@@ -62,246 +45,71 @@ class AssetServer
      *        data/models). Models are loaded on first use and cached; a model
      *        that can not be loaded is returned empty (nothing is drawn)
      */
-    MeshInstance& GetModel(const std::string& name)
-    {
-        auto it = Models.find(name);
-        if (it != Models.end())
-            return it->second;
-        MeshInstance instance;
-        if (!Utils::LoadInstance(MODEL_DIRECTORY + name + ".obj", instance, TextureList))
-        {
-            LOG_WARN("Assets", "Model '%s' could not be loaded from %s", name.c_str(), MODEL_DIRECTORY);
-            instance = MeshInstance{};
-        }
-        else
-            LOG_TRACE("Assets", "Loaded model %s (%zu vertices)", name.c_str(), instance.vertices.size());
-        NormalizeModel(instance);
-        return Models.emplace(name, std::move(instance)).first->second;
-    }
-
-    /**
-     * \brief Models come in very different sizes (0.2 to 200 units). Scene
-     *        objects treat a model like a shape of footprint 1 x 1 standing
-     *        on the ground: centre it on x / z, put its lowest point at y = 0
-     *        and scale it uniformly so its widest side is 1 unit. The object's
-     *        Transform scale then works like a shape's size
-     */
-    static void NormalizeModel(MeshInstance& instance)
-    {
-        if (instance.vertices.empty())
-            return;
-        Vec3 lo = instance.vertices.front().LocalPosition;
-        Vec3 hi = lo;
-        for (const Vertex& v : instance.vertices)
-        {
-            lo = Vec3(std::min(lo.X, v.LocalPosition.X), std::min(lo.Y, v.LocalPosition.Y), std::min(lo.Z, v.LocalPosition.Z));
-            hi = Vec3(std::max(hi.X, v.LocalPosition.X), std::max(hi.Y, v.LocalPosition.Y), std::max(hi.Z, v.LocalPosition.Z));
-        }
-        float width = std::max(hi.X - lo.X, hi.Z - lo.Z);
-        if (width <= 0.0f)
-            return;
-        float scale = 1.0f / width;
-        Vec3 origin((lo.X + hi.X) * 0.5f, lo.Y, (lo.Z + hi.Z) * 0.5f);
-        for (Vertex& v : instance.vertices)
-        {
-            // Uniform scale: normals keep their direction
-            v.LocalPosition = (v.LocalPosition - origin) * scale;
-            v.Position = v.LocalPosition;
-        }
-    }
+    MeshInstance& GetModel(const std::string& name);
 
     /**
      * \brief Drop a cached model so the next GetModel reads its file again
      *        (after importing or replacing it)
      */
-    void ForgetModel(const std::string& name) { Models.erase(name); }
+    void ForgetModel(const std::string& name) { m_Models.erase(name); }
 
     /**
      * \brief Names of every model in data/models (sorted), used by the editor
      */
-    static std::vector<std::string> AvailableModels()
-    {
-        std::vector<std::string> names;
-        std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(MODEL_DIRECTORY, ec))
-        {
-            if (entry.is_regular_file() && entry.path().extension() == ".obj")
-                names.push_back(entry.path().stem().string());
-        }
-        std::sort(names.begin(), names.end());
-        return names;
-    }
+    static std::vector<std::string> AvailableModels();
 
     /**
-     * \brief Given a texture ID returns a material
-     *        When we load a vertex every Vertex is given a texID corresponding
-     *        to material it belongs to this method is used to retrieve it
-     *        when we Fragment Shade
-     * \param texID
-     * \return
+     * \brief The material of a vertex's texture ID (-1: the default material)
      */
-    Material& GetMaterial(int texID)
-    {
-        // -1 = no .obj material (procedural shapes). Checked before the
-        // assert: comparing -1 with the unsigned size always failed
-        if (texID == -1)
-            return Material::DefaultMaterial;
-
-        assert(texID >= 0 && static_cast<size_t>(texID) < TextureList.size() &&
-               "texID does not exist");
-
-        return TextureList[texID];
-    }
-
-    void SetFragShader(Entity e, FragShaderTag& shader)
-    {
-        shader.FragShaderID = CurrentFragShaderId;
-
-        if (EntityMapToFragShaderID.count(e) > 0)
-            RemoveFragShader(e);
-
-        size_t shaderID = shader.FragShaderID;
-        EntityMapToFragShaderID[e] = shaderID;
-        CurrentFragShaderId++;
-
-        switch (shader.FragAssetId)
-        {
-        case BlinnPhongID: {
-            FragShaders[shaderID] = std::make_shared<BlinnPhongSIMD>();
-            return;
-        }
-        case OutlineShaderID: {
-            FragShaders[shaderID] = std::make_shared<OutlineScanShaderSIMD>();
-            return;
-        }
-        case ParticleShaderID: {
-            FragShaders[shaderID] = std::make_shared<ParticleShaderSIMD>();
-            return;
-        }
-        case ToonShaderID: {
-            FragShaders[shaderID] = std::make_shared<ToonShaderSIMD>();
-            return;
-        }
-        case UnlitShaderID: {
-            FragShaders[shaderID] = std::make_shared<UnlitSIMD>();
-            return;
-        }
-        case RedShaderID: {
-            FragShaders[shaderID] = std::make_shared<RedShaderSIMD>();
-            return;
-        }
-        case NormalShaderID: {
-            FragShaders[shaderID] = std::make_shared<NormalShaderSIMD>();
-            return;
-        }
-        case ShapeShaderID: {
-            FragShaders[shaderID] = std::make_shared<ShapeShaderSIMD>();
-            return;
-        }
-        case PulseShaderID: {
-            FragShaders[shaderID] = std::make_shared<PulseShaderSIMD>();
-            return;
-        }
-        case RimShaderID: {
-            FragShaders[shaderID] = std::make_shared<RimShaderSIMD>();
-            return;
-        }
-        case StripesShaderID: {
-            FragShaders[shaderID] = std::make_shared<StripesShaderSIMD>();
-            return;
-        }
-        case DefaultFragShaderID: {
-            FragShaders[shaderID] = std::make_shared<BlinnPhongSIMD>();
-        }
-        }
-    }
-
-    void SetVertShader(Entity e, VertShaderTag& shader)
-    {
-        shader.VertShaderID = CurrentVertShaderId;
-
-        if (EntityMapToVertShaderID.count(e) > 0)
-            RemoveVertShader(e);
-
-        size_t shaderID = shader.VertShaderID;
-        EntityMapToVertShaderID[e] = shaderID;
-        CurrentVertShaderId++;
-
-        switch (shader.VertAssetId)
-        {
-        case DefaultVertShaderID: {
-            VertShaders[shaderID] = std::make_shared<DefaultVertexShader>();
-            break;
-        }
-        case WaveVertShaderID: {
-            VertShaders[shaderID] = std::make_shared<WaveVertexShader>();
-            break;
-        }
-        case SwayVertShaderID: {
-            VertShaders[shaderID] = std::make_shared<SwayVertexShader>();
-            break;
-        }
-        default:
-            assert(false && "Not Possible");
-        }
-    }
+    Material& GetMaterial(int texID);
 
     /**
-     * \brief Remove a Shader given a shaderID
-     * \param shaderID
+     * \brief Give the entity a new shader instance of the tag's type; the
+     *        tag gets the instance's ID
      */
-    void RemoveFragShader(Entity e)
-    {
-        assert(EntityMapToFragShaderID.count(e) > 0);
-        size_t ShaderId = EntityMapToFragShaderID[e];
-        EntityMapToFragShaderID.erase(e);
-        assert(FragShaders.count(ShaderId) > 0);
-        FragShaders.erase(ShaderId);
-    }
+    void SetFragShader(Entity e, FragShaderTag& shader);
+    void SetVertShader(Entity e, VertShaderTag& shader);
 
-    void RemoveVertShader(Entity e)
-    {
-        assert(EntityMapToVertShaderID.count(e) > 0);
-        size_t ShaderId = EntityMapToVertShaderID[e];
-        EntityMapToVertShaderID.erase(e);
-        assert(VertShaders.count(ShaderId) > 0);
-        VertShaders.erase(ShaderId);
-    }
+    void RemoveFragShader(Entity e);
+    void RemoveVertShader(Entity e);
 
     /**
-     * \brief Returns a Shader given a shaderID
-     * \param shaderID
+     * \brief The shader instance of an ID, the default shader when there is none
      */
-    std::shared_ptr<FragmentShader> GetFragShader(size_t ShaderID)
+    const std::shared_ptr<FragmentShader>& GetFragShader(size_t shaderID) const
     {
-        if (FragShaders.count(ShaderID) == 0)
-            return defaultFragShader;
-
-        return FragShaders[ShaderID];
+        return m_FragShaders.Get(shaderID, DefaultFragShader);
     }
 
-    std::shared_ptr<VertexShader> GetVertShader(size_t ShaderID)
+    const std::shared_ptr<VertexShader>& GetVertShader(size_t shaderID) const
     {
-        if (VertShaders.count(ShaderID) == 0)
-            return defaultVertShader;
-
-        return VertShaders[ShaderID];
+        return m_VertShaders.Get(shaderID, DefaultVertShader);
     }
 
-    /**
-     * \brief Default shader of the game
-     */
-    static std::shared_ptr<FragmentShader> defaultFragShader;
-    static std::shared_ptr<VertexShader> defaultVertShader;
+    static std::shared_ptr<FragmentShader> DefaultFragShader;
+    static std::shared_ptr<VertexShader> DefaultVertShader;
 
   private:
-    size_t CurrentFragShaderId = 1;
-    size_t CurrentVertShaderId = 1;
+    // The shader instances of one kind, by ID, and which entity owns which
+    template <typename Shader>
+    struct ShaderInstances
+    {
+        size_t NextId = 1;
+        std::unordered_map<Entity, size_t> EntityToId;
+        std::unordered_map<size_t, std::shared_ptr<Shader>> Shaders;
 
-    std::vector<Material> TextureList;
-    std::unordered_map<std::string, MeshInstance> Models;
-    std::unordered_map<Entity, size_t> EntityMapToFragShaderID;
-    std::unordered_map<Entity, size_t> EntityMapToVertShaderID;
-    std::unordered_map<size_t, std::shared_ptr<FragmentShader>> FragShaders;
-    std::unordered_map<size_t, std::shared_ptr<VertexShader>> VertShaders;
+        size_t Add(Entity e, std::shared_ptr<Shader> shader);
+        void Remove(Entity e);
+
+        const std::shared_ptr<Shader>& Get(size_t id, const std::shared_ptr<Shader>& fallback) const
+        {
+            auto it = Shaders.find(id);
+            return it == Shaders.end() ? fallback : it->second;
+        }
+    };
+
+    std::vector<Material> m_Materials;
+    std::unordered_map<std::string, MeshInstance> m_Models;
+    ShaderInstances<FragmentShader> m_FragShaders;
+    ShaderInstances<VertexShader> m_VertShaders;
 };

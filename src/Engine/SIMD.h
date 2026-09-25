@@ -12,8 +12,8 @@
 
 // -- determine if processor has avx2 --
 #if defined(__AVX2__) && defined(__x86_64__)
-#include <immintrin.h>
-#define SIMD_AVX2_COMPILETIME
+#    include <immintrin.h>
+#    define SIMD_AVX2_COMPILETIME
 #endif
 
 #ifdef SIMD_AVX2_COMPILETIME
@@ -59,13 +59,6 @@ class SIMDFloat
 
     bool GetBit(const size_t i) const { return (_mm256_movemask_ps(AVX256) >> i) & 1; }
 
-    SIMDFloat operator>=(const SIMDFloat& rhs) const
-    {
-        return _mm256_cmp_ps(AVX256, rhs.AVX256, _CMP_NLT_US);
-    }
-
-    SIMDFloat operator>=(const float rhs) const { return *this >= SIMDFloat(rhs); }
-
     SIMDFloat operator>(const SIMDFloat& rhs) const
     {
         return _mm256_cmp_ps(AVX256, rhs.AVX256, _CMP_NLE_US);
@@ -89,8 +82,6 @@ class SIMDFloat
 
     SIMDFloat operator&(const SIMDFloat& rhs) const { return _mm256_and_ps(AVX256, rhs.AVX256); }
 
-    SIMDFloat operator|(const SIMDFloat& rhs) const { return _mm256_or_ps(AVX256, rhs.AVX256); }
-
     SIMDFloat operator==(const SIMDFloat& rhs) const
     {
         return _mm256_cmp_ps(AVX256, rhs.AVX256, _CMP_EQ_US);
@@ -103,7 +94,7 @@ class SIMDFloat
 
     SIMDFloat operator/(const float rhs) const { return *this * (1.0f / rhs); }
 
-    SIMDFloat floor() { return _mm256_floor_ps(AVX256); }
+    SIMDFloat floor() const { return _mm256_floor_ps(AVX256); }
 
     SIMDFloat sqrt() const { return _mm256_sqrt_ps(AVX256); }
 
@@ -115,7 +106,7 @@ class SIMDFloat
     };
 };
 #else
-#include <cmath>
+#    include <cmath>
 // SIMDFloat polyfill
 class SIMDFloat
 {
@@ -201,14 +192,6 @@ class SIMDFloat
         return result;
     }
 
-    SIMDFloat operator>=(const SIMDFloat& rhs) const
-    {
-        SIMDFloat result;
-        for (int i = 0; i < 8; ++i)
-            result.V[i] = V[i] >= rhs.V[i] ? 1.0f : 0.0f;
-        return result;
-    }
-
     SIMDFloat operator>(const SIMDFloat& rhs) const
     {
         SIMDFloat result;
@@ -250,14 +233,6 @@ class SIMDFloat
         return result;
     }
 
-    SIMDFloat operator|(const SIMDFloat& rhs) const
-    {
-        SIMDFloat result;
-        for (int i = 0; i < 8; ++i)
-            result.V[i] = static_cast<float>(static_cast<int>(V[i]) || static_cast<int>(rhs.V[i]));
-        return result;
-    }
-
     // Mathematical functions
     SIMDFloat floor() const
     {
@@ -285,7 +260,7 @@ class SIMDFloat
 
     bool GetBit(const size_t i) const
     {
-        return V[i] == 1.0f; // Check the sign bit (most significant bit)
+        return V[i] == 1.0f; // (comparisons give 1 for true)
     }
 
     // Accessor
@@ -293,7 +268,6 @@ class SIMDFloat
 
     float& operator[](const size_t i) { return V[i]; }
 
-    // Other methods as needed
     float V[8];
 };
 
@@ -329,16 +303,6 @@ class SIMDVec2
     SIMDVec2 operator*(const SIMDFloat& rhs) const { return {X * rhs, Y * rhs}; }
 
     SIMDVec2 operator/(const SIMDFloat& rhs) const { return {X / rhs, Y / rhs}; }
-
-    SIMDFloat length() const
-    {
-        SIMDFloat squared = X * X + Y * Y;
-        return squared.sqrt();
-    }
-
-    SIMDFloat Dot(const SIMDVec2& rhs) { return X * rhs.X + Y * rhs.Y; }
-
-    SIMDVec2 Normalize() { return *this / length(); }
 
     SIMDFloat X{}, Y{};
 };
@@ -414,14 +378,14 @@ namespace SIMD
     inline bool Any(const SIMDFloat& rhs)
     {
         return _mm256_movemask_ps(rhs.AVX256) != 0x0;
-    };
+    }
 
     /**
      * \brief Selects A or B based on Mask
      *        if mask[i] == 1 then B is selected
      *        if mask[i] == 0 then A is selected
      */
-    inline SIMDFloat Select(const SIMDFloat& mask, SIMDFloat& a, SIMDFloat& b)
+    inline SIMDFloat Select(const SIMDFloat& mask, const SIMDFloat& a, const SIMDFloat& b)
     {
         return _mm256_blendv_ps(a.AVX256, b.AVX256, mask.AVX256);
     }
@@ -446,8 +410,8 @@ namespace SIMD
     }
 
     /**
-     * \brief Get max from both A and B
-     * \return Combined SIMDFloat with larger members from one of two floats
+     * \brief Get min from both A and B
+     * \return Combined SIMDFloat with smaller members from one of two floats
      */
     inline SIMDFloat Min(SIMDFloat a, SIMDFloat b)
     {
@@ -526,5 +490,4 @@ namespace SIMD
     {
         return Min(b, Max(a, c));
     }
-}; // namespace SIMD
- 
+} // namespace SIMD

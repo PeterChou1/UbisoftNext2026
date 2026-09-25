@@ -16,6 +16,5 @@ class ShapeShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-    ~ShapeShaderSIMD() override = default;
+               DirectionalLight& light) override;
 };

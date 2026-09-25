@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------
-// Clipper.h
+// ClipperSystem.h
 //---------------------------------------------------------------------------------
 // Multi-threaded Clipper that runs on all cores of the machine
 // Clips the triangle and outputs the clipped Triangle to raster space

@@ -16,8 +16,6 @@
 class ColorBuffer : public Resource
 {
   public:
-    ColorBuffer() = default;
-
     ColorBuffer(int width, int height)
         : m_Height(height)
         , m_Width(width)
@@ -28,26 +26,25 @@ class ColorBuffer : public Resource
     void SetColor(int x, int y, unsigned char r, unsigned char g, unsigned char b)
     {
         assert(0 <= x && x <= m_Width && 0 <= y && y <= m_Height && "out of bounds index");
-        m_Buffer[(y * m_Width + x) * 3] = r;
-        m_Buffer[(y * m_Width + x) * 3 + 1] = g;
-        m_Buffer[(y * m_Width + x) * 3 + 2] = b;
+        const int i = (y * m_Width + x) * 3;
+        m_Buffer[i] = r;
+        m_Buffer[i + 1] = g;
+        m_Buffer[i + 2] = b;
     }
 
-    void GetColor(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b)
+    void GetColor(int x, int y, unsigned char& r, unsigned char& g, unsigned char& b) const
     {
-        r = m_Buffer[(y * m_Width + x) * 3];
-        g = m_Buffer[(y * m_Width + x) * 3 + 1];
-        b = m_Buffer[(y * m_Width + x) * 3 + 2];
+        const int i = (y * m_Width + x) * 3;
+        r = m_Buffer[i];
+        g = m_Buffer[i + 1];
+        b = m_Buffer[i + 2];
     }
 
     void ResetResource() override
     {
-        Concurrent::ForEach(m_Buffer.begin(), m_Buffer.end(), [&](unsigned char& color) {
-            color = static_cast<unsigned char>(0.0);
-        });
+        Concurrent::ForEach(
+                m_Buffer.begin(), m_Buffer.end(), [](unsigned char& color) { color = 0; });
     }
-
-    unsigned char* GetBuffer() { return m_Buffer.data(); }
 
   private:
     int m_Height{};

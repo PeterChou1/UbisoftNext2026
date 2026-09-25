@@ -1,9 +1,9 @@
 //---------------------------------------------------------------------------------
-// FragmentShader.h
+// FragmentShaderSystem.h
 //---------------------------------------------------------------------------------
 //
-// Multi-threaded Shader that shades the screen on cores
-// while shading 8 pixels at a time using AVX2 instructions
+// Multi-threaded fragment stage: runs each visible pixel's fragment shader
+// (8 pixels at a time) and draws the resulting colour buffer
 //
 #pragma once
 #include "Camera.h"

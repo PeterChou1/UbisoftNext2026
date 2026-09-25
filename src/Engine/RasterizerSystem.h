@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------
-// Rasterizer.h
+// RasterizerSystem.h
 //---------------------------------------------------------------------------------
 //
 // Tile based multi-threaded Rasterizer using AVX2 instruction
@@ -17,6 +17,9 @@
 #include "RenderConstants.h"
 #include "Tiles.h"
 
+#include <memory>
+#include <vector>
+
 class RasterizerSystem
 {
   public:
@@ -25,16 +28,19 @@ class RasterizerSystem
     void Rasterize();
 
   private:
-    void
-    RasterizeTriangle(Triangle& tri, Vec2& tileMin, Vec2& tileMax, bool shadows, bool perspective);
-
-    void AssignTriangle(Triangle& tri, std::vector<Tile>& tiles, unsigned int binID, bool shadow);
-
+    // Hardware triangles shaded at their corners (GameOptions::LineRendering)
     void RenderLine();
 
+    // Bin the clipped triangles into the tiles they overlap
     void AssignTile();
+    void AssignTriangle(Triangle& tri, std::vector<Tile>& tiles, unsigned int binID, bool shadow);
 
     void RasterizeTiles();
+    // Depth test the triangle's pixels inside the tile; camera pixels go to
+    // the pixel buffer. perspective: depth is 1 / w, else from NDC z (only
+    // for the orthographic shadow map of a parallel light)
+    void
+    RasterizeTriangle(Triangle& tri, Vec2& tileMin, Vec2& tileMax, bool shadows, bool perspective);
 
     std::shared_ptr<Lighting> m_Lighting;
     std::shared_ptr<Camera> m_Camera;

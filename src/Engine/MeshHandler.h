@@ -9,12 +9,13 @@
 
 #include "Camera.h"
 #include "IndexBuffer.h"
-#include "Mesh.h"
 #include "RenderConstants.h"
 #include "Transform.h"
 #include "VertexBuffer.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 class MeshHandler
 {
@@ -32,33 +33,28 @@ class MeshHandler
     void DeleteDestroyed();
 
   private:
+    // Triangle count and triangles per core, after the index buffer changed
     void UpdateCoreInterval();
 
-    void AddMeshCommon(Entity entity,
-                       const std::vector<Vertex>& vertices,
-                       const std::vector<std::uint32_t>& indices,
-                       size_t FragShaderID,
-                       size_t VertShaderID);
+    // Append geometry (in world space) to the vertex / index buffers
+    void AddMesh(Entity entity,
+                 std::vector<Vertex> vertices,
+                 const std::vector<std::uint32_t>& indices,
+                 size_t fragShaderID,
+                 size_t vertShaderID);
 
-    void AddMeshRaw(Entity entity,
-                    std::vector<Vertex> vertices,
-                    std::vector<std::uint32_t> indices,
-                    size_t FragShaderID,
-                    size_t VertShaderID);
+    void AddModel(Entity entity,
+                  const std::string& model,
+                  Transform& transform,
+                  size_t fragShaderID,
+                  size_t vertShaderID);
 
     void DeleteMeshes(const std::vector<Entity>& entities);
 
     void UpdateMeshTransform(Entity entity, Transform& transform);
 
-    void UpdateMeshFragShader(Entity entity, size_t shaderID);
-
-    void UpdateMeshVertShader(Entity entity, size_t shaderID);
-
-    void AddMesh(Entity entity,
-                 Mesh mesh,
-                 Transform& transform,
-                 size_t FragShaderID,
-                 size_t VertShaderID);
+    // Give the entity's vertices its current shader instances
+    void UpdateMeshShaders(Entity entity, size_t fragShaderID, size_t vertShaderID);
 
     std::shared_ptr<IndexBuffer> m_IndexBuffer;
     std::shared_ptr<VertexBuffer> m_VertexBuffer;

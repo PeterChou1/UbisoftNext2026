@@ -1,10 +1,9 @@
 //---------------------------------------------------------------------------------
-// RedShader.h
+// RedShaderSIMD.h
 //---------------------------------------------------------------------------------
 //
-//  A shader that only outputs red
+// A shader that only outputs red
 //
-
 #pragma once
 #include "FragmentShader.h"
 
@@ -15,7 +14,5 @@ class RedShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-
-    ~RedShaderSIMD() override = default;
+               DirectionalLight& light) override;
 };

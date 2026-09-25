@@ -1,10 +1,8 @@
 //---------------------------------------------------------------------------------
-// SIMDShader.h
+// FragmentShader.h
 //---------------------------------------------------------------------------------
 //
-// Abstract base class for all shaders
-// faster than conventional shading as
-// SIMD (AVX2) allows us to shade 8 pixels at once
+// Abstract base class for all fragment shaders: SIMD shades 8 pixels at once
 //
 #pragma once
 #include "Camera.h"
@@ -16,21 +14,19 @@
 class FragmentShader
 {
   public:
-    bool ShadowMapping;
+    bool ShadowMapping = false;
+    // Time the shader has run (seconds), advanced by the ShaderHandler
     float DeltaTime = 0;
 
     virtual ~FragmentShader() = default;
 
     /**
-     * \brief Abstract Shade Method called during fragment shading
-     * \param pixel The sets of 8 pixels to shade
-     * \param lights All lights in the scene
-     * \param texture The texture belonging to the pixels
-     * \param camera The current camera in the scene
+     * \brief Set pixel.Color of the 8 pixels
+     * \param texture The material of the pixels' triangle
      */
     virtual void Shade(SIMDPixel& pixel,
                        DepthBuffer& depthBuffer,
                        Material& texture,
                        Camera& camera,
-                       DirectionalLight& Light) = 0;
+                       DirectionalLight& light) = 0;
 };

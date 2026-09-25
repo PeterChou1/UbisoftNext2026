@@ -1,15 +1,14 @@
 //---------------------------------------------------------------------------------
-// Asset.h
+// Assets.h
 //---------------------------------------------------------------------------------
 //
-// Shader identifiers used by the AssetServer
+// Shader identifiers used by the AssetServer (3D models are referenced by
+// name instead: the .obj file name without extension in data/models, see
+// AssetServer::GetModel)
 //
 #pragma once
 
-// 3D models are referenced by name (the .obj file name without extension in
-// data/models), see AssetServer::GetModel
-
-// Shaders -> See SIMDShader.h for more details
+// Fragment shaders, see FragmentShader.h
 enum FragShaderTypeID
 {
     DefaultFragShaderID,

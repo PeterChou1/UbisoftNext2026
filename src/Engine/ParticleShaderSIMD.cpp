@@ -2,11 +2,8 @@
 
 #include "stdafx.h"
 
-void ParticleShaderSIMD::Shade(SIMDPixel& pixel,
-                               DepthBuffer& depthBuffer,
-                               Material& texture,
-                               Camera& camera,
-                               DirectionalLight& Light)
+void ParticleShaderSIMD::Shade(
+        SIMDPixel& pixel, DepthBuffer&, Material&, Camera&, DirectionalLight&)
 {
     pixel.Color = pixel.VertexColor;
 }

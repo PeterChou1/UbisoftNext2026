@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------
-// BlingPhongSIMD.h
+// BlingPhong.h
 //---------------------------------------------------------------------------------
 //
-// A Bling Phong Shader see
+// A Blinn Phong Shader see
 // https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
 // for more information
 //
@@ -16,7 +16,5 @@ class BlinnPhongSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
-
-    ~BlinnPhongSIMD() override = default;
+               DirectionalLight& light) override;
 };

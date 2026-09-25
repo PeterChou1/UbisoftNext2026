@@ -29,7 +29,10 @@ namespace EffectShading
      *        part only where the shadow map says the light reaches (when
      *        `shadows`). The light's colour is not applied (see LightColor)
      */
-    SIMDFloat Lighting(SIMDPixel& pixel, DirectionalLight& light, const DepthBuffer& depthBuffer, bool shadows);
+    SIMDFloat Lighting(SIMDPixel& pixel,
+                       DirectionalLight& light,
+                       const DepthBuffer& depthBuffer,
+                       bool shadows);
 
     /**
      * \brief Unit direction from the pixels to the light: the opposite of the
@@ -53,7 +56,7 @@ class PulseShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
+               DirectionalLight& light) override;
 };
 
 class RimShaderSIMD : public FragmentShader
@@ -63,7 +66,7 @@ class RimShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
+               DirectionalLight& light) override;
 };
 
 class StripesShaderSIMD : public FragmentShader
@@ -76,5 +79,5 @@ class StripesShaderSIMD : public FragmentShader
                DepthBuffer& depthBuffer,
                Material& texture,
                Camera& camera,
-               DirectionalLight& Light) override;
+               DirectionalLight& light) override;
 };
