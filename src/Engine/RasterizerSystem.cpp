@@ -173,7 +173,14 @@ void RasterizerSystem::RasterizeTriangle(
                 {
                     depth = alpha * tri.verts[0].Projection.Z + beta * tri.verts[1].Projection.Z +
                             gamma * tri.verts[2].Projection.Z;
-                    depth = depth * -1;
+                    // NDC z is -1 (near) .. 1 (far). The depth buffers keep the
+                    // largest value and start at 0 ("nothing"): the shadow
+                    // map stores (1 - z) / 2, 1 (near) .. 0 (far), so the far
+                    // half of a parallel light's box is not lost
+                    if (shadows)
+                        depth = (SIMD::ONE - depth) * 0.5f;
+                    else
+                        depth = depth * -1;
                 }
 
                 SIMDPixel pixel = SIMDPixel(

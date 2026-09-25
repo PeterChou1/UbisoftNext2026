@@ -470,23 +470,31 @@ in their scene settings, and **Game camera = view** adds a Main Camera.
 
 The scene is lit by an object too: **Directional Light**, drawn in orange in
 the hierarchy. In the scene view it is a sun (a ring with rays) where the
-light is, a line to where it shines on the ground, and the edges of its
-cone.
+object is, with a line to where it points on the ground.
+
+It has two **Types**:
+
+- **Directional** (the default): a sun. Its rays are parallel, so it lights
+  the whole scene the same way, and every object casts a shadow in the same
+  direction. **Only its direction matters.** Turn it with **Rot** (or
+  **R / J**) and **Pitch**; moving it only moves where the editor draws it.
+  The gizmo shows parallel rays.
+- **Spot**: a cone of light from where the object is. Its position and
+  height matter, and **Spread** sets the cone. The light fades out towards
+  the edge of the cone, and nothing outside it is lit or shadowed. The
+  gizmo shows the edges of the cone.
 
 - **Select it:** its hierarchy row, or click its sun marker in the air.
-- **Move it** like any object. Its position is where the light is, so its
-  height (**Pos Y**, **I / K**) matters: the shadows get longer as it gets
-  lower. **Rot** (or **R / J**) turns the direction it shines along the
-  ground.
 - **Its SceneLight section:**
 
   | Value | Meaning |
   |---|---|
+  | Type | Directional (a sun) or Spot (a cone) |
   | Color | The light's colour |
   | Power | How bright the direct light is (0 .. 3) |
   | Ambient | The light every surface gets, even in shadow |
   | Pitch | How steeply it shines down: 90 is straight down |
-  | Spread | The angle of its cone. Only what it covers gets shadows |
+  | Spread | Spot: the angle of its cone |
   | Shadow | Casts shadows |
 
 - **Right click it** → **Aim at View Center** to point it at the middle of
@@ -498,8 +506,16 @@ cone.
 **Shadows** are shadow maps. The renderer also draws the scene from the
 light, and a surface is in shadow when something is closer to the light.
 You see them with the software rasterizer (the default; **Tab** switches)
-when the light's **Shadow** is checked. They show in the scene view as you
-move objects and the light, and in the game.
+when the light's **Shadow** is checked, in the scene view as you edit and in
+the game.
+
+- **Directional:** the shadow map is fitted around the whole scene every
+  frame, so all shadows have the same sharpness wherever they are.
+- **Spot:** its cone is the shadow map. A wide cone spreads the map
+  thinly, so a narrower **Spread** gives sharper shadows.
+- Low lights (a small **Pitch**) make long shadows. At very grazing angles
+  their edges get softer, because one shadow map texel then covers a long
+  stretch of the ground.
 
 Scenes made before lights were objects have none. They are lit by the
 default light, which is where the Directional Light of a new scene starts.

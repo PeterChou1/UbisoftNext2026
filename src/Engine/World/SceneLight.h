@@ -7,12 +7,20 @@
 // in the editor's hierarchy, moved and turned like the other objects, and
 // its SceneLight fields are edited in the inspector.
 //
-//   Transform position   where the light is (it is a spot light: its height
-//                        matters)
+//   SceneLight.Type      Directional: a sun, parallel rays lighting the whole
+//                        scene the same way; only its direction matters
+//                        (the object's position is only where the editor
+//                        shows it). Spot: a cone from where it is
 //   Transform yaw        the direction it shines along the ground (0 = +Z)
 //   SceneLight.Pitch     how steeply it shines down (90 = straight down)
-//   SceneLight.Spread    the angle of its cone (what gets shadows)
+//   Transform position   Spot: where the light is (its height matters)
+//   SceneLight.Spread    Spot: the angle of its cone; the light fades out at
+//                        its edge
 //   Color / Intensity / Ambient / Shadows
+//
+// Shadows: a directional light's shadow map is an orthographic box fitted
+// around the whole scene every frame (every object casts and receives
+// shadows at the same resolution); a spot light's is its cone.
 //
 // Every frame GameManager applies the first light object (or the default
 // light, for scenes without one) to the renderer's Lighting resource, and
@@ -29,11 +37,18 @@
 class GameOptions;
 class Lighting;
 
+enum class SceneLightType
+{
+    Directional,
+    Spot
+};
+
 /**
  * \brief Makes an object the scene's light (see above)
  */
 struct SceneLight
 {
+    SceneLightType Type = SceneLightType::Directional;
     Vec3 Color = {1.0f, 1.0f, 1.0f};
     // Direct light strength, and the light every surface gets (also in shadow)
     float Intensity = 1.0f;
@@ -47,6 +62,7 @@ struct SceneLight
 
 REFLECT(SceneLight)
 {
+    Field("Type", &SceneLight::Type).Options({"Directional", "Spot"}).Tooltip("Directional: a sun. Spot: a cone");
     Field("Color", &SceneLight::Color).AsColor();
     Field("Intensity", &SceneLight::Intensity)
             .Range(0.0f, 3.0f)
@@ -58,7 +74,7 @@ REFLECT(SceneLight)
             .Step(0.05f)
             .Tooltip("Light every surface gets, also in shadow");
     Field("Pitch", &SceneLight::Pitch).Range(5.0f, 89.0f).Step(5.0f).Tooltip("Degrees shining down");
-    Field("Spread", &SceneLight::Spread).Range(30.0f, 150.0f).Step(10.0f).Tooltip("Cone angle (degrees)");
+    Field("Spread", &SceneLight::Spread).Range(30.0f, 150.0f).Step(10.0f).Tooltip("Spot: cone angle (degrees)");
     Field("Shadows", &SceneLight::Shadows).Label("Shadow").Tooltip("Cast shadows (software renderer, Tab)");
 }
 
@@ -108,8 +124,16 @@ namespace SceneLighting
     Settings Current();
 
     /**
-     * \brief Place and colour the renderer's light
+     * \brief Axis aligned box around the scene's geometry (the renderer's
+     *        vertex buffer), false when there is none
      */
+    bool SceneBounds(Vec3& min, Vec3& max);
+
+    /**
+     * \brief Place and colour the renderer's light. A directional light's
+     *        shadow box is fitted around sceneMin .. sceneMax
+     */
+    void Apply(Lighting& lighting, const Settings& settings, const Vec3& sceneMin, const Vec3& sceneMax);
     void Apply(Lighting& lighting, const Settings& settings);
 
     /**

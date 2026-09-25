@@ -62,8 +62,9 @@ scene plays.
 | Action | How |
 |---|---|
 | Select it | Its hierarchy row (in orange), or its sun marker in the scene view |
-| Move / turn it | Like any object: drag, **Pos X / Y / Z**, **I / K** (height), **R / J**, **Rot** |
-| Colour, power, ambient, pitch, spread, shadows | Its **SceneLight** section in the inspector |
+| Turn it | **R / J**, **Rot**, and **Pitch** in its SceneLight section. A **Directional** light (a sun) only has a direction |
+| Move it (Spot) | Like any object: drag, **Pos X / Y / Z**, **I / K** (height) |
+| Type, colour, power, ambient, pitch, spread, shadows | Its **SceneLight** section in the inspector |
 | Point it at the view's centre | Right click it → **Aim at View Center** |
 | Point it at an object | Right click the object → **Aim Light Here** |
 | Add a light | Right click the scene → **Create Light** |

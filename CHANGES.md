@@ -5,6 +5,38 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 14. Shadow artifacts fixed: directional light, filtered and biased shadow maps
+
+Debugged by rendering scenes to images from several light positions and
+dumping the shadow map itself (which was correct).
+- **Cutoff:** the light was a 120° spot. The shaders lit everything, but
+  only what its cone covered got shadows, so shadows stopped at the cone's
+  edge while the objects stayed lit.
+  - **Directional** lights (the default Type) now have parallel rays and an
+    orthographic shadow map fitted around the whole scene every frame: no
+    edge, and far more of the map lands on the field.
+  - **Spot** lights (Type: Spot) fade out at the edge of their cone, so
+    nothing is lit without being shadowed.
+- **Jagged / stair-stepped edges:** most of the map fell outside the field,
+  and each pixel was a single in/out test. Lookups now blend the 2 x 2
+  texels around them (percentage closer filtering).
+- **Bias:** the relative bias (1.5% of 1 / w, up to half a unit) could
+  detach shadows. It is replaced by a normal offset (1.5 texels), a tiny
+  depth bias, and a bias that grows only where the light grazes a surface.
+- The engine's orthographic light was unusable. Its arguments were passed
+  in the wrong order, and a depth buffer that starts at 0 lost the far half
+  of the box. Faces towards a parallel light are now picked by its
+  direction.
+- **Models:** the Lit (Blinn-Phong) shader multiplied by the material
+  colour twice, so dark materials looked almost black (Metal Invasion's
+  base). It also added the material's full ambient, which hid shadows on
+  models. It now uses the same ambient + diffuse model as shapes.
+- Editor: the light gizmo shows parallel rays (directional) or the cone
+  (spot); the Controls panel and docs explain turning vs. moving.
+- Tests: shadows stay attached along their whole length for both types,
+  open ground has no acne at three light angles, and a spot does not light
+  outside its cone.
+
 ## 13. Fragment shaders fixed, shadow maps, the light as a scene object
 
 - **Why the fragment shaders did not show:** the default renderer was the

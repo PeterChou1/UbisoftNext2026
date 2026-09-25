@@ -86,8 +86,12 @@ TEST_CASE("Light: the default light is where the old fixed light was")
     Fixture::FreshWorld();
     CHECK_EQ(SceneLighting::Find(), NULL_ENTITY);
     TestEnvironment::RunFrame(16.0f);
+    // A directional light (a sun) in the old light's direction
     DirectionalLight& light = ECS.GetResource<Lighting>()->GetDirectionalLight();
-    CHECK(Near(light.Position, Vec3(0, 25, -5)));
+    CHECK(light.lightType == ParallelLight);
+    Vec3 expected = Vec3(0, -25, 5);
+    expected.Normalize();
+    CHECK(Near(light.Direction, expected));
     CHECK_EQ(light.Ambient, 0.45f);
     CHECK(ECS.GetResource<GameOptions>()->LightShadows);
 }
@@ -103,13 +107,19 @@ TEST_CASE("Light: the light object drives the renderer's light every frame")
     settings.Light.Intensity = 2.0f;
     settings.Light.Ambient = 0.2f;
     settings.Light.Shadows = false;
+    settings.Light.Type = SceneLightType::Spot;
     Entity e = SceneLighting::Create(settings, "Sun");
     CHECK_EQ(SceneLighting::Find(), e);
     CHECK_EQ(ECS.GetComponent<SceneObject>(e).Tag, std::string("Light"));
     TestEnvironment::RunFrame(16.0f);
 
+    // A spot light: from where the object is, with a cone fading at its edge
     DirectionalLight& light = ECS.GetResource<Lighting>()->GetDirectionalLight();
+    CHECK(light.lightType == SpotLight);
     CHECK(Near(light.Position, Vec3(4, 12, 2)));
+    CHECK(Near(light.Direction, SceneLighting::Direction(90.0f, 45.0f)));
+    CHECK(Near(light.SpotCosOuter, std::cos(60.0f * 3.14159265f / 180.0f)));
+    CHECK(light.SpotCosInner > light.SpotCosOuter);
     CHECK(Near(light.Color, Vec3(1.0f, 0.5f, 0.25f)));
     CHECK_EQ(light.Intensity, 2.0f);
     CHECK_EQ(light.Ambient, 0.2f);
@@ -125,6 +135,27 @@ TEST_CASE("Light: the light object drives the renderer's light every frame")
     TestEnvironment::RunFrame(16.0f);
     CHECK(Near(light.Position, Vec3(0, 20, 0)));
     CHECK(options->LightShadows);
+
+    // As a directional light only its direction matters; its shadow box is
+    // fitted around the scene
+    ECS.GetComponent<SceneLight>(e).Type = SceneLightType::Directional;
+    SceneObjects::ShapeDesc box = Fixture::ShapeOf("Box", Shape2DType::Rectangle, {10, 0, -10});
+    SceneObjects::CreateShape(box);
+    TestEnvironment::RunFrames(2, 16.0f);
+    CHECK(light.lightType == ParallelLight);
+    CHECK(Near(light.Direction, SceneLighting::Direction(90.0f, 45.0f)));
+    CHECK(light.SpotCosOuter <= -1.0f);
+    // Every vertex of the scene is inside the light's box
+    for (const Vec3& corner : {Vec3(10.5f, 0.25f, -9.5f), Vec3(9.5f, 0.0f, -10.5f)})
+    {
+        Vec3 p = corner;
+        Vec4 ndc = light.Proj * Vec4(light.WorldToLightSpace(p));
+        CHECK(std::fabs(ndc.X) < 1.0f);
+        CHECK(std::fabs(ndc.Y) < 1.0f);
+        CHECK(std::fabs(ndc.Z) < 1.0f);
+    }
+    CHECK(light.TexelSize > 0.0f);
+    CHECK(light.TexelSize < 0.05f);
     // Shadows need the software rasterizer and the quality setting
     options->LineRendering = false;
     CHECK(options->ShadowsOn());
@@ -179,7 +210,9 @@ TEST_CASE("Light: the Shadows switch of the light turns the shadow map off")
     pillar.Shape.Height = 2.0f;
     pillar.Shape.Thickness = 8.0f;
     SceneObjects::CreateShape(pillar);
-    Entity light = SceneLighting::Create();
+    SceneLighting::Settings sun;
+    sun.Light.Pitch = 45.0f;
+    Entity light = SceneLighting::Create(sun);
     SceneCamera::View view;
     view.Yaw = 180.0f;
     SceneCamera::Create(view);
@@ -196,9 +229,8 @@ TEST_CASE("Light: the Shadows switch of the light turns the shadow map off")
     TestEnvironment::RunFrames(2, 16.0f);
     CHECK(brightness({0, 0, 2.8f}) > 0.8f * brightness({6, 0, 2.8f}));
 
-    // Moving the light moves the shadow: from +Z the shadow falls to -Z
+    // Turning the light moves the shadow: from +Z the shadow falls to -Z
     ECS.GetComponent<SceneLight>(light).Shadows = true;
-    SceneObjects::SetPosition(light, {0, 25, 5});
     SceneObjects::SetYaw(light, 180.0f);
     TestEnvironment::RunFrames(2, 16.0f);
     CHECK(brightness({0, 0, 2.8f}) > 0.8f * brightness({6, 0, 2.8f}));

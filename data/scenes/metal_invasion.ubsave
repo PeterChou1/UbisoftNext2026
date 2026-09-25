@@ -28,7 +28,7 @@ component "ScriptComponent" 1 [1]
 component "GameCamera" 1 [1]
 2: [3] Distance:f 16 Pitch:f 61.19 FieldOfView:f 90
 component "SceneLight" 1 [1]
-3: [6] Color:v3 1 1 1 Intensity:f 1 Ambient:f 0.45 Pitch:f 78.69 Spread:f 120 Shadows:b true
+3: [7] Type:e 0 Color:v3 1 1 1 Intensity:f 1 Ambient:f 0.45 Pitch:f 78.69 Spread:f 120 Shadows:b true
 resource "SceneSettings" 1
 : "metal_invasion" "MetalInvasion" [0] 54 54 0 0 -2 16
 end

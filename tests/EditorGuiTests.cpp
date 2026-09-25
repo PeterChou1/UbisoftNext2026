@@ -1603,7 +1603,7 @@ TEST_CASE("Editor GUI: the light is in the hierarchy, drawn in the view and edit
     }
     REQUIRE(FindText("- SceneLight", INSPECTOR_X) != nullptr);
     // Every field is shown with its whole label
-    for (const char* field : {"Color", "Power", "Ambient", "Pitch", "Spread", "Shadow"})
+    for (const char* field : {"Type Directional", "Color", "Power", "Ambient", "Pitch", "Spread", "Shadow"})
         CHECK(FindText(field, INSPECTOR_X) != nullptr);
     REQUIRE(TypeInto("Power", "1.5\r", INSPECTOR_X));
     CHECK_EQ(ECS.GetComponent<SceneLight>(light).Intensity, 1.5f);

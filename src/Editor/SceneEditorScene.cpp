@@ -1435,8 +1435,8 @@ const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
               {"Right click it", "Align with View / View Through Camera"}}},
             {"LIGHT (Directional Light object)",
              {{"Select it", "Its row, or its sun marker in the air"},
-              {"Move / turn it", "Like any object; Pos Y is its height"},
-              {"Inspector", "SceneLight: colour, intensity, pitch, shadows"},
+              {"Turn it", "R / J, Rot and Pitch (a sun: only turning)"},
+              {"Inspector", "SceneLight: type, colour, shadows"},
               {"Right click", "Aim it, or Aim Light Here on an object"}}},
                         {"EDITING",
              {{"U / Y", "Undo / redo"},
@@ -1525,7 +1525,8 @@ void SceneEditorScene::DrawCameraGizmo(Entity entity, bool selected)
 void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
 {
     // A sun: a ring with rays where the light is, a line to where its centre
-    // meets the ground, and the edges of its cone
+    // meets the ground, and parallel rays (directional) or the edges of its
+    // cone (spot)
     SceneLighting::Settings settings = SceneLighting::SettingsOf(entity);
     const Color& color = selected ? ACCENT : LIGHT_COLOR;
     Vec3 forward = m_Cam->Backward * -1.0f;
@@ -1565,8 +1566,20 @@ void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
     side.Normalize();
     Vec3 lift = side.Cross(direction);
     lift.Normalize();
-    float spread = std::tan(std::clamp(settings.Light.Spread, 30.0f, 150.0f) * 0.25f * 3.14159265f / 180.0f);
     const Color dim = {color.R * 0.6f, color.G * 0.6f, color.B * 0.6f};
+    if (settings.Light.Type == SceneLightType::Directional)
+    {
+        // A sun: parallel rays (it lights the whole scene the same way)
+        for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
+        {
+            Vec3 start = at + offset * (LIGHT_GIZMO_SIZE * 1.5f);
+            line(start, start + direction * 4.0f, dim);
+        }
+        Vec2 label = m_Cam->WorldPointToScreenSpace(at);
+        Text(label.X + 12.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 140.0f);
+        return;
+    }
+    float spread = std::tan(std::clamp(settings.Light.Spread, 30.0f, 150.0f) * 0.25f * 3.14159265f / 180.0f);
     for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
     {
         // Half way out of the cone, to where that ray meets the ground

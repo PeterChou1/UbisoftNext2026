@@ -271,7 +271,8 @@ void ClipperSystem::Clip()
             }
             else
             {
-                culling = normal.Dot(Light.LightTransform.GetForward()) > 0.0;
+                // Parallel light: the faces turned towards it
+                culling = normal.Dot(Light.Direction) < 0.0;
             }
 
             if (culling)

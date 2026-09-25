@@ -2,6 +2,81 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Shadow artifacts: directional light, filtered and biased shadow maps
+
+### How it was debugged
+
+- The scenes were rendered through the real pipeline (the headless test
+  environment's presented frame) to images, from six light positions, top
+  down, so no object hid part of a shadow. The shadow map itself was also
+  dumped as an image.
+- The map was correct, and each pixel's world position (used for the
+  lookup) was within 0.07 units of the exact point. The artifacts came from
+  how the map was set up and read:
+  1. **Cutoff:** a 120° spot cone lights everything (the shaders had no
+     cone) but only shadows what its cone covers. A wall half outside the
+     cone lost half its shadow.
+  2. **Stair steps:** the cone put over half of the 1024 x 768 map outside
+     the field. At grazing angles one texel covered several screen pixels,
+     and each pixel was one hard in / out test.
+  3. **Bias:** a relative 1.5% of 1 / w is up to half a world unit, enough
+     to detach thin shadows.
+
+### Directional lights (`SceneLight::Type`, `SceneLighting::Apply`)
+
+- **Type:** `SceneLightType { Directional, Spot }`, reflected with
+  `.Options`. It defaults to Directional; saved lights without the field
+  load as Directional.
+- **Directional:**
+  - The light looks at the centre of the scene's bounds (the vertex
+    buffer's world positions) from beyond them, along its direction.
+  - The eight corners of the bounds, in light space, give an orthographic
+    box, padded and snapped to a 1 unit grid so it does not shimmer while
+    objects move a little.
+  - `DirectionalLight::SetOrthographic` wraps `Mat4::OrthogonalOpenGL`
+    (which takes bottom, left, top, right; the old `SetLightOrthogonal`
+    passed them scrambled).
+  - `TexelSize` (the box's size per texel) and `DepthPerUnit` feed the
+    lookups.
+- **Spot:** a perspective cone as before. `SpotCosInner` / `SpotCosOuter`
+  (80% / 100% of the half angle) fade the light to nothing at its edge
+  (`EffectShading::ToLight`, also used by Blinn-Phong).
+- **Shading direction:** a parallel light shines along `-Direction`, a spot
+  from its position. `DirectionalLight::Direction` is set by
+  `SetPositionAndTarget`, which also uses another "up" vector when the
+  light looks straight down.
+- **Rasterizer:** the shadow pass of a parallel light stores
+  `(1 - NDC z) / 2`. The depth buffer keeps the largest value and starts at
+  0, so the old `-z` lost everything in the far half of the box.
+- **Clipper:** faces turned towards a parallel light are picked with
+  `normal . Direction < 0` (`LightTransform.GetForward()` pointed the
+  other way).
+
+### Lookups (`ShadowSampling`)
+
+- **Normal offset:** the lookup point moves 1.5 texels along the surface
+  normal, measured at the point (directional: the box's texel; spot: the
+  cone's texel at that distance).
+- **Depth bias:**
+  - directional: 0.02 world units;
+  - spot: 0.2% of 1 / w;
+  - plus, on grazing surfaces, one texel times the slope (the tangent of
+    the light's angle to the normal, capped at 4).
+- **Percentage closer filtering:** the 2 x 2 texels around the lookup are
+  each compared, and the results blended with bilinear weights. Texels off
+  the map count as lit.
+- `DepthBuffer::ShadowTexelsX/Y` give the map's size.
+
+### Blinn-Phong
+
+- `SampleSIMD` already returns the material's diffuse colour; the result
+  was multiplied by `texture.diffuse` again (Kd²).
+- The material ambient (Ka = 1 in most .mtl files) was added in full, which
+  hid shadows on models.
+- Now:
+  `colour = (Ka * light ambient + 0.65 * light * diffuse * shadow) * Kd + specular * shadow`,
+  the same balance as the shape shaders.
+
 ## Fragment shaders fixed, shadow maps, the light as a scene object
 
 ### Why the fragment shaders did not show

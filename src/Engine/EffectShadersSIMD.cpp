@@ -3,6 +3,7 @@
 #include "ShadowSampling.h"
 #include "stdafx.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -35,13 +36,35 @@ namespace EffectShading
     SIMDFloat Lighting(SIMDPixel& pixel, DirectionalLight& light, const DepthBuffer& depthBuffer, bool shadows)
     {
         const SIMDFloat ambient = light.Ambient;
-        SIMDVec3 lightPos = light.Position;
         SIMDVec3 normal = pixel.Normal.Normalize();
-        SIMDVec3 lightDir = (lightPos - pixel.WorldSpacePosition).Normalize();
-        SIMDFloat diffuse = SIMD::Max(normal.Dot(lightDir), SIMD::ZERO) * (0.65f * light.Intensity);
+        SIMDFloat cone;
+        SIMDVec3 lightDir = ToLight(pixel, light, cone);
+        SIMDFloat diffuse = SIMD::Max(normal.Dot(lightDir), SIMD::ZERO) * cone * (0.65f * light.Intensity);
         if (shadows)
             diffuse = diffuse * ShadowSampling::Visibility(pixel, depthBuffer, light);
         return SIMD::Clamp(SIMD::ZERO, SIMD::ONE, ambient + diffuse);
+    }
+
+    SIMDVec3 ToLight(const SIMDPixel& pixel, const DirectionalLight& light, SIMDFloat& cone)
+    {
+        if (light.lightType == ParallelLight)
+        {
+            cone = SIMD::ONE;
+            return SIMDVec3(-light.Direction.X, -light.Direction.Y, -light.Direction.Z);
+        }
+        SIMDVec3 lightPos = light.Position;
+        SIMDVec3 toLight = (lightPos - pixel.WorldSpacePosition).Normalize();
+        if (light.SpotCosOuter <= -1.0f)
+        {
+            cone = SIMD::ONE;
+            return toLight;
+        }
+        // Angle from the spot's axis: full light inside, none past the edge
+        SIMDVec3 axis(light.Direction.X, light.Direction.Y, light.Direction.Z);
+        SIMDFloat cosAngle = (toLight * SIMDFloat(-1.0f)).Dot(axis);
+        float range = std::max(light.SpotCosInner - light.SpotCosOuter, 1e-4f);
+        cone = SIMD::Clamp(SIMD::ZERO, SIMD::ONE, (cosAngle - SIMDFloat(light.SpotCosOuter)) / SIMDFloat(range));
+        return toLight;
     }
 
     SIMDVec3 LightColor(const DirectionalLight& light)

@@ -32,6 +32,14 @@ namespace EffectShading
     SIMDFloat Lighting(SIMDPixel& pixel, DirectionalLight& light, const DepthBuffer& depthBuffer, bool shadows);
 
     /**
+     * \brief Unit direction from the pixels to the light: the opposite of the
+     *        light's direction for a parallel light, towards its position for
+     *        a spot light. `cone` gets how much of the spot's cone reaches
+     *        them (1 inside, fading to 0 at its edge; always 1 for parallel)
+     */
+    SIMDVec3 ToLight(const SIMDPixel& pixel, const DirectionalLight& light, SIMDFloat& cone);
+
+    /**
      * \brief The light's colour times its intensity, per channel
      */
     SIMDVec3 LightColor(const DirectionalLight& light);

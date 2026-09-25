@@ -99,8 +99,9 @@ Both programs must run from the repository root (the build does this) to find `d
 * **Two cameras:** the scene view has the editor's own camera (WASD pan, arrows orbit / tilt, E/V up / down, Z/C zoom,
   Home reset). The **game camera** is a scene object, **Main Camera**: select it in the hierarchy or the view, move and
   turn it like any object, edit its Distance / Pitch / FOV in its **GameCamera** section. Play looks through it.
-* **Light and shadows:** the scene's light is an object too, **Directional Light**: move it, aim it, and edit its
-  colour / power / ambient / pitch / spread / shadow in its **SceneLight** section. Shadow maps are drawn by the
+* **Light and shadows:** the scene's light is an object too, **Directional Light**: a sun (parallel rays, a shadow map
+  fitted around the scene) or a spot (a cone that fades at its edge). Aim it, and edit its type / colour / power /
+  ambient / pitch / spread / shadow in its **SceneLight** section. Shadow maps are drawn by the
   software rasterizer (the default; **Tab** switches to the faster hardware triangles).
 * **Shaders:** each shape and model picks a fragment shader (Shape, Lit, Unlit, **Pulse**, **Rim**, **Stripes**, ...)
   and a vertex shader (Default, **Wave**, **Sway**) in its **Shader** section.

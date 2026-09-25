@@ -40,6 +40,10 @@ class DepthBuffer : public Resource
         m_DepthShadowBuffer.resize(m_ShadowHeight * m_ShadowWidth);
     }
 
+    // Size of the shadow map in texels
+    int ShadowTexelsX() const { return m_ShadowWidth * SIMDPixel::PIXEL_WIDTH; }
+    int ShadowTexelsY() const { return m_ShadowHeight * SIMDPixel::PIXEL_HEIGHT; }
+
     void ToShadowSpace(Vec4& point) const
     {
         float width = static_cast<float>(SIMDPixel::PIXEL_WIDTH * m_ShadowWidth);
