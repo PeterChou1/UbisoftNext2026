@@ -184,7 +184,10 @@ namespace Reflection
             return nullptr;
         }
 
-        FieldValue Get(const void* object, const FieldInfo& field) const { return field.GetValue(object); }
+        FieldValue Get(const void* object, const FieldInfo& field) const
+        {
+            return field.GetValue(object);
+        }
 
         bool Set(void* object, const FieldInfo& field, const FieldValue& value) const
         {
@@ -247,9 +250,10 @@ namespace Reflection
                 return ValueTag::Vec3;
             else
             {
-                static_assert(AlwaysFalse<M>,
-                              "Unsupported reflected field type: use bool, an integer, float, double, "
-                              "std::string, Vec2, Vec3 or an enum");
+                static_assert(
+                        AlwaysFalse<M>,
+                        "Unsupported reflected field type: use bool, an integer, float, double, "
+                        "std::string, Vec2, Vec3 or an enum");
                 return ValueTag::Bool;
             }
         }
@@ -281,8 +285,8 @@ namespace Reflection
         template <typename M>
         FieldValue Read(const M& member)
         {
-            if constexpr (std::is_same_v<M, bool> || std::is_same_v<M, std::string> || std::is_same_v<M, Vec2> ||
-                          std::is_same_v<M, Vec3>)
+            if constexpr (std::is_same_v<M, bool> || std::is_same_v<M, std::string> ||
+                          std::is_same_v<M, Vec2> || std::is_same_v<M, Vec3>)
                 return member;
             else if constexpr (std::is_enum_v<M>)
                 return static_cast<std::int64_t>(static_cast<std::int32_t>(member));
@@ -302,20 +306,12 @@ namespace Reflection
         template <typename M>
         bool Write(M& member, const FieldValue& value, const FieldInfo& field)
         {
-            if constexpr (std::is_same_v<M, bool>)
+            if constexpr (std::is_same_v<M, bool> || std::is_same_v<M, std::string>)
             {
-                const bool* b = std::get_if<bool>(&value);
-                if (b == nullptr)
+                const M* v = std::get_if<M>(&value);
+                if (v == nullptr)
                     return false;
-                member = *b;
-                return true;
-            }
-            else if constexpr (std::is_same_v<M, std::string>)
-            {
-                const std::string* s = std::get_if<std::string>(&value);
-                if (s == nullptr)
-                    return false;
-                member = *s;
+                member = *v;
                 return true;
             }
             else if constexpr (std::is_same_v<M, Vec2>)
@@ -331,7 +327,9 @@ namespace Reflection
                 const Vec3* v = std::get_if<Vec3>(&value);
                 if (v == nullptr)
                     return false;
-                member = Vec3(ClampComponent(v->X, field), ClampComponent(v->Y, field), ClampComponent(v->Z, field));
+                member = Vec3(ClampComponent(v->X, field),
+                              ClampComponent(v->Y, field),
+                              ClampComponent(v->Z, field));
                 return true;
             }
             else
@@ -344,7 +342,8 @@ namespace Reflection
                     number = std::round(number);
                     // An enum value that does not exist is refused (turning it
                     // into the enum would be undefined behaviour)
-                    if (number < static_cast<double>(field.EnumMin) || number > static_cast<double>(field.EnumMax))
+                    if (number < static_cast<double>(field.EnumMin) ||
+                        number > static_cast<double>(field.EnumMax))
                         return false;
                     member = static_cast<M>(static_cast<std::int32_t>(number));
                 }
@@ -445,7 +444,8 @@ namespace Reflection
         FieldBuilder& AsEntity()
         {
             if (m_Field.Tag != ValueTag::UInt)
-                throw std::logic_error("AsEntity() needs an Entity (uint32) field: " + m_Field.Name);
+                throw std::logic_error("AsEntity() needs an Entity (uint32) field: " +
+                                       m_Field.Name);
             m_Field.Type = FieldType::Entity;
             return *this;
         }
@@ -530,8 +530,10 @@ namespace Reflection
     template <typename T>
     const TypeInfo& TypeInfoOf()
     {
-        static_assert(IsReflectedV<T>, "Describe the type's fields with REFLECT(Type) { Field(...); }");
-        static_assert(std::is_default_constructible_v<T>, "Reflected types must be default constructible");
+        static_assert(IsReflectedV<T>,
+                      "Describe the type's fields with REFLECT(Type) { Field(...); }");
+        static_assert(std::is_default_constructible_v<T>,
+                      "Reflected types must be default constructible");
         // The setters point at the TypeInfo they were built in: it lives
         // inside this static and is never moved or copied afterwards
         static Describe<T> description;
@@ -574,7 +576,8 @@ namespace Reflection
             {
                 std::string token = ar.NextToken("a Name:type field");
                 std::size_t colon = token.rfind(':');
-                if (colon == std::string::npos || colon == 0 || !TagFromName(token.substr(colon + 1), tag))
+                if (colon == std::string::npos || colon == 0 ||
+                    !TagFromName(token.substr(colon + 1), tag))
                     ar.Fail("expected a Name:type field, got '" + token + "'");
                 name = token.substr(0, colon);
             }
@@ -583,107 +586,52 @@ namespace Reflection
                 std::uint8_t code = 0;
                 ar(name, code);
                 if (!IsKnownTag(code))
-                    throw Serialization::SerializationError("Unknown field type " + std::to_string(code) +
-                                                            " for field " + name);
+                    throw Serialization::SerializationError(
+                            "Unknown field type " + std::to_string(code) + " for field " + name);
                 tag = static_cast<ValueTag>(code);
             }
         }
 
-        template <typename Archive>
-        void WriteValue(Archive& ar, ValueTag tag, const FieldValue& value)
+        // A value stored in files as its field's C++ type (Stored), carried in
+        // the FieldValue as Carried
+        template <typename Stored, typename Carried, typename Archive>
+        void SerializeAs(Archive& ar, FieldValue& value)
         {
-            switch (tag)
+            if constexpr (Archive::IsSaving)
             {
-            case ValueTag::Bool: {
-                bool b = std::get<bool>(value);
-                ar(b);
-                break;
+                auto stored = static_cast<Stored>(std::get<Carried>(value));
+                ar(stored);
             }
-            case ValueTag::Int:
-            case ValueTag::Enum: {
-                auto i = static_cast<std::int32_t>(std::get<std::int64_t>(value));
-                ar(i);
-                break;
-            }
-            case ValueTag::UInt: {
-                auto u = static_cast<std::uint32_t>(std::get<std::int64_t>(value));
-                ar(u);
-                break;
-            }
-            case ValueTag::Float: {
-                auto f = static_cast<float>(std::get<double>(value));
-                ar(f);
-                break;
-            }
-            case ValueTag::Double: {
-                double d = std::get<double>(value);
-                ar(d);
-                break;
-            }
-            case ValueTag::String: {
-                std::string s = std::get<std::string>(value);
-                ar(s);
-                break;
-            }
-            case ValueTag::Vec2: {
-                Vec2 v = std::get<Vec2>(value);
-                ar(v);
-                break;
-            }
-            case ValueTag::Vec3: {
-                Vec3 v = std::get<Vec3>(value);
-                ar(v);
-                break;
-            }
+            else
+            {
+                Stored stored{};
+                ar(stored);
+                value = static_cast<Carried>(stored);
             }
         }
 
         template <typename Archive>
-        FieldValue ReadValue(Archive& ar, ValueTag tag)
+        void SerializeValue(Archive& ar, ValueTag tag, FieldValue& value)
         {
             switch (tag)
             {
-            case ValueTag::Bool: {
-                bool b = false;
-                ar(b);
-                return b;
-            }
+            case ValueTag::Bool:
+                return SerializeAs<bool, bool>(ar, value);
             case ValueTag::Int:
-            case ValueTag::Enum: {
-                std::int32_t i = 0;
-                ar(i);
-                return static_cast<std::int64_t>(i);
-            }
-            case ValueTag::UInt: {
-                std::uint32_t u = 0;
-                ar(u);
-                return static_cast<std::int64_t>(u);
-            }
-            case ValueTag::Float: {
-                float f = 0.0f;
-                ar(f);
-                return static_cast<double>(f);
-            }
-            case ValueTag::Double: {
-                double d = 0.0;
-                ar(d);
-                return d;
-            }
-            case ValueTag::String: {
-                std::string s;
-                ar(s);
-                return s;
-            }
-            case ValueTag::Vec2: {
-                Vec2 v;
-                ar(v);
-                return v;
-            }
-            case ValueTag::Vec3: {
-                Vec3 v;
-                ar(v);
-                return v;
-            }
+            case ValueTag::Enum:
+                return SerializeAs<std::int32_t, std::int64_t>(ar, value);
+            case ValueTag::UInt:
+                return SerializeAs<std::uint32_t, std::int64_t>(ar, value);
+            case ValueTag::Float:
+                return SerializeAs<float, double>(ar, value);
+            case ValueTag::Double:
+                return SerializeAs<double, double>(ar, value);
+            case ValueTag::String:
+                return SerializeAs<std::string, std::string>(ar, value);
+            case ValueTag::Vec2:
+                return SerializeAs<Vec2, Vec2>(ar, value);
+            case ValueTag::Vec3:
+                return SerializeAs<Vec3, Vec3>(ar, value);
             }
             throw Serialization::SerializationError("Unknown field type");
         }
@@ -702,7 +650,8 @@ namespace Reflection
             for (const FieldInfo& field : info.Fields)
             {
                 Detail::WriteHeader(ar, field.Name, field.Tag);
-                Detail::WriteValue(ar, field.Tag, field.GetValue(&object));
+                FieldValue value = field.GetValue(&object);
+                Detail::SerializeValue(ar, field.Tag, value);
             }
         }
         else
@@ -713,7 +662,8 @@ namespace Reflection
                 std::string name;
                 ValueTag tag = ValueTag::Bool;
                 Detail::ReadHeader(ar, name, tag);
-                FieldValue value = Detail::ReadValue(ar, tag);
+                FieldValue value;
+                Detail::SerializeValue(ar, tag, value);
                 // Unknown fields are skipped, values that no longer fit the
                 // field are ignored (the field keeps its default)
                 if (const FieldInfo* field = info.Find(name))
@@ -742,14 +692,17 @@ namespace Serialization
  *
  *            REFLECT(Health) { Field("Current", &Health::Current).Min(0); }
  */
-#define REFLECT(Type)                                                                          \
-    namespace Reflection                                                                       \
-    {                                                                                          \
-        template <>                                                                            \
-        struct Describe<Type> : Builder<Type>                                                  \
-        {                                                                                      \
-            Describe() { Info.Name = #Type; }                                                  \
-            void Run();                                                                        \
-        };                                                                                     \
-    }                                                                                          \
+#define REFLECT(Type)                                                                              \
+    namespace Reflection                                                                           \
+    {                                                                                              \
+        template <>                                                                                \
+        struct Describe<Type> : Builder<Type>                                                      \
+        {                                                                                          \
+            Describe()                                                                             \
+            {                                                                                      \
+                Info.Name = #Type;                                                                 \
+            }                                                                                      \
+            void Run();                                                                            \
+        };                                                                                         \
+    }                                                                                              \
     inline void Reflection::Describe<Type>::Run()

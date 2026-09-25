@@ -94,12 +94,11 @@ void ScriptSystem::SyncObjectScripts()
     for (Entity e : pending)
     {
         const ScriptComponent& component = ECS.GetComponent<ScriptComponent>(e);
-        std::string name = component.Script;
-        std::unique_ptr<ScriptBase> script = Create(name, e, component.Params);
+        std::unique_ptr<ScriptBase> script = Create(component.Script, e, component.Params);
         if (!script)
             continue;
         ScriptBase* raw = script.get();
-        m_Objects[e] = Instance{name, std::move(script)};
+        m_Objects[e] = Instance{component.Script, std::move(script)};
         raw->OnStart();
     }
 }
@@ -127,7 +126,8 @@ void ScriptSystem::DispatchContacts()
 {
     if (!ECS.HasResource<ColliderCallbackSystem>())
         return;
-    for (const ContactEvent& contact : ECS.GetResource<ColliderCallbackSystem>()->TakeContactEvents())
+    for (const ContactEvent& contact :
+         ECS.GetResource<ColliderCallbackSystem>()->TakeContactEvents())
     {
         const Entity pair[2][2] = {{contact.A, contact.B}, {contact.B, contact.A}};
         for (const auto& p : pair)
@@ -163,9 +163,10 @@ std::unique_ptr<ScriptBase> ScriptSystem::Create(const std::string& name,
 
 void ScriptSystem::ReportMissing(const std::string& name)
 {
-    if (std::find(m_Missing.begin(), m_Missing.end(), name) == m_Missing.end())
-    {
-        m_Missing.push_back(name);
-        LOG_WARN("Scripts", "Script '%s' is not registered (or is the wrong kind), it will not run", name.c_str());
-    }
+    if (std::find(m_Missing.begin(), m_Missing.end(), name) != m_Missing.end())
+        return;
+    m_Missing.push_back(name);
+    LOG_WARN("Scripts",
+             "Script '%s' is not registered (or is the wrong kind), it will not run",
+             name.c_str());
 }

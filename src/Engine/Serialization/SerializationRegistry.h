@@ -109,16 +109,13 @@ namespace Serialization
             s.Name = name;
             s.Version = version;
             s.Has = [](ECSManager& ecs, Entity e) { return ecs.HasComponent<T>(e); };
-            s.Save = [](ECSManager& ecs, Entity e, OutputArchive& ar) {
-                ar(ecs.GetComponent<T>(e));
-            };
+            auto save = [](ECSManager& ecs, Entity e, auto& ar) { ar(ecs.GetComponent<T>(e)); };
+            s.Save = save;
+            s.SaveText = save;
             s.Load = [](Entity e, InputArchive& ar) -> StagedAction {
                 T component{};
                 ar(component);
                 return [e, component](ECSManager& ecs) { ecs.AddComponent<T>(e, component); };
-            };
-            s.SaveText = [](ECSManager& ecs, Entity e, TextOutputArchive& ar) {
-                ar(ecs.GetComponent<T>(e));
             };
             s.TextToBinary = [](TextInputArchive& in, OutputArchive& out) {
                 T component{};
@@ -140,13 +137,15 @@ namespace Serialization
             s.Name = name;
             s.Version = version;
             s.Has = [](ECSManager& ecs) { return ecs.HasResource<T>(); };
-            s.Save = [](ECSManager& ecs, OutputArchive& ar) { ar(*ecs.GetResource<T>()); };
+            // Saving and applying both go through the live resource
+            auto live = [](ECSManager& ecs, auto& ar) { ar(*ecs.GetResource<T>()); };
+            s.Save = live;
+            s.Apply = live;
+            s.SaveText = live;
             s.Validate = [](InputArchive& ar) {
                 auto scratch = std::make_unique<T>();
                 ar(*scratch);
             };
-            s.Apply = [](ECSManager& ecs, InputArchive& ar) { ar(*ecs.GetResource<T>()); };
-            s.SaveText = [](ECSManager& ecs, TextOutputArchive& ar) { ar(*ecs.GetResource<T>()); };
             s.TextToBinary = [](TextInputArchive& in, OutputArchive& out) {
                 auto scratch = std::make_unique<T>();
                 in(*scratch);

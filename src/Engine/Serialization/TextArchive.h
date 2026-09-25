@@ -108,7 +108,8 @@ namespace Serialization
                     if (static_cast<unsigned char>(c) < 32 || c == 127)
                     {
                         char escaped[8];
-                        std::snprintf(escaped, sizeof(escaped), "\\x%02x", static_cast<unsigned char>(c));
+                        std::snprintf(
+                                escaped, sizeof(escaped), "\\x%02x", static_cast<unsigned char>(c));
                         token += escaped;
                     }
                     else
@@ -212,7 +213,6 @@ namespace Serialization
             }
             else if constexpr (std::is_floating_point_v<T>)
             {
-                errno = 0;
                 char* end = nullptr;
                 double parsed = std::strtod(token.c_str(), &end);
                 if (end == token.c_str() || *end != '\0')
@@ -241,9 +241,10 @@ namespace Serialization
                 static_assert(std::is_integral_v<T>, "ReadPrimitive requires a primitive type");
                 if constexpr (std::is_signed_v<T>)
                 {
-                    value = static_cast<T>(ParseInteger(token,
-                                                        static_cast<long long>(std::numeric_limits<T>::min()),
-                                                        static_cast<long long>(std::numeric_limits<T>::max())));
+                    value = static_cast<T>(
+                            ParseInteger(token,
+                                         static_cast<long long>(std::numeric_limits<T>::min()),
+                                         static_cast<long long>(std::numeric_limits<T>::max())));
                 }
                 else
                 {
@@ -257,8 +258,8 @@ namespace Serialization
             std::string token = NextToken("[count]");
             if (token.size() < 3 || token.front() != '[' || token.back() != ']')
                 Fail("expected a [count], got '" + token + "'");
-            std::size_t size = static_cast<std::size_t>(
-                    ParseUnsigned(token.substr(1, token.size() - 2), std::numeric_limits<std::uint32_t>::max()));
+            std::size_t size = static_cast<std::size_t>(ParseUnsigned(
+                    token.substr(1, token.size() - 2), std::numeric_limits<std::uint32_t>::max()));
             // Every element takes at least one character: refuse impossible
             // counts before allocating anything
             if (size > m_Text.size() - m_Position)
@@ -365,7 +366,8 @@ namespace Serialization
             if (m_Position >= m_Text.size())
                 Fail(std::string("expected ") + what + ", reached the end of the line");
             std::size_t start = m_Position;
-            while (m_Position < m_Text.size() && m_Text[m_Position] != ' ' && m_Text[m_Position] != '\t')
+            while (m_Position < m_Text.size() && m_Text[m_Position] != ' ' &&
+                   m_Text[m_Position] != '\t')
                 ++m_Position;
             return m_Text.substr(start, m_Position - start);
         }
@@ -373,7 +375,8 @@ namespace Serialization
       private:
         void SkipSpaces()
         {
-            while (m_Position < m_Text.size() && (m_Text[m_Position] == ' ' || m_Text[m_Position] == '\t'))
+            while (m_Position < m_Text.size() &&
+                   (m_Text[m_Position] == ' ' || m_Text[m_Position] == '\t'))
                 ++m_Position;
         }
 
@@ -393,7 +396,8 @@ namespace Serialization
             errno = 0;
             char* end = nullptr;
             long long value = std::strtoll(token.c_str(), &end, 10);
-            if (end == token.c_str() || *end != '\0' || errno == ERANGE || value < min || value > max)
+            if (end == token.c_str() || *end != '\0' || errno == ERANGE || value < min ||
+                value > max)
                 Fail("expected an integer, got '" + token + "'");
             return value;
         }

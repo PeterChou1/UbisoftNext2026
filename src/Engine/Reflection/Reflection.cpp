@@ -1,6 +1,5 @@
 #include "Reflection.h"
 
-#include <cstdio>
 #include <set>
 
 namespace Reflection
@@ -108,7 +107,8 @@ namespace Reflection
         {
             std::string where = info.Name + "::" + field.Name;
             if (!IsValidName(field.Name))
-                throw std::logic_error(where + ": field names are letters, digits and _ (they are saved by name)");
+                throw std::logic_error(
+                        where + ": field names are letters, digits and _ (they are saved by name)");
             if (!names.insert(field.Name).second)
                 throw std::logic_error(where + ": two fields with the same name");
             if (field.Min > field.Max)
@@ -118,8 +118,9 @@ namespace Reflection
                 // Without SERIALIZATION_ENUM_RANGE the options give the values
                 // 0 .. n-1
                 if (field.Options.empty())
-                    throw std::logic_error(where + ": give the enum's names with .Options({...}) or declare "
-                                                   "SERIALIZATION_ENUM_RANGE before REFLECT");
+                    throw std::logic_error(
+                            where + ": give the enum's names with .Options({...}) or declare "
+                                    "SERIALIZATION_ENUM_RANGE before REFLECT");
                 field.EnumMin = 0;
                 field.EnumMax = static_cast<std::int64_t>(field.Options.size()) - 1;
             }

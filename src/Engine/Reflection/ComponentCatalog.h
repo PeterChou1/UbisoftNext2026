@@ -68,9 +68,12 @@ class ComponentCatalog
      *        are matched by name, so it rarely needs to change
      */
     template <typename T>
-    void Register(const std::string& name, const std::string& description = "", std::uint32_t version = 1)
+    void Register(const std::string& name,
+                  const std::string& description = "",
+                  std::uint32_t version = 1)
     {
-        static_assert(Reflection::IsReflectedV<T>, "Describe the component's fields with REFLECT(Type) first");
+        static_assert(Reflection::IsReflectedV<T>,
+                      "Describe the component's fields with REFLECT(Type) first");
         std::type_index type(typeid(T));
         if (const ComponentEntry* existing = Find(name))
         {
@@ -81,7 +84,8 @@ class ComponentCatalog
         for (const ComponentEntry& entry : m_Entries)
         {
             if (entry.CppType == type)
-                throw std::logic_error("Component registered twice: " + entry.Name + " and " + name);
+                throw std::logic_error("Component registered twice: " + entry.Name + " and " +
+                                       name);
         }
 
         ComponentEntry entry;
@@ -93,30 +97,25 @@ class ComponentCatalog
         entry.Add = [](ECSManager& ecs, Entity e) { ecs.AddComponent<T>(e, T{}); };
         entry.Remove = [](ECSManager& ecs, Entity e) { ecs.RemoveComponent<T>(e); };
         entry.Copy = [](ECSManager& ecs, Entity from, Entity to) {
-            T copy = ecs.GetComponent<T>(from);
-            if (ecs.HasComponent<T>(to))
-                ecs.GetComponent<T>(to) = copy;
-            else
-                ecs.AddComponent<T>(to, copy);
+            AddOrReplace(ecs, to, T(ecs.GetComponent<T>(from)));
         };
         entry.Data = [](ECSManager& ecs, Entity e) -> void* { return &ecs.GetComponent<T>(e); };
         entry.SaveBytes = [version](ECSManager& ecs, Entity e) {
             return Serialization::ToBytes(ecs.GetComponent<T>(e), version);
         };
-        entry.LoadBytes = [version](ECSManager& ecs, Entity e, const std::vector<std::uint8_t>& bytes) {
-            T component{};
-            Serialization::FromBytes(bytes, component, version);
-            if (ecs.HasComponent<T>(e))
-                ecs.GetComponent<T>(e) = component;
-            else
-                ecs.AddComponent<T>(e, component);
-        };
+        entry.LoadBytes =
+                [version](ECSManager& ecs, Entity e, const std::vector<std::uint8_t>& bytes) {
+                    T component{};
+                    Serialization::FromBytes(bytes, component, version);
+                    AddOrReplace(ecs, e, component);
+                };
         entry.ValidateBytes = [version](const std::vector<std::uint8_t>& bytes) {
             T component{};
             Serialization::FromBytes(bytes, component, version);
         };
 
-        Serialization::SerializationRegistry& registry = Serialization::SceneSerializationRegistry();
+        Serialization::SerializationRegistry& registry =
+                Serialization::SceneSerializationRegistry();
         if (registry.FindComponent(name) == nullptr)
             registry.RegisterComponent<T>(name, version);
         m_Entries.push_back(std::move(entry));
@@ -146,5 +145,14 @@ class ComponentCatalog
     }
 
   private:
+    template <typename T>
+    static void AddOrReplace(ECSManager& ecs, Entity e, const T& component)
+    {
+        if (ecs.HasComponent<T>(e))
+            ecs.GetComponent<T>(e) = component;
+        else
+            ecs.AddComponent<T>(e, component);
+    }
+
     std::vector<ComponentEntry> m_Entries;
 };

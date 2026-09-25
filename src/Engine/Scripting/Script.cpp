@@ -9,8 +9,6 @@
 #include "../World/SceneComponents.h"
 #include "ScriptRegistry.h"
 
-#include <algorithm>
-
 extern GameManager GameSceneManager;
 
 namespace
@@ -84,7 +82,8 @@ bool ScriptBase::MouseGround(Vec3& groundPoint) const
     Vec2 mouse = MouseScreen();
     Vec3 planePoint(0, 0, 0);
     Vec3 planeNormal(0, 1, 0);
-    groundPoint = ECS.GetResource<Camera>()->ScreenSpaceToWorldPoint(mouse.X, mouse.Y, planePoint, planeNormal);
+    groundPoint = ECS.GetResource<Camera>()->ScreenSpaceToWorldPoint(
+            mouse.X, mouse.Y, planePoint, planeNormal);
     return groundPoint.IsValid();
 }
 

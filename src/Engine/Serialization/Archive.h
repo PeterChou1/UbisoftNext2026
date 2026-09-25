@@ -76,7 +76,8 @@ namespace Serialization
     void CheckEnumValue(std::int32_t raw)
     {
         static_assert(EnumRange<T>::Defined,
-                      "Declare the valid range of this enum with SERIALIZATION_ENUM_RANGE(Type, First, Last)");
+                      "Declare the valid range of this enum with SERIALIZATION_ENUM_RANGE(Type, "
+                      "First, Last)");
         if (raw < EnumRange<T>::Min || raw > EnumRange<T>::Max)
         {
             throw SerializationError("Enum value " + std::to_string(raw) + " out of range [" +
@@ -161,24 +162,15 @@ namespace Serialization
         }
 
         /**
-         * \brief Overwrite a previously written u32 (used to back-patch chunk sizes)
+         * \brief Overwrite a previously written unsigned integer (used to
+         *        back-patch chunk and record sizes)
          */
-        void PatchU32(std::size_t offset, std::uint32_t value)
+        template <typename U>
+        void Patch(std::size_t offset, U value)
         {
-            if (offset + 4 > m_Buffer.size())
-                throw SerializationError("PatchU32 out of range");
-            for (std::size_t i = 0; i < 4; ++i)
-                m_Buffer[offset + i] = static_cast<std::uint8_t>(value >> (8 * i));
-        }
-
-        /**
-         * \brief Overwrite a previously written u64 (used to back-patch chunk sizes)
-         */
-        void PatchU64(std::size_t offset, std::uint64_t value)
-        {
-            if (offset + 8 > m_Buffer.size())
-                throw SerializationError("PatchU64 out of range");
-            for (std::size_t i = 0; i < 8; ++i)
+            if (offset + sizeof(U) > m_Buffer.size())
+                throw SerializationError("Patch out of range");
+            for (std::size_t i = 0; i < sizeof(U); ++i)
                 m_Buffer[offset + i] = static_cast<std::uint8_t>(value >> (8 * i));
         }
 
@@ -305,8 +297,6 @@ namespace Serialization
             m_Position += size;
         }
 
-        std::size_t Position() const { return m_Position; }
-
         std::size_t Remaining() const { return m_Size - m_Position; }
 
         bool AtEnd() const { return m_Position == m_Size; }
@@ -385,38 +375,27 @@ namespace Serialization
     void Serialize(Archive& ar, std::vector<T, Alloc>& value)
     {
         if constexpr (Archive::IsSaving)
-        {
             ar.WriteSize(value.size());
-            if constexpr (std::is_same_v<T, bool>)
-            {
-                for (bool element : value)
-                    ar.WritePrimitive(element);
-            }
-            else
-            {
-                for (T& element : value)
-                    Dispatch(ar, element);
-            }
-        }
         else
         {
             std::size_t size = ar.ReadSize();
             value.clear();
             value.resize(size);
-            if constexpr (std::is_same_v<T, bool>)
+        }
+        if constexpr (std::is_same_v<T, bool>)
+        {
+            // vector<bool> elements are proxies: go through a real bool
+            for (std::size_t i = 0; i < value.size(); ++i)
             {
-                for (std::size_t i = 0; i < size; ++i)
-                {
-                    bool element = false;
-                    ar.ReadPrimitive(element);
-                    value[i] = element;
-                }
+                bool element = value[i];
+                Dispatch(ar, element);
+                value[i] = element;
             }
-            else
-            {
-                for (T& element : value)
-                    Dispatch(ar, element);
-            }
+        }
+        else
+        {
+            for (T& element : value)
+                Dispatch(ar, element);
         }
     }
 
@@ -541,14 +520,14 @@ namespace Serialization
  * \brief Declare the valid range of a serialized enum (at global scope, after
  *        the enum), see Serialization::EnumRange
  */
-#define SERIALIZATION_ENUM_RANGE(Type, First, Last)                                            \
-    namespace Serialization                                                                    \
-    {                                                                                          \
-        template <>                                                                            \
-        struct EnumRange<Type>                                                                 \
-        {                                                                                      \
-            static constexpr bool Defined = true;                                              \
-            static constexpr std::int32_t Min = static_cast<std::int32_t>(First);              \
-            static constexpr std::int32_t Max = static_cast<std::int32_t>(Last);               \
-        };                                                                                     \
+#define SERIALIZATION_ENUM_RANGE(Type, First, Last)                                                \
+    namespace Serialization                                                                        \
+    {                                                                                              \
+        template <>                                                                                \
+        struct EnumRange<Type>                                                                     \
+        {                                                                                          \
+            static constexpr bool Defined = true;                                                  \
+            static constexpr std::int32_t Min = static_cast<std::int32_t>(First);                  \
+            static constexpr std::int32_t Max = static_cast<std::int32_t>(Last);                   \
+        };                                                                                         \
     }

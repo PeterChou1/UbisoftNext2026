@@ -33,7 +33,6 @@ struct ScriptParam
 
 struct ScriptInfo
 {
-    std::string Name;
     std::string Description;
     bool IsSceneScript = false;
     std::vector<ScriptParam> Params;
@@ -56,7 +55,6 @@ class ScriptRegistry
         static_assert(std::is_base_of<Script, T>::value || std::is_base_of<SceneScript, T>::value,
                       "Scripts derive from Script or SceneScript");
         ScriptInfo info;
-        info.Name = name;
         info.Description = description;
         info.IsSceneScript = std::is_base_of<SceneScript, T>::value;
         info.Params = std::move(params);
@@ -76,8 +74,6 @@ class ScriptRegistry
      */
     std::map<std::string, float> ResolveParams(const std::string& name,
                                                const std::map<std::string, float>& overrides) const;
-
-    void Clear() { m_Scripts.clear(); }
 
   private:
     std::map<std::string, ScriptInfo> m_Scripts;
