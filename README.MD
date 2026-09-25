@@ -17,6 +17,7 @@ Top 5 contest submission for ubisoft 2026 next programming contest
   bodies, tags, components and C++ scripts
 - **Game**: a separate program that plays the authored scenes, driven by C++ scripts
   (per object scripts and scene scripts, running on top of the ECS)
+- **Prefabs**: groups of objects saved once and placed many times, edited on their own stage, instances updated
 - **Reflected components**: describe a component's fields once (`REFLECT`). The editor then generates its inspector
   and lets you add and remove it, and scene files save it by field name, like Unity.
 
@@ -34,6 +35,7 @@ the scenes and the scripts work with the ECS.
 | `src/Game` | `Game` (program) | scene menu + scene player |
 | `data/scenes` | | authored scenes (`*.ubsave`) |
 | `data/models` | | `.obj` / `.mtl` models usable in scenes |
+| `data/prefabs` | | prefabs (`*.ubprefab`): reusable groups of objects |
 | `tests` | `EngineTests`, `AuthorScenes` | headless unit tests and the sample scene generator |
 
 ## Dependencies
@@ -80,23 +82,28 @@ Both programs must run from the repository root (the build does this) to find `d
 
 * **New** creates a scene (added to the scene list and saved). Rename it by clicking the **Name** box (top right).
   Pick a scene in the list (top left) to open it, **Save** saves it, **Revert** reloads it.
-* Place shapes: click a palette shape (or keys **1-6**) then click the field, or drag a palette shape onto the field.
-  Press + drag places and positions in one go. Right click stops placing.
-* Click an object to select it, drag it to move it. In the inspector click any value (name, position, rotation,
-  size, script parameters...) and type it, **Enter** applies. The **- / +** buttons step values.
-* **Hierarchy** (left panel tab): the scene's objects as a tree of Transforms, children under their parent. Drag a row
-  onto another to parent it, onto SCENE to make it top level; a parent carries its children when it moves / turns /
-  scales. **6 Empty** / **New Empty** place empty transforms (groups, markers, spawn points), drawn as a cross.
-* **Components** (inspector tab): add / remove components (`Health`, `Faction`, `Waypoint`, your own, a RigidBody or
-  a Script) and edit their fields with widgets generated from the component's description. See
-  [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
-* The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
-* Keys: WASD pan, Z/C zoom, 1-6 place, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
+* **Right click** the scene (or the hierarchy, or its **+**) to create objects: empties, shapes, models, prefabs.
+  Right click an object for its menu: Create Child, Rename, Duplicate, Delete, Unparent, Focus, Save as Prefab, and
+  Edit / Reset / Unpack for prefab instances.
+* **Hierarchy** (left): the scene's objects as a tree of Transforms, children under their parent. Drag a row onto
+  another to parent it, onto SCENE to make it top level; a parent carries its children when it moves / turns / scales.
+  Empties (groups, markers, spawn points) are drawn as a cross.
+* **Assets** (left, bottom): prefabs and models. Click one then click the scene (or drag it onto the scene) to place
+  it. **New Prefab**, and the **import .obj** box.
+* **Inspector** (right): the selected object's components as foldable sections (Transform, Shape2D / Mesh, RigidBody,
+  Script, `Health` / `Faction` / `Waypoint` / your own), **Add Component**, **Remove**, and a scrollbar when they don't
+  fit. Click any value and type it, **Enter** applies. See [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
+* **Prefabs:** Save as Prefab, or New Prefab, then edit it on its own stage (**Save Prefab**, **Back to Scene**): every
+  instance in the scene is updated. Files in `data/prefabs/`; scripts spawn them with `SpawnPrefab("name", position)`.
+* The **Scene** button shows the scene settings: scene script (e.g. `CollectGame`), field size, game camera.
+* Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Esc, Tab renderer.
+* The GUI adapts to the window size: labels stay centered in their widgets and long text is shortened instead of
+  spilling out of its panel.
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
-* **Custom models:** drop an `.obj` (+ `.mtl`) in `data/import/`, type its name in the palette's **IMPORT .OBJ** box and
+* **Custom models:** drop an `.obj` (+ `.mtl`) in `data/import/`, type its name in the Assets' **import .obj** box and
   press Enter (or type a full path). It is copied to `data/models/` and ready to place. See
   [data/import/README.md](data/import/README.md).
-* **Plain text scene files:** Scene tab → **Plain text files**. Saves become readable / diffable / hand-editable text;
+* **Plain text scene files:** Scene settings → **Plain text files**. Saves become readable / diffable / hand-editable text;
   binary and text files both load everywhere.
 
 ## Game
@@ -125,8 +132,8 @@ Derive from `SceneScript` for a script that drives a whole scene. Both programs 
 
 ## Components
 
-Data lives in components. Describe the fields once and register the component. The editor then shows it in the
-Components tab with a generated inspector, and scenes save it by field name, so adding, removing or reordering fields
+Data lives in components. Describe the fields once and register the component. The editor then offers it in
+**Add Component** with a generated inspector section, and scenes save it by field name, so adding, removing or reordering fields
 never breaks saved scenes:
 
 ```cpp

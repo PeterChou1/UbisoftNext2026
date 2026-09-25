@@ -12,7 +12,9 @@
 #include "GameManager.h"
 #include "GameScripts.h"
 #include "SceneEditorScene.h"
+#include "UIText.h"
 #include "app.h"
+#include "main.h"
 
 #include <memory>
 
@@ -21,6 +23,13 @@ extern GameManager GameSceneManager;
 
 void Init()
 {
+    // The UI measures its text with GLUT's own font metrics (UIText.h)
+    UIText::SetMeasure([](const std::string& text) {
+        int pixels = 0;
+        for (unsigned char c : text)
+            pixels += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, c);
+        return pixels;
+    });
     ECS.Init();
     GameSceneManager.Setup();
     RegisterGameScripts();
@@ -30,6 +39,9 @@ void Init()
 
 void Update(float deltaTime)
 {
+    // Keeps labels centered and inside their widgets when the window is
+    // resized (text is drawn in pixels, the UI in virtual units)
+    UIText::SetWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT);
     GameSceneManager.Update(deltaTime);
 }
 

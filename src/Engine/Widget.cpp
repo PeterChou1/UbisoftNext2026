@@ -2,20 +2,32 @@
 
 #include "Input.h"
 
+#include "UIText.h"
 #include "UIUtilities.h"
 #include "stdafx.h"
 
 #include <algorithm>
 
+namespace
+{
+    // Space kept free on both sides of a label inside its box
+    constexpr float LABEL_PADDING = 3.0f;
+
+    /**
+     * \brief Draw text centered in a box, shortened with ".." when it does
+     *        not fit: labels stay inside their widget at any window size
+     */
+    void PrintCentered(float x, float y, float width, float height, const std::string& text, float r, float g, float b)
+    {
+        std::string shown = UIText::Fit(text, width - 2.0f * LABEL_PADDING);
+        App::Print(UIText::CenterX(x, width, shown), UIText::CenterY(y, height), shown.c_str(), r, g, b);
+    }
+} // namespace
+
 void TextLabel(float x, float y, float width, float height, std::string label, Color C, Color BG)
 {
     DrawRect(x, y, width, height, BG.R, BG.G, BG.B);
-    float textWidth = static_cast<float>(10 * label.length());
-    float textHeight = 10.0f;
-    // Calculate centered text position
-    float textX = x + (width - textWidth) * 0.5f;
-    float textY = y + (height - textHeight) * 0.5f;
-    App::Print(textX, textY, label.c_str(), C.R, C.G, C.B);
+    PrintCentered(x, y, width, height, label, C.R, C.G, C.B);
 }
 
 void DrawContainer(int x, int y, float width, float height)
@@ -73,12 +85,6 @@ int Button(int id, float x, float y, UIState& uiState, float width, float height
     // Draw the background shadow
     DrawRect(x - shadowOffsetX, y, width, height, 1.0f, 1.0f, 1.0f);
 
-    float textWidth = 10.0f * label.length();
-    float textHeight = 10.0f;
-    // Calculate centered text position
-    float textX = x + (width - textWidth) * 0.5f;
-    float textY = y + (height - textHeight) * 0.5f;
-
     if (uiState.hotItem == id)
     {
         if (uiState.activeItem == id)
@@ -93,13 +99,13 @@ int Button(int id, float x, float y, UIState& uiState, float width, float height
             DrawRect(x, y, width, height, 0.7f, 0.7f, 0.7f);
         }
 
-        App::Print(textX, textY, label.c_str(), 1.0f, 1.0f, 1.0f);
+        PrintCentered(x, y, width, height, label, 1.0f, 1.0f, 1.0f);
     }
     else
     {
         // Normal state
         DrawRect(x, y, width, height, 0.6f, 0.6f, 0.6f);
-        App::Print(textX, textY, label.c_str(), 1.0f, 1.0f, 1.0f);
+        PrintCentered(x, y, width, height, label, 1.0f, 1.0f, 1.0f);
     }
 
     // Return 1 if the button was clicked
@@ -111,7 +117,7 @@ int Button(int id, float x, float y, UIState& uiState, float width, float height
     return 0;
 }
 
-int CheckBox(int id, float x, float y, bool state, float size, UIState& uiState, std::string label)
+int CheckBox(int id, float x, float y, bool state, float size, UIState& uiState, std::string label, float labelWidth)
 {
 
     float padding = 10.0f;
@@ -140,7 +146,11 @@ int CheckBox(int id, float x, float y, bool state, float size, UIState& uiState,
     }
 
     if (label.length() > 0)
-        App::Print(x + padding + size, y, label.c_str());
+    {
+        // Beside the box, vertically centered on it, cut to labelWidth
+        std::string shown = labelWidth > 0.0f ? UIText::Fit(label, labelWidth) : label;
+        App::Print(x + padding + size, UIText::CenterY(y, size), shown.c_str());
+    }
 
     if (uiState.hotItem == id && uiState.activeItem == id)
         return 1;
@@ -175,13 +185,7 @@ int DropdownList(int id,
     DrawRect(x, y, width, height, 0.6f, 0.6f, 0.6f);
 
     // Draw the text label (centered)
-    {
-        float textWidth = 10.0f * selectedItemText.size();
-        float textHeight = 10.0f;
-        float textX = x + (width - textWidth) * 0.5f;
-        float textY = y + (height - textHeight) * 0.5f;
-        App::Print(textX, textY, selectedItemText.c_str(), 1.0f, 1.0f, 1.0f);
-    }
+    PrintCentered(x, y, width, height, selectedItemText, 1.0f, 1.0f, 1.0f);
 
     // If the user clicked on the dropdown button, toggle open/close
     bool clickedMainButton = (uiState.hotItem == id && uiState.activeItem == id);
@@ -240,11 +244,7 @@ int DropdownList(int id,
             DrawRect(itemX, itemY, itemW, itemH, 0.5f, 0.5f, 0.5f);
 
         // Print the item text
-        float textWidth = 10.0f * items[i].size();
-        float textHeight = 10.0f;
-        float textX = itemX + (itemW - textWidth) * 0.5f;
-        float textY = itemY + (itemH - textHeight) * 0.5f;
-        App::Print(textX, textY, items[i].c_str(), 1.0f, 1.0f, 1.0f);
+        PrintCentered(itemX, itemY, itemW, itemH, items[i], 1.0f, 1.0f, 1.0f);
     }
 
     return changedSelection;
@@ -274,16 +274,8 @@ void FillBar(float x, float y, float width, float height, float fillVal)
         // Build string
         std::string fillText = std::to_string(static_cast<int>(fillVal)) + " / 1000";
 
-        // Calculate roughly how wide the text is, based on your widget code
-        float textWidth = 10.0f * fillText.size();
-        float textHeight = 10.0f;
-
-        // Center the text inside the bar
-        float textX = x + (width - textWidth) * 0.5f;
-        float textY = y + (height - textHeight) * 0.5f;
-
-        // Draw the text in white. You can also use TextLabel(...) if you prefer
-        App::Print(textX, textY, fillText.c_str(), 1.0f, 0.0f, 0.0f);
+        // Centered inside the bar
+        PrintCentered(x, y, width, height, fillText, 1.0f, 0.0f, 0.0f);
     }
 }
 namespace
@@ -399,11 +391,10 @@ TextFieldEvent TextField(int id,
     App::DrawLine(x, y, x + width, y, border, border * 0.85f, border * 0.3f);
     App::DrawLine(x, y + height, x + width, y + height, border, border * 0.85f, border * 0.3f);
 
-    // Show the end of long texts, with a cursor while editing
-    std::string shown = editing ? uiState.editText + "_" : text;
-    size_t fits = static_cast<size_t>(std::max(1.0f, (width - 8.0f) / 10.0f));
-    if (shown.size() > fits)
-        shown = shown.substr(shown.size() - fits);
-    App::Print(x + 4.0f, y + (height - 10.0f) * 0.5f, shown.c_str(), 1.0f, 1.0f, 1.0f);
+    // Long texts are cut to the box: the end while editing (where the
+    // cursor is), the beginning otherwise
+    float room = width - 8.0f;
+    std::string shown = editing ? UIText::FitTail(uiState.editText + "_", room) : UIText::Fit(text, room);
+    App::Print(x + 4.0f, UIText::CenterY(y, height), shown.c_str(), 1.0f, 1.0f, 1.0f);
     return event;
 }

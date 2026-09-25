@@ -2,6 +2,131 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Unity-style editor, context menus, prefabs, responsive GUI
+
+### Responsive text (`src/Engine/UIText.h/.cpp`)
+
+- The UI is laid out in virtual units that ContestAPI stretches over the
+  window, but GLUT draws text in pixels. A label is therefore smaller in a
+  large window and larger in a small one. The old widgets assumed 10 units
+  per character, so labels drifted off center and spilled out of their
+  boxes.
+- **`UIText` measures text in virtual units for the current window:**
+  - `Width`, `CapHeight`;
+  - `Fit` (the beginning plus `..`) and `FitTail` (the end, for a box
+    being edited);
+  - `CenterX`, `CenterY`.
+- **Metrics:** `SetWindowSize` and `SetMeasure` are called by
+  `EditorMain.cpp` / `GameMain.cpp`, with `WINDOW_WIDTH` / `HEIGHT` from
+  ContestAPI's `main.h` and `glutBitmapWidth`. Tests use a built-in
+  Helvetica 18 width table. **ContestAPI is not modified.**
+- **Widgets** (`Widget.cpp`): Button, TextLabel, DropdownList (button and
+  items), FillBar, CheckBox (new optional `labelWidth`) and TextField all
+  center and fit their text.
+- **Editor text:** the editor's `Text` helper cuts text to the panel it is
+  drawn in (`EditorStyle::PanelRight`). Rows are vertically centered, and
+  toolbar buttons are as wide as their label needs.
+
+### Editor GUI rework (`src/Editor`)
+
+- **Files:** the GUI is split into
+  - `SceneEditorScene.cpp`: input, menus, actions, documents, prefab mode,
+    toolbar, overlay;
+  - `EditorLeftPanel.cpp`: hierarchy and assets;
+  - `EditorInspector.cpp`;
+  - `ContextMenu.h/.cpp`;
+  - `EditorStyle.h`: layout, colours, widget ids, helpers.
+- **`ContextMenu`:** items with actions or children.
+  - Levels are sized from their labels and kept on the screen; submenus go
+    right, or left at the edge.
+  - Hovering opens a submenu in the same frame. Clicks outside, a right
+    click or Esc close the menu.
+  - The click that opened it is ignored, and while it is open the other
+    widgets get no clicks.
+- **Palette and brush removed.** `CreateItems(position, parent)` builds the
+  create menu: Empty, the 4 shapes, Model > (every model), Prefab > (every
+  prefab). `ObjectItems(e)` builds an object's menu.
+  - Right click in the scene view: the object's menu (it is selected), or
+    create at the clicked point.
+  - Hierarchy: right click a row, right click the empty part, or the **+**
+    button.
+- **Assets:** `StartPlacingPrefab` / `StartPlacingModel`; click the scene
+  to place (press and drag to move the new object), or drag the row onto
+  the scene. A right click or Esc stops.
+- **Inspector:** one scrolling list of rows (`Row`), with foldable
+  `Section`s and a `Scrollbar` (drag the thumb, click the track to page).
+  - The scroll resets when the selection changes.
+  - Text boxes that are scrolled away drop their edit, so the keyboard is
+    never left captured (`m_DrawnFields`).
+  - **Add Component** opens a menu at the button. RigidBody and Script
+    sections can be removed.
+- **Prefab mode (`EditPrefab`, `NewPrefab`, `SavePrefab`, `BackToScene`):**
+  - `SceneEditor::Suspend` / `Resume` keep the scene, its undo history,
+    dirty flag, selection and camera.
+  - `OpenPrefabStage` shows the prefab alone and unlinked.
+  - Back to Scene warns once about unsaved changes, then calls
+    `UpdatePrefabInstances`.
+
+### Prefabs (`src/Engine/World/Prefab.h/.cpp`)
+
+- **`Prefab::Data`:** objects in parent-first order. Each object has its
+  name, tag, parent index, local pose, type (empty / shape / model), shape
+  or model, body, script and parameters, and reflected components as bytes
+  (by field name).
+- **`Capture(root, name)`:**
+  - The root keeps its rotation, scale and height; its X / Z become 0.
+  - Entity fields become "object number + 1" inside the group, or 0 for
+    anything outside it. They are rewritten temporarily on the live data
+    and restored.
+- **`Instantiate(prefab, position, yaw, parent)`** builds the objects, links
+  them, sets the poses, then the bodies, scripts and components. It then
+  remaps Entity fields to the new copies and adds a `PrefabLink` to the
+  root.
+- **Files:**
+  - binary: `UBPF`, version, size, CRC32, payload;
+  - text: `UBPF-TEXT 1`, then `prefab "name" count`, one `object ...` line
+    per object, and `end`. Text follows `WorldSerializer::FileFormat()`.
+- **`Load` checks:**
+  - the magic, version, size and CRC;
+  - parents come first;
+  - numbers are finite, models are named, shape sizes are positive;
+  - enums are in range;
+  - component data parses (`ComponentEntry::ValidateBytes`).
+
+  Unknown scripts or components are warnings, and unknown components are
+  skipped when placing.
+- **Also:** `Find` / `ClearCache` (used by `Script::SpawnPrefab`),
+  `Available`, `PathOf`, `SafeName`.
+- `ComponentCatalog` entries gained `SaveBytes` / `LoadBytes` /
+  `ValidateBytes`. `PrefabLink` is a new scene component.
+- **Editor core:**
+  - `Create(kind, position, parent)`;
+  - `PlacePrefab`, `PrefabOf`, `CapturePrefab`, `LinkPrefab`,
+    `UnpackPrefab`;
+  - `ResetToPrefab` (same place, yaw, parent and name; references cleared);
+  - `UpdatePrefabInstances` (one undo step);
+  - `CaptureStage` (several top level objects are grouped under a root);
+  - `OpenPrefabStage`, `MarkSaved`, `Suspend` / `Resume`.
+- **Sample:** `data/prefabs/turret.ubprefab`, written by `author_scenes`
+  (new optional prefab directory argument) and checked by `SceneFileTests`.
+  The `sandbox` scene has two instances.
+
+### Tests
+
+- **New files:**
+  - `PrefabTests` (4): capture / place with layout, data and reference
+    remapping; binary / text round trips; damaged files; `SpawnPrefab`;
+  - `EditorPrefabTests` (5);
+  - `UITextTests` (2).
+- **GUI tests rewritten (21):**
+  - context menus on the ground, on objects and in the hierarchy;
+  - assets placing and dragging;
+  - inspector sections, Add Component and Remove;
+  - inspector scrolling;
+  - the prefab editor;
+  - window sizes from 640x480 to 2048x1536, checking that every text stays
+    inside its panel, buttons are centered and menus stay on the screen.
+
 ## Scene hierarchy and empty transforms
 
 ### How the hierarchy fits the ECS

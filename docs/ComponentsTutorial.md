@@ -148,29 +148,28 @@ Rebuild the **SceneEditor** and the **Game**. Both call
 
 ## 5. Use it in the editor
 
-1. Select an object and click **Components** at the top of the inspector.
-   (**Properties** goes back to the position, size, body and script values.)
-
-   The tab lists every component of the object. The built-in ones show a
-   short state, such as `RigidBody Static` or `Script Rotator`.
+1. Select an object. The inspector lists its components as sections, like
+   Unity: Transform, Shape2D or Mesh, RigidBody, Script, then the project's
+   components.
 
    ```
-   OBJECT        [Properties][Components]
-   Crate_1  #7
-   Add Health            < >  [Add]
-   Transform
-   SceneObject
-   Shape2D      Rectangle
-   RigidBody    Static          [Remove]
-   [- Health               ]   [Remove]
-      Current  [ 100.00 ] [-][+]
-      Max      [ 100.00 ] [-][+]
-      Invuln.  [ ]
+   INSPECTOR
+   Name   [Crate_1        ]
+   Rectangle  #7
+   Tag < - >
+   - Transform
+   - Shape2D     Rectangle
+   - RigidBody   Static     [Remove]
+   - Health                 [Remove]
+       Current  [ 100.00 ] [-][+]
+       Max      [ 100.00 ] [-][+]
+       Invuln.  [ ]
+   [        Add Component        ]
    ```
-2. Pick `Health` with `< >` next to **Add**, then click **Add**. The
-   component appears with its default values.
+2. Click **Add Component** at the bottom and choose `Health` in the menu.
+   The component appears with its default values.
 
-   The picker offers:
+   The menu offers:
    - **RigidBody** (adds a static body);
    - **Script** (adds the first object script);
    - every registered component the object doesn't have yet.
@@ -180,8 +179,9 @@ Rebuild the **SceneEditor** and the **Game**. Both call
 
    Each change is one undo step. Values outside the range are clamped, and
    values that don't fit the field are refused with a message.
-4. To fold a component, click its header (`- Health`); click `+ Health` to
-   unfold it. Folding helps when an object has many components.
+4. To fold a component, click its title (`- Health`); click `+ Health` to
+   unfold it. When the sections don't fit, a scrollbar appears on the right
+   of the inspector.
 5. To remove a component, click **Remove** on its row. **Undo** (U) brings it
    back.
 
@@ -348,6 +348,6 @@ remain the right choice for compact, positional layouts, and for containers.
   components you aren't editing.
 
 Tests covering all of this are in `tests/ComponentTests.cpp` (reflection,
-serialization, editor, scripts) and in the last two tests of
-`tests/EditorGuiTests.cpp` (the Components tab driven with the mouse and
+serialization, editor, scripts) and in
+`tests/EditorGuiTests.cpp` (the inspector driven with the mouse and
 keyboard).

@@ -114,8 +114,31 @@ namespace
         editor.SetGameCamera({0, 0, -1}, 27.0f);
     }
 
+    // A turret: an empty root, a static base, a spinning head and its barrel
+    Prefab::Data TurretPrefab(SceneEditor& editor)
+    {
+        editor.NewScene();
+        Entity root = editor.AddEmpty({0, 0, 0});
+        editor.Rename(root, "Turret");
+        Entity base = editor.Create(ObjectKind::Rectangle, {0, 0, 0}, root, Brush(1.2f, 1.2f, GREY, BodyType::Static));
+        editor.Rename(base, "Base");
+        PlaceSettings head = Brush(0.8f, 0.8f, RED, BodyType::None);
+        head.Thickness = 0.5f;
+        Entity h = editor.Create(ObjectKind::Circle, {0, 0, 0}, base, head);
+        editor.Rename(h, "Head");
+        editor.SetScript(h, ScriptNames::Rotator);
+        editor.SetScriptParam(h, "Speed", 90.0f);
+        PlaceSettings barrel = Brush(0.25f, 0.9f, GREY, BodyType::None);
+        barrel.Thickness = 0.4f;
+        Entity b = editor.Create(ObjectKind::Rectangle, {0, 0, 0.7f}, h, barrel);
+        editor.Rename(b, "Barrel");
+        return editor.CaptureStage("turret");
+    }
+
     void Sandbox(SceneEditor& editor)
     {
+        // The turret prefab is built first (in its own stage)
+        Prefab::Data turret = TurretPrefab(editor);
         editor.NewScene();
         Entity player = PlacePlayer(editor, {0, 0, -8});
         // One of every shape, spinning
@@ -186,6 +209,10 @@ namespace
             editor.SetParent(moon, orbit);
         }
 
+        // Two instances of the turret prefab
+        editor.PlacePrefab(turret, {-6, 0, 10});
+        editor.PlacePrefab(turret, {6, 0, 10});
+
         // 3D models from data/models on the same field
         PlaceSettings model;
         model.Model = "Box";
@@ -236,6 +263,12 @@ namespace SampleScenes
 
 namespace SampleScenes
 {
+    const std::vector<SamplePrefab>& Prefabs()
+    {
+        static const std::vector<SamplePrefab> prefabs = {{"turret", TurretPrefab}};
+        return prefabs;
+    }
+
     Serialization::SaveFormat FormatOf(const SampleScene& scene)
     {
         return scene.PlainText ? Serialization::SaveFormat::Text : Serialization::SaveFormat::Binary;

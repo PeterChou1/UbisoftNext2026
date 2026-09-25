@@ -54,6 +54,24 @@ TEST_CASE("Scene files: committed files match the authoring code (run author_sce
     }
 }
 
+TEST_CASE("Scene files: committed prefabs match the authoring code (run author_scenes if not)")
+{
+    Editor::SceneEditor editor;
+    for (const auto& prefab : SampleScenes::Prefabs())
+    {
+        Fixture::FreshWorld();
+        Prefab::Data authored = prefab.Author(editor);
+        std::vector<std::uint8_t> expected = Prefab::Save(authored, Serialization::SaveFormat::Text);
+        std::vector<std::uint8_t> committed;
+        std::string error;
+        REQUIRE(Serialization::WorldSerializer::ReadFile(Prefab::PathOf(prefab.Name), committed, error));
+        CHECK(committed == expected);
+        Prefab::Data loaded;
+        REQUIRE(Prefab::Load(committed, loaded, error));
+        CHECK_EQ(loaded.Objects.size(), authored.Objects.size());
+    }
+}
+
 TEST_CASE("Scene files: every sample scene plays without missing scripts")
 {
     for (const auto& scene : SampleScenes::All())

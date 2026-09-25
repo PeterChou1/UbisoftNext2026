@@ -3,23 +3,23 @@
 #include "AssetServer.h"
 #include "Camera.h"
 #include "ECSManager.h"
+#include "EditorStyle.h"
 #include "GameManager.h"
 #include "GameOptions.h"
 #include "Input.h"
 #include "Lighting.h"
 #include "Log.h"
-#include "Mesh.h"
 #include "ModelImport.h"
-#include "Reflection/ComponentCatalog.h"
 #include "Scripting/ScriptRegistry.h"
+#include "Transform.h"
 #include "UIState.h"
+#include "UIText.h"
 #include "Widget.h"
 #include "World/SceneComponents.h"
 #include "stdafx.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <filesystem>
 
 extern ECSManager ECS;
@@ -27,132 +27,31 @@ extern GameManager GameSceneManager;
 
 using Editor::ObjectKind;
 using SceneObjects::BodyType;
+using namespace EditorStyle;
 
 namespace
 {
-    // -- Layout (virtual screen coordinates, y up) ---------------------------------
-    constexpr float SCREEN_W = static_cast<float>(APP_VIRTUAL_WIDTH);
-    constexpr float SCREEN_H = static_cast<float>(APP_VIRTUAL_HEIGHT);
-    constexpr float TOOLBAR_H = 50.0f;
-    constexpr float STATUS_H = 50.0f;
-    constexpr float PALETTE_W = 180.0f;
-    constexpr float INSPECTOR_W = 250.0f;
-    constexpr float BUTTON_H = 26.0f;
-    constexpr float ROW_H = 26.0f;
-    constexpr float STEP_W = 24.0f;
-    constexpr float SWATCH = 22.0f;
-
-    const Color PANEL_FILL = {0.12f, 0.13f, 0.16f};
-    const Color PANEL_BORDER = {0.45f, 0.47f, 0.52f};
-    const Color TEXT = {0.92f, 0.92f, 0.92f};
-    const Color TEXT_DIM = {0.62f, 0.64f, 0.68f};
-    const Color ACCENT = {1.0f, 0.82f, 0.25f};
-    const Color ERROR_TEXT = {1.0f, 0.4f, 0.35f};
-    const Color PLAY_TEXT = {0.4f, 1.0f, 0.5f};
-    // Empties (crosses) and the selection's hierarchy links in the viewport
-    const Color EMPTY_CROSS = {0.55f, 0.85f, 1.0f};
-    const Color PARENT_LINK = {1.0f, 0.55f, 0.25f};
-    const Color CHILD_LINK = {0.45f, 0.75f, 1.0f};
-    constexpr float CROSS_SIZE = 0.5f;
-
     // -- Camera ------------------------------------------------------------------------
     constexpr float PAN_SPEED = 18.0f;
     constexpr float ZOOM_SPEED = 25.0f;
     constexpr float MIN_DISTANCE = 6.0f;
     constexpr float MAX_DISTANCE = 90.0f;
+    // Camera of the prefab stage
+    constexpr float PREFAB_DISTANCE = 14.0f;
 
-    constexpr float SNAP_STEP = 0.5f;
-    constexpr float ROTATE_STEP = 15.0f;
-    constexpr float SIZE_STEP = 0.25f;
     constexpr float STATUS_TIME = 4.0f;
     constexpr float DRAG_THRESHOLD = 0.01f;
+    constexpr float CROSS_SIZE = 0.5f;
+    // Where "Create Child" puts the new object, from its parent
+    const Vec3 CHILD_OFFSET = {1.0f, 0.0f, 0.0f};
+    // Smallest scrollbar thumb
+    constexpr float MIN_THUMB = 20.0f;
 
-    // Widgets that keep state across frames have fixed ids: the scene list
-    // (open / closed) and the text fields (being edited). Buttons use
-    // dynamic ids from FIRST_DYNAMIC_ID
-    constexpr int ID_SCENE_LIST = 1;
-    constexpr int ID_FIELD_SCENE_NAME = 2;
-    constexpr int ID_FIELD_IMPORT = 3;
-    // Fields of the selected object (dropped when the selection changes)
-    constexpr int ID_FIELD_FIRST_OBJECT = 10;
-    constexpr int ID_FIELD_NAME = 10;
-    constexpr int ID_FIELD_POS_X = 11;
-    constexpr int ID_FIELD_POS_Z = 12;
-    constexpr int ID_FIELD_ROT = 13;
-    constexpr int ID_FIELD_WIDTH = 14;
-    constexpr int ID_FIELD_HEIGHT = 15;
-    constexpr int ID_FIELD_SIDES = 16;
-    constexpr int ID_FIELD_THICK = 17;
-    constexpr int ID_FIELD_SCALE = 18;
-    constexpr int ID_FIELD_PARENT = 19;
-    constexpr int ID_FIELD_PARAM = 20;
-    constexpr int ID_FIELD_LAST_OBJECT = 39;
-    // Scene tab fields
-    constexpr int ID_FIELD_FIELD_W = 40;
-    constexpr int ID_FIELD_FIELD_H = 41;
-    constexpr int ID_FIELD_SCENE_PARAM = 42;
-    constexpr int MAX_PARAM_FIELDS = 8;
-    // Text fields of the Components tab (reflected fields, in drawing order)
-    constexpr int ID_FIELD_FIRST_COMPONENT = 100;
-    constexpr int ID_FIELD_LAST_COMPONENT = 699;
-    constexpr int FIRST_DYNAMIC_ID = 1000;
-    // Width of the labels in front of typed values
-    constexpr float LABEL_W = 62.0f;
-    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner"};
-    constexpr int TAG_COUNT = sizeof(TAGS) / sizeof(TAGS[0]);
-
-    const Vec3 COLORS[] = {{0.90f, 0.30f, 0.25f},
-                           {0.95f, 0.60f, 0.20f},
-                           {0.95f, 0.85f, 0.30f},
-                           {0.35f, 0.75f, 0.35f},
-                           {0.25f, 0.70f, 0.70f},
-                           {0.30f, 0.50f, 0.90f},
-                           {0.60f, 0.40f, 0.85f},
-                           {0.85f, 0.85f, 0.85f}};
-    constexpr int COLOR_COUNT = sizeof(COLORS) / sizeof(COLORS[0]);
-
-    std::string Fmt(const char* format, float value)
+    // Text fields that edit the selected object or the scene settings
+    bool InObjectFields(int id)
     {
-        char buffer[64];
-        std::snprintf(buffer, sizeof(buffer), format, value);
-        return buffer;
-    }
-
-    void Text(float x, float y, const std::string& text, const Color& c = TEXT)
-    {
-        App::Print(x, y, text.c_str(), c.R, c.G, c.B);
-    }
-
-    Color ToColor(const Vec3& v) { return Color(v.X, v.Y, v.Z); }
-
-    bool SameColor(const Vec3& a, const Vec3& b)
-    {
-        return std::fabs(a.X - b.X) < 0.01f && std::fabs(a.Y - b.Y) < 0.01f &&
-               std::fabs(a.Z - b.Z) < 0.01f;
-    }
-
-    // Cycle an index through [0, count) by delta
-    int Cycle(int index, int delta, int count)
-    {
-        if (count <= 0)
-            return 0;
-        return ((index + delta) % count + count) % count;
-    }
-
-    template <typename List, typename T>
-    int IndexOf(const List& list, const T& value)
-    {
-        auto it = std::find(std::begin(list), std::end(list), value);
-        return it == std::end(list) ? 0 : static_cast<int>(it - std::begin(list));
-    }
-
-    std::string TagLabel(const std::string& tag) { return tag.empty() ? "-" : tag; }
-
-    // [""] + names, used by the script pickers
-    std::vector<std::string> WithNone(std::vector<std::string> names)
-    {
-        names.insert(names.begin(), "");
-        return names;
+        return (id >= ID_FIELD_FIRST_OBJECT && id <= ID_FIELD_SCENE_PARAM + MAX_PARAM_FIELDS) ||
+               (id >= ID_FIELD_FIRST_COMPONENT && id <= ID_FIELD_LAST_COMPONENT);
     }
 } // namespace
 
@@ -183,23 +82,25 @@ void SceneEditorScene::Setup()
 
     m_CamTarget = Vec3(0, 0, 0);
     m_CamDistance = 30.0f;
-    m_Tool = Tool::Select;
     m_Dragging = false;
-    m_PaletteDrag = false;
+    m_AssetDrag = false;
+    m_PlaceKind = AssetKind::None;
+    m_PlaceName.clear();
     m_PendingSceneIndex = -1;
+    m_PrefabMode = false;
+    m_ShowScene = false;
+    m_Menu.Close();
     m_UI->openDropDownId = 0;
     m_UI->focusedItem = 0;
-    m_Models = AssetServer::AvailableModels();
-    if (m_Brush.Model.empty() && !m_Models.empty())
-        m_Brush.Model = m_Models.front();
     std::error_code importDirError;
     std::filesystem::create_directories(IMPORT_DIRECTORY, importDirError);
+    RefreshAssets();
 
     // Open the first scene of the folder, or start a new one
     RefreshSceneList();
     if (m_SceneNames.empty() || !OpenScene(m_SceneNames.front()))
         NewDocument();
-    SetStatus("Pick a shape on the left and click (or drag it onto) the field. Tutorial: docs/EditorTutorial.md");
+    SetStatus("Right click the scene or the hierarchy to create objects. Tutorial: docs/EditorTutorial.md");
 }
 
 void SceneEditorScene::Update(float deltaTime)
@@ -215,7 +116,7 @@ void SceneEditorScene::Update(float deltaTime)
         return;
     }
     // While playing, the keyboard belongs to the scripts (only P stops)
-    if (Input::WasPressed(App::KEY_P))
+    if (Input::WasPressed(App::KEY_P) && !m_PrefabMode)
         TogglePlay();
     if (m_Editor.IsPlaying())
         return;
@@ -230,39 +131,52 @@ void SceneEditorScene::Render()
     m_NextId = FIRST_DYNAMIC_ID;
     m_NextFieldId = ID_FIELD_FIRST_COMPONENT;
     m_Hint.clear();
-    // While the scene list is open it covers other widgets: they must not
-    // receive the click meant for a list entry
+    m_DrawnFields.clear();
+
+    // While the scene list or a context menu is open it covers the other
+    // widgets: they must not receive the click meant for it
+    bool menuOpen = m_Menu.IsOpen();
     bool listOpen = m_UI->openDropDownId == ID_SCENE_LIST;
     bool click = m_UI->leftClick;
-    if (listOpen)
+    bool rightClick = m_UI->rightClick;
+    if (listOpen || menuOpen)
         m_UI->leftClick = false;
+    if (menuOpen)
+        m_UI->rightClick = false;
 
     // The inspector's text fields always edit the selected object: an edit
     // in progress is dropped when the selection changes
     if (m_Editor.Selected() != m_FieldsEntity)
     {
-        bool objectField = m_UI->focusedItem >= ID_FIELD_FIRST_OBJECT && m_UI->focusedItem <= ID_FIELD_LAST_OBJECT;
-        bool componentField =
-                m_UI->focusedItem >= ID_FIELD_FIRST_COMPONENT && m_UI->focusedItem <= ID_FIELD_LAST_COMPONENT;
-        if (objectField || componentField)
+        if (InObjectFields(m_UI->focusedItem))
             m_UI->focusedItem = 0;
         m_FieldsEntity = m_Editor.Selected();
         m_AddIndex = 0;
+        m_InspectorScroll = 0.0f;
     }
 
     RenderOverlay();
     RenderLeftPanel();
     RenderInspector();
     RenderStatusBar();
-    if (!RenderToolbar())
-        return;
+    if (RenderToolbar())
+    {
+        m_UI->leftClick = menuOpen ? false : click;
+        if (!m_Editor.IsPlaying() && !m_PrefabMode)
+            RenderSceneList();
+        if (listOpen && click && m_UI->openDropDownId == ID_SCENE_LIST && m_UI->activeItem != ID_SCENE_LIST)
+            m_UI->openDropDownId = 0;
+    }
 
+    // A text field scrolled out of view (or hidden) can not finish its edit:
+    // drop the edit instead of leaving the keyboard captured
+    if (InObjectFields(m_UI->focusedItem) && m_DrawnFields.count(m_UI->focusedItem) == 0)
+        m_UI->focusedItem = 0;
+
+    // The context menu last, on top of everything, with the real clicks
     m_UI->leftClick = click;
-    if (!m_Editor.IsPlaying())
-        RenderSceneList();
-    if (listOpen && click && m_UI->openDropDownId == ID_SCENE_LIST &&
-        m_UI->activeItem != ID_SCENE_LIST)
-        m_UI->openDropDownId = 0;
+    m_UI->rightClick = rightClick;
+    m_Menu.Render(*m_UI);
 }
 
 //-----------------------------------------------------------------------------
@@ -271,18 +185,15 @@ void SceneEditorScene::Render()
 
 void SceneEditorScene::UpdateCamera(float deltaSeconds)
 {
-    Vec3 pan(0, 0, 0);
+    float pan = PAN_SPEED * deltaSeconds * (m_CamDistance / 30.0f);
     if (Input::IsDown(App::KEY_W))
-        pan.Z += 1.0f;
+        m_CamTarget.Z += pan;
     if (Input::IsDown(App::KEY_S))
-        pan.Z -= 1.0f;
+        m_CamTarget.Z -= pan;
     if (Input::IsDown(App::KEY_A))
-        pan.X += 1.0f;
+        m_CamTarget.X -= pan;
     if (Input::IsDown(App::KEY_D))
-        pan.X -= 1.0f;
-    float speed = PAN_SPEED * (m_CamDistance / 30.0f) * deltaSeconds;
-    m_CamTarget = m_Editor.ClampToField(m_CamTarget + pan * speed);
-
+        m_CamTarget.X += pan;
     if (Input::IsDown(App::KEY_Z))
         m_CamDistance -= ZOOM_SPEED * deltaSeconds;
     if (Input::IsDown(App::KEY_C))
@@ -294,16 +205,18 @@ void SceneEditorScene::UpdateCamera(float deltaSeconds)
 
 void SceneEditorScene::UpdateShortcuts()
 {
-    const App::Key kindKeys[] = {App::KEY_1, App::KEY_2, App::KEY_3, App::KEY_4, App::KEY_5, App::KEY_6};
-    static_assert(sizeof(kindKeys) / sizeof(kindKeys[0]) == static_cast<int>(ObjectKind::Count),
-                  "One key per object kind");
-    for (int i = 0; i < static_cast<int>(ObjectKind::Count); ++i)
+    if (m_Menu.IsOpen())
+        return;
+    // Esc stops placing an asset
+    for (char c : Input::TypedText())
     {
-        if (Input::WasPressed(kindKeys[i]))
-            SelectKind(static_cast<ObjectKind>(i));
+        if (c == 27 && m_PlaceKind != AssetKind::None)
+        {
+            m_PlaceKind = AssetKind::None;
+            m_PlaceName.clear();
+            SetStatus("Stopped placing");
+        }
     }
-    if (Input::WasPressed(App::KEY_SPACE))
-        m_Tool = Tool::Select;
     if (Input::WasPressed(App::KEY_R))
         RotateSelected(ROTATE_STEP);
     if (Input::WasPressed(App::KEY_X))
@@ -315,14 +228,17 @@ void SceneEditorScene::UpdateShortcuts()
     if (Input::WasPressed(App::KEY_Y) && m_Editor.Redo())
         SetStatus("Redo");
     if (Input::WasPressed(App::KEY_G))
+    {
         m_Snap = !m_Snap;
+        SetStatus(m_Snap ? "Snap to grid on (G)" : "Snap to grid off (G)");
+    }
 }
 
 bool SceneEditorScene::MouseOverUI() const
 {
     float x = m_UI->mouseX;
     float y = m_UI->mouseY;
-    return m_UI->openDropDownId != 0 || x < PALETTE_W || x > SCREEN_W - INSPECTOR_W ||
+    return m_UI->openDropDownId != 0 || m_Menu.Contains(x, y) || x < LEFT_W || x > SCREEN_W - INSPECTOR_W ||
            y > SCREEN_H - TOOLBAR_H || y < STATUS_H;
 }
 
@@ -349,9 +265,14 @@ Vec3 SceneEditorScene::SnapPoint(const Vec3& point) const
 {
     if (!m_Snap)
         return point;
-    return {Editor::SceneEditor::Snap(point.X, SNAP_STEP),
-            point.Y,
-            Editor::SceneEditor::Snap(point.Z, SNAP_STEP)};
+    return {Editor::SceneEditor::Snap(point.X, SNAP_STEP), point.Y, Editor::SceneEditor::Snap(point.Z, SNAP_STEP)};
+}
+
+Vec3 SceneEditorScene::ViewCenter() const
+{
+    Vec3 center = m_Editor.ClampToField(SnapPoint(m_CamTarget));
+    center.Y = 0.0f;
+    return center;
 }
 
 void SceneEditorScene::BeginDrag(Entity entity, float height)
@@ -370,17 +291,17 @@ void SceneEditorScene::BeginDrag(Entity entity, float height)
 
 void SceneEditorScene::UpdateViewportMouse()
 {
-    // A palette shape dragged onto the field is dropped where it is released
-    if (m_PaletteDrag && !m_UI->mouseLeftDown)
+    // The context menu handles the mouse while it is open
+    if (m_Menu.IsOpen())
+        return;
+
+    // An asset dragged from the Assets list is dropped where it is released
+    if (m_AssetDrag && !m_UI->mouseLeftDown)
     {
-        m_PaletteDrag = false;
+        m_AssetDrag = false;
         Vec3 ground;
         if (!MouseOverUI() && MouseToGround(ground))
-        {
-            Entity placed = m_Editor.Place(m_Kind, SnapPoint(ground), m_Brush);
-            if (placed != NULL_ENTITY)
-                SetStatus("Placed " + m_Editor.NameOf(placed));
-        }
+            PlaceAsset(SnapPoint(ground));
         return;
     }
 
@@ -413,7 +334,7 @@ void SceneEditorScene::UpdateViewportMouse()
         return;
     }
 
-    if (MouseOverUI() || m_PaletteDrag)
+    if (MouseOverUI() || m_AssetDrag)
         return;
     // The first click outside a text field only finishes the edit
     if (m_UI->IsTyping())
@@ -421,15 +342,28 @@ void SceneEditorScene::UpdateViewportMouse()
 
     if (m_UI->rightClick)
     {
-        m_Tool = Tool::Select;
-        m_Editor.Select(NULL_ENTITY);
+        if (m_PlaceKind != AssetKind::None)
+        {
+            m_PlaceKind = AssetKind::None;
+            m_PlaceName.clear();
+            SetStatus("Stopped placing");
+            return;
+        }
+        OpenViewportMenu();
         return;
     }
     if (!m_UI->leftClick)
         return;
 
-    // Pressing an object grabs it (also while placing), so objects can
-    // always be dragged
+    Vec3 ground;
+    if (m_PlaceKind != AssetKind::None)
+    {
+        if (MouseToGround(ground))
+            PlaceAsset(SnapPoint(ground));
+        return;
+    }
+
+    // Pressing an object selects and grabs it
     float grabHeight = 0.0f;
     Entity picked = PickUnderMouse(&grabHeight);
     if (picked != NULL_ENTITY && !m_Editor.IsField(picked))
@@ -439,39 +373,137 @@ void SceneEditorScene::UpdateViewportMouse()
         BeginDrag(picked, grabHeight);
         return;
     }
-
-    Vec3 ground;
-    if (!MouseToGround(ground))
-        return;
-    if (m_Tool == Tool::Place)
-    {
-        if (m_Kind == ObjectKind::Model && m_Brush.Model.empty())
-        {
-            SetStatus("No models found in data/models", true);
-            return;
-        }
-        Entity placed = m_Editor.Place(m_Kind, SnapPoint(ground), m_Brush);
-        SetStatus("Placed " + m_Editor.NameOf(placed) + " (keep the button down to drag it)");
-        // Place and drag in one gesture; placing already recorded the undo step
-        m_DragRecorded = true;
-        BeginDrag(placed, 0.0f);
-        return;
-    }
     // Clicking the field selects it (to resize / recolour it)
     m_Editor.Select(picked);
+}
+
+void SceneEditorScene::OpenViewportMenu()
+{
+    Entity picked = PickUnderMouse();
+    if (picked != NULL_ENTITY && !m_Editor.IsField(picked))
+    {
+        m_Editor.Select(picked);
+        m_Menu.Open(m_UI->mouseX, m_UI->mouseY, ObjectItems(picked));
+        return;
+    }
+    // On the field (or nothing): create objects where it was clicked
+    Vec3 ground;
+    Vec3 at = MouseToGround(ground) ? m_Editor.ClampToField(SnapPoint(ground)) : ViewCenter();
+    at.Y = 0.0f;
+    m_Menu.Open(m_UI->mouseX, m_UI->mouseY, CreateItems(at, NULL_ENTITY));
+}
+
+//-----------------------------------------------------------------------------
+// Context menus
+//-----------------------------------------------------------------------------
+
+std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity parent)
+{
+    std::vector<MenuItem> items;
+    for (ObjectKind kind :
+         {ObjectKind::Empty, ObjectKind::Rectangle, ObjectKind::Circle, ObjectKind::Triangle, ObjectKind::Polygon})
+    {
+        items.push_back({std::string("Create ") + Editor::ObjectKindName(kind),
+                         [this, kind, position, parent] { CreateObject(kind, position, parent); }});
+    }
+    MenuItem models{"Create Model", nullptr};
+    for (const std::string& model : m_Models)
+    {
+        models.Children.push_back(
+                {model, [this, position, parent, model] { CreateObject(ObjectKind::Model, position, parent, model); }});
+    }
+    models.Enabled = !models.Children.empty();
+    items.push_back(models);
+
+    MenuItem prefabs{"Create Prefab", nullptr};
+    for (const std::string& name : m_Prefabs)
+    {
+        prefabs.Children.push_back({name, [this, position, parent, name] {
+                                        Prefab::Data data;
+                                        std::string error;
+                                        if (!Prefab::LoadFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
+                                        {
+                                            SetStatus("Can not load prefab " + name + ": " + error, true);
+                                            return;
+                                        }
+                                        Entity e = m_Editor.PlacePrefab(data, position, parent);
+                                        if (e != NULL_ENTITY)
+                                            SetStatus("Placed prefab " + name + " (" + m_Editor.NameOf(e) + ")");
+                                    }});
+    }
+    prefabs.Enabled = !prefabs.Children.empty();
+    items.push_back(prefabs);
+    return items;
+}
+
+std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
+{
+    // The field only offers to create objects
+    if (m_Editor.IsField(e))
+        return CreateItems(ViewCenter(), NULL_ENTITY);
+
+    std::vector<MenuItem> items;
+    Vec3 childAt = m_Editor.ClampToField(SceneObjects::GetPosition(e) + CHILD_OFFSET);
+    childAt.Y = 0.0f;
+    MenuItem child{"Create Child", nullptr};
+    child.Children = CreateItems(childAt, e);
+    items.push_back(child);
+    items.push_back({"Rename", [this, e] {
+                         // Starts typing in the inspector's Name box
+                         m_Editor.Select(e);
+                         m_FieldsEntity = e;
+                         m_InspectorScroll = 0.0f;
+                         m_ShowScene = false;
+                         m_UI->focusedItem = ID_FIELD_NAME;
+                         m_UI->editText = m_Editor.NameOf(e);
+                         m_UI->editFresh = true;
+                     }});
+    items.push_back({"Duplicate", [this, e] {
+                         m_Editor.Select(e);
+                         DuplicateSelected();
+                     }});
+    items.push_back({"Delete", [this, e] {
+                         m_Editor.Select(e);
+                         DeleteSelected();
+                     }});
+    if (m_Editor.ParentOf(e) != NULL_ENTITY)
+    {
+        items.push_back({"Unparent", [this, e] {
+                             if (m_Editor.SetParent(e, NULL_ENTITY))
+                                 SetStatus(m_Editor.NameOf(e) + " is now a top level object");
+                         }});
+    }
+    items.push_back({"Focus", [this, e] {
+                         Vec3 p = SceneObjects::GetPosition(e);
+                         m_CamTarget = Vec3(p.X, 0.0f, p.Z);
+                     }});
+    items.push_back({"Save as Prefab", [this, e] { SaveAsPrefab(e); }});
+    std::string prefab = m_Editor.PrefabOf(e);
+    if (!prefab.empty())
+    {
+        items.push_back({"Edit Prefab", [this, prefab] { EditPrefab(prefab); }});
+        items.push_back({"Reset to Prefab", [this, e, prefab] {
+                             Prefab::Data data;
+                             std::string error;
+                             if (!Prefab::LoadFile(Prefab::PathOf(prefab, m_PrefabDirectory), data, error))
+                             {
+                                 SetStatus("Can not load prefab " + prefab + ": " + error, true);
+                                 return;
+                             }
+                             if (m_Editor.ResetToPrefab(e, data) != NULL_ENTITY)
+                                 SetStatus("Reset to prefab " + prefab);
+                         }});
+        items.push_back({"Unpack Prefab", [this, e, prefab] {
+                             if (m_Editor.UnpackPrefab(e))
+                                 SetStatus(m_Editor.NameOf(e) + " is no longer linked to " + prefab);
+                         }});
+    }
+    return items;
 }
 
 //-----------------------------------------------------------------------------
 // Actions
 //-----------------------------------------------------------------------------
-
-void SceneEditorScene::SelectKind(ObjectKind kind)
-{
-    m_Kind = kind;
-    m_Tool = Tool::Place;
-    SetStatus(std::string("Placing ") + Editor::ObjectKindName(kind) +
-              ". Click the field (or drag the button onto it), right click to stop");
-}
 
 void SceneEditorScene::DeleteSelected()
 {
@@ -499,6 +531,67 @@ void SceneEditorScene::RotateSelected(float degrees)
         m_Editor.SetYaw(selected, SceneObjects::GetYaw(selected) + degrees);
 }
 
+void SceneEditorScene::CreateObject(ObjectKind kind, const Vec3& position, Entity parent, const std::string& model)
+{
+    Editor::PlaceSettings settings;
+    settings.Model = model;
+    Entity e = m_Editor.Create(kind, position, parent, settings);
+    if (e == NULL_ENTITY)
+    {
+        SetStatus(std::string("Can not create ") + Editor::ObjectKindName(kind), true);
+        return;
+    }
+    m_ShowScene = false;
+    SetStatus("Created " + m_Editor.NameOf(e) + (parent != NULL_ENTITY ? " in " + m_Editor.NameOf(parent) : ""));
+}
+
+void SceneEditorScene::StartPlacingPrefab(const std::string& name)
+{
+    m_PlaceKind = name.empty() ? AssetKind::None : AssetKind::Prefab;
+    m_PlaceName = name;
+    if (!name.empty())
+        SetStatus("Placing prefab " + name + ": click the scene (right click or Esc to stop)");
+}
+
+void SceneEditorScene::StartPlacingModel(const std::string& name)
+{
+    m_PlaceKind = name.empty() ? AssetKind::None : AssetKind::Model;
+    m_PlaceName = name;
+    if (!name.empty())
+        SetStatus("Placing model " + name + ": click the scene (right click or Esc to stop)");
+}
+
+void SceneEditorScene::PlaceAsset(const Vec3& position)
+{
+    Entity placed = NULL_ENTITY;
+    if (m_PlaceKind == AssetKind::Prefab)
+    {
+        Prefab::Data data;
+        std::string error;
+        if (!Prefab::LoadFile(Prefab::PathOf(m_PlaceName, m_PrefabDirectory), data, error))
+        {
+            SetStatus("Can not load prefab " + m_PlaceName + ": " + error, true);
+            m_PlaceKind = AssetKind::None;
+            return;
+        }
+        placed = m_Editor.PlacePrefab(data, position);
+    }
+    else if (m_PlaceKind == AssetKind::Model)
+    {
+        Editor::PlaceSettings settings;
+        settings.Model = m_PlaceName;
+        placed = m_Editor.Create(ObjectKind::Model, position, NULL_ENTITY, settings);
+    }
+    if (placed == NULL_ENTITY)
+        return;
+    m_ShowScene = false;
+    SetStatus("Placed " + m_Editor.NameOf(placed) + " (keep the button down to drag it)");
+    // Place and drag in one gesture; placing already recorded the undo step
+    m_DragRecorded = true;
+    if (m_UI->mouseLeftDown)
+        BeginDrag(placed, 0.0f);
+}
+
 void SceneEditorScene::TogglePlay()
 {
     if (m_Editor.IsPlaying())
@@ -509,6 +602,8 @@ void SceneEditorScene::TogglePlay()
         SetStatus("Stopped, the scene is back to how it was before Play");
         return;
     }
+    if (m_PrefabMode)
+        return;
     std::vector<std::string> issues = m_Editor.Validate();
     if (!issues.empty())
     {
@@ -516,7 +611,8 @@ void SceneEditorScene::TogglePlay()
         return;
     }
     m_Dragging = false;
-    m_PaletteDrag = false;
+    m_AssetDrag = false;
+    m_Menu.Close();
     m_UI->openDropDownId = 0;
     m_UI->focusedItem = 0;
     m_Editor.BeginPlay();
@@ -575,6 +671,8 @@ std::string SceneEditorScene::UniqueSceneName() const
 
 void SceneEditorScene::NewDocument()
 {
+    if (m_PrefabMode)
+        return;
     std::error_code ec;
     std::filesystem::create_directories(m_SceneDirectory, ec);
     std::string name = UniqueSceneName();
@@ -592,6 +690,11 @@ void SceneEditorScene::NewDocument()
 
 bool SceneEditorScene::OpenScene(const std::string& name)
 {
+    if (m_PrefabMode)
+    {
+        SetStatus("Go back to the scene before opening another one", true);
+        return false;
+    }
     Serialization::LoadResult result = m_Editor.LoadScene(ScenePath(name));
     if (!result)
     {
@@ -601,6 +704,7 @@ bool SceneEditorScene::OpenScene(const std::string& name)
     }
     m_DocName = name;
     m_PendingSceneIndex = -1;
+    m_Collapsed.clear();
     RefreshSceneList();
     std::vector<std::uint8_t> head;
     std::string readError;
@@ -615,6 +719,8 @@ bool SceneEditorScene::OpenScene(const std::string& name)
 
 bool SceneEditorScene::SaveDocument()
 {
+    if (m_PrefabMode)
+        return SavePrefab();
     Serialization::SaveResult result = m_Editor.SaveScene(ScenePath(m_DocName), m_DocName);
     if (!result)
     {
@@ -639,7 +745,7 @@ void SceneEditorScene::RevertScene()
 
 bool SceneEditorScene::RenameDocument(const std::string& newName)
 {
-    if (newName.empty() || newName == m_DocName)
+    if (newName.empty() || newName == m_DocName || m_PrefabMode)
         return false;
     std::error_code ec;
     if (std::filesystem::exists(ScenePath(newName), ec))
@@ -666,472 +772,173 @@ bool SceneEditorScene::RenameDocument(const std::string& newName)
 }
 
 //-----------------------------------------------------------------------------
-// Drawing
+// Prefabs
 //-----------------------------------------------------------------------------
 
-int SceneEditorScene::Stepper(
-        float x, float y, float width, const std::string& label, const char* minus, const char* plus)
+void SceneEditorScene::SetPrefabDirectory(const std::string& directory)
 {
-    // "label        [-] [+]" row, returns -1 / +1 when a button was clicked
-    Text(x, y + 7.0f, label);
-    float right = x + width;
-    int delta = 0;
-    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, 22.0f, minus))
-        delta = -1;
-    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, 22.0f, plus))
-        delta = 1;
-    return delta;
+    m_PrefabDirectory = directory;
+    RefreshAssets();
 }
 
-bool SceneEditorScene::NumberRow(
-        float x, float y, float width, const std::string& label, int fieldId, float& value, float step, const char* format)
+void SceneEditorScene::RefreshAssets()
 {
-    // "label [ value ] [-] [+]": type a value (Enter) or step it
-    Text(x, y + 7.0f, label);
-    float fieldX = x + LABEL_W;
-    float fieldW = width - LABEL_W - 2 * STEP_W - 10.0f;
-    bool changed = false;
-    std::string text = Fmt(format, value);
-    if (TextField(fieldId, fieldX, y, fieldW, 22.0f, *m_UI, text, TextFilter::Number) == TextFieldEvent::Committed)
-    {
-        char* end = nullptr;
-        float typed = std::strtof(text.c_str(), &end);
-        if (end != text.c_str() && std::isfinite(typed))
-        {
-            value = typed;
-            changed = true;
-        }
-        else if (!text.empty())
-            SetStatus("Not a number: " + text, true);
-    }
-    float right = x + width;
-    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, 22.0f, "-"))
-    {
-        value -= step;
-        changed = true;
-    }
-    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, 22.0f, "+"))
-    {
-        value += step;
-        changed = true;
-    }
-    return changed;
+    m_Prefabs = Prefab::Available(m_PrefabDirectory);
+    m_Models = AssetServer::AvailableModels();
 }
 
-bool SceneEditorScene::RenderToolbar()
+std::string SceneEditorScene::UniquePrefabName(const std::string& base) const
 {
-    float y = SCREEN_H - TOOLBAR_H;
-    DrawPanel(0, y, SCREEN_W, TOOLBAR_H, PANEL_FILL, PANEL_BORDER);
-    float by = y + (TOOLBAR_H - BUTTON_H) * 0.5f;
-    float x = 200.0f;
-    bool playing = m_Editor.IsPlaying();
-
-    auto toolbarButton = [&](const char* label, float width) {
-        bool clicked = Button(NextId(), x, by, *m_UI, width, BUTTON_H, label);
-        x += width + 8.0f;
-        return clicked;
-    };
-
-    if (!playing)
+    std::string safe = Prefab::SafeName(base);
+    std::error_code ec;
+    if (!std::filesystem::exists(Prefab::PathOf(safe, m_PrefabDirectory), ec))
+        return safe;
+    for (int i = 2;; ++i)
     {
-        if (toolbarButton("New", 50))
-            NewDocument();
-        if (toolbarButton("Revert", 60))
-            RevertScene();
-        if (toolbarButton("Save", 50))
-            SaveDocument();
-        if (toolbarButton("Undo", 50) && !m_Editor.Undo())
-            SetStatus("Nothing to undo");
-        if (toolbarButton("Redo", 50) && !m_Editor.Redo())
-            SetStatus("Nothing to redo");
+        std::string name = safe + "_" + std::to_string(i);
+        if (!std::filesystem::exists(Prefab::PathOf(name, m_PrefabDirectory), ec))
+            return name;
     }
-    else
-    {
-        x += 4 * 58.0f + 68.0f;
-    }
-    if (toolbarButton(playing ? "Stop" : "Play", 60))
-        TogglePlay();
-    if (!playing && toolbarButton(m_ShowScene ? "Object" : "Scene", 70))
-        m_ShowScene = !m_ShowScene;
+}
 
-    if (playing)
+bool SceneEditorScene::SaveAsPrefab(Entity root)
+{
+    if (!m_Editor.IsObject(root) || m_Editor.IsField(root))
     {
-        Text(x + 90.0f, by + 7.0f, "PLAYING " + m_DocName, PLAY_TEXT);
-        return true;
+        SetStatus("Select an object (not the field) to save it as a prefab", true);
+        return false;
     }
-    // The scene's name: click it to rename the scene (and its file)
-    Text(x + 4.0f, by + 7.0f, "Name", TEXT_DIM);
-    std::string name = m_DocName;
-    if (TextField(ID_FIELD_SCENE_NAME, x + 50.0f, by + 2.0f, 150.0f, 22.0f, *m_UI, name, TextFilter::Name) ==
-        TextFieldEvent::Committed)
-        RenameDocument(name);
-    if (m_Editor.IsDirty())
-        Text(x + 206.0f, by + 7.0f, "*", ACCENT);
+    std::string name = UniquePrefabName(m_Editor.NameOf(root));
+    Prefab::Data data = m_Editor.CapturePrefab(root, name);
+    std::string error;
+    if (!Prefab::SaveFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
+    {
+        SetStatus("Could not save prefab " + name + ": " + error, true);
+        return false;
+    }
+    // In the prefab editor the group stays plain objects of the stage
+    if (!m_PrefabMode)
+        m_Editor.LinkPrefab(root, name);
+    RefreshAssets();
+    SetStatus("Saved prefab " + name + " (" + std::to_string(data.Objects.size()) + " objects). Place it from Assets");
     return true;
 }
 
-void SceneEditorScene::RenderSceneList()
-{
-    int before = m_SceneIndex;
-    if (!DropdownList(ID_SCENE_LIST,
-                      10.0f,
-                      SCREEN_H - TOOLBAR_H + (TOOLBAR_H - BUTTON_H) * 0.5f,
-                      180.0f,
-                      BUTTON_H,
-                      *m_UI,
-                      m_SceneNames,
-                      m_SceneIndex))
-        return;
-    if (m_SceneIndex < 0 || m_SceneIndex >= static_cast<int>(m_SceneNames.size()))
-        return;
-    const std::string picked = m_SceneNames[m_SceneIndex];
-    if (picked == m_DocName)
-    {
-        m_PendingSceneIndex = -1;
-        return;
-    }
-    // Unsaved changes are only thrown away when the scene is picked twice
-    if (m_Editor.IsDirty() && m_PendingSceneIndex != m_SceneIndex)
-    {
-        m_PendingSceneIndex = m_SceneIndex;
-        m_SceneIndex = before;
-        SetStatus(m_DocName + " has unsaved changes: Save, or pick " + picked + " again to discard them", true);
-        return;
-    }
-    OpenScene(picked);
-}
-
-void SceneEditorScene::RenderLeftPanel()
+bool SceneEditorScene::EditPrefab(const std::string& name)
 {
     if (m_Editor.IsPlaying())
-        return;
-    float top = SCREEN_H - TOOLBAR_H;
-    DrawPanel(0, STATUS_H, PALETTE_W, top - STATUS_H, PANEL_FILL, PANEL_BORDER);
-    float x = 10.0f;
-    float y = top - 26.0f;
-    // Tabs: Palette (what to place) / Hierarchy (the scene's tree)
-    float tabW = (PALETTE_W - 24.0f) * 0.5f;
-    if (Button(NextId(), x, y - 7.0f, *m_UI, tabW, 22.0f, "Palette"))
-        m_ShowHierarchy = false;
-    if (Button(NextId(), x + tabW + 4.0f, y - 7.0f, *m_UI, tabW, 22.0f, "Hierarchy"))
-        m_ShowHierarchy = true;
-    float lineX = m_ShowHierarchy ? x + tabW + 4.0f : x;
-    App::DrawLine(lineX, y - 9.0f, lineX + tabW, y - 9.0f, ACCENT.R, ACCENT.G, ACCENT.B);
-    y -= 32.0f;
-    if (m_ShowHierarchy)
-        RenderHierarchy(x, y);
-    else
-        RenderPalette(x, y);
+        return false;
+    if (m_PrefabMode)
+    {
+        if (name != m_PrefabName)
+            SetStatus("Finish editing " + m_PrefabName + " first (Back to Scene)", true);
+        return false;
+    }
+    Prefab::Data data;
+    std::string error;
+    std::vector<std::string> warnings;
+    if (!Prefab::LoadFile(Prefab::PathOf(name, m_PrefabDirectory), data, error, &warnings))
+    {
+        SetStatus("Can not open prefab " + name + ": " + error, true);
+        return false;
+    }
+    m_Session = m_Editor.Suspend();
+    m_PrefabMode = true;
+    m_PrefabName = name;
+    m_PrefabSaved = false;
+    m_ExitPending = false;
+    m_ShowScene = false;
+    m_Menu.Close();
+    m_PlaceKind = AssetKind::None;
+    m_UI->focusedItem = 0;
+    m_Editor.OpenPrefabStage(&data, name);
+    m_SceneCamTarget = m_CamTarget;
+    m_SceneCamDistance = m_CamDistance;
+    m_CamTarget = Vec3(0, 0, 0);
+    m_CamDistance = PREFAB_DISTANCE;
+    SetStatus("Editing prefab " + name + ": Save Prefab, then Back to Scene" +
+              (warnings.empty() ? std::string() : " (" + warnings.front() + ")"));
+    return true;
 }
 
-void SceneEditorScene::RenderPalette(float x, float y)
+bool SceneEditorScene::NewPrefab()
 {
-    float width = PALETTE_W - 20.0f;
-    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, m_Tool == Tool::Select ? "> Select" : "Select"))
-        m_Tool = Tool::Select;
-    y -= BUTTON_H + 4.0f;
-    // Slightly smaller buttons: six kinds in the room of five
-    constexpr float KIND_H = 22.0f;
-    for (int i = 0; i < static_cast<int>(ObjectKind::Count); ++i)
-    {
-        ObjectKind kind = static_cast<ObjectKind>(i);
-        std::string label = std::to_string(i + 1) + " " + Editor::ObjectKindName(kind);
-        if (m_Tool == Tool::Place && m_Kind == kind)
-            label = "> " + label;
-        if (Button(NextId(), x, y, *m_UI, width, KIND_H, label))
-        {
-            SelectKind(kind);
-            // Keep the button down and drag it onto the field to drop it there
-            m_PaletteDrag = true;
-        }
-        y -= KIND_H + 3.0f;
-    }
-    y -= 1.0f;
-
-    y -= 8.0f;
-    Text(x, y, "BRUSH", ACCENT);
-    y -= ROW_H + 2.0f;
-    int d = 0;
-    if ((d = Stepper(x, y, width, "W " + Fmt("%.2f", m_Brush.Width))) != 0)
-        m_Brush.Width = std::max(0.25f, m_Brush.Width + d * SIZE_STEP);
-    y -= ROW_H;
-    if ((d = Stepper(x, y, width, "H " + Fmt("%.2f", m_Brush.Height))) != 0)
-        m_Brush.Height = std::max(0.25f, m_Brush.Height + d * SIZE_STEP);
-    y -= ROW_H;
-    if ((d = Stepper(x, y, width, "Sides " + std::to_string(m_Brush.Sides))) != 0)
-        m_Brush.Sides = std::clamp(m_Brush.Sides + d, 3, 12);
-    y -= ROW_H;
-    if ((d = Stepper(x, y, width, "Rot " + Fmt("%.0f", m_Brush.YawDegrees))) != 0)
-        m_Brush.YawDegrees = std::fmod(m_Brush.YawDegrees + d * ROTATE_STEP + 360.0f, 360.0f);
-    y -= ROW_H;
-    if ((d = Stepper(x, y, width, SceneObjects::BodyTypeName(m_Brush.Body), "<", ">")) != 0)
-        m_Brush.Body = static_cast<BodyType>(
-                Cycle(static_cast<int>(m_Brush.Body), d, static_cast<int>(BodyType::Count)));
-    y -= ROW_H;
-    if ((d = Stepper(x, y, width, "Tag " + TagLabel(m_Brush.Tag), "<", ">")) != 0)
-        m_Brush.Tag = TAGS[Cycle(IndexOf(TAGS, m_Brush.Tag), d, TAG_COUNT)];
-    y -= ROW_H;
-    if (!m_Models.empty())
-    {
-        if ((d = Stepper(x, y, width, m_Brush.Model.substr(0, 9), "<", ">")) != 0)
-        {
-            int count = static_cast<int>(m_Models.size());
-            m_Brush.Model = m_Models[Cycle(IndexOf(m_Models, m_Brush.Model), d, count)];
-        }
-        y -= ROW_H;
-    }
-
-    y -= SWATCH;
-    for (int i = 0; i < COLOR_COUNT; ++i)
-    {
-        float sx = x + (i % 4) * (SWATCH + 10.0f);
-        float sy = y - (i / 4) * (SWATCH + 8.0f);
-        if (ColorSwatch(NextId(), sx, sy, SWATCH, ToColor(COLORS[i]), SameColor(m_Brush.Color, COLORS[i]), *m_UI))
-            m_Brush.Color = COLORS[i];
-    }
-    y -= 2 * (SWATCH + 8.0f);
-    if (CheckBox(NextId(), x, y, m_Snap, 16.0f, *m_UI, "Snap (G)"))
-        m_Snap = !m_Snap;
-
-    // Import a custom .obj: type a path (or a file name in data/import/),
-    // Enter or the button imports it into data/models
-    y -= 34.0f;
-    Text(x, y, "IMPORT .OBJ", ACCENT);
-    y -= 28.0f;
-    bool imported = false;
-    if (TextField(ID_FIELD_IMPORT, x, y, width, 22.0f, *m_UI, m_ImportPath, TextFilter::Any, 260) ==
-        TextFieldEvent::Committed)
-    {
-        ImportModel();
-        imported = true;
-    }
-    y -= 28.0f;
-    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Import model") && !imported)
-        ImportModel();
+    if (m_Editor.IsPlaying() || m_PrefabMode)
+        return false;
+    std::string name = UniquePrefabName("prefab");
+    m_Session = m_Editor.Suspend();
+    m_PrefabMode = true;
+    m_PrefabName = name;
+    m_PrefabSaved = false;
+    m_ExitPending = false;
+    m_ShowScene = false;
+    m_Menu.Close();
+    m_PlaceKind = AssetKind::None;
+    m_UI->focusedItem = 0;
+    m_Editor.OpenPrefabStage(nullptr, name);
+    m_SceneCamTarget = m_CamTarget;
+    m_SceneCamDistance = m_CamDistance;
+    m_CamTarget = Vec3(0, 0, 0);
+    m_CamDistance = PREFAB_DISTANCE;
+    SetStatus("New prefab " + name + ": right click " + name + " to add objects, then Save Prefab");
+    return true;
 }
 
-//-----------------------------------------------------------------------------
-// Hierarchy
-//-----------------------------------------------------------------------------
-
-namespace
+bool SceneEditorScene::SavePrefab()
 {
-    constexpr float TREE_ROW_H = 20.0f;
-    constexpr float TREE_INDENT = 12.0f;
-    constexpr float FOLD_W = 14.0f;
-    // Mouse travel that turns a press on a row into a drag
-    constexpr float TREE_DRAG_START = 5.0f;
-    const Color EMPTY_COLOR = {0.55f, 0.85f, 1.0f};
-    const Color ROW_SELECTED = {0.30f, 0.27f, 0.12f};
-    const Color ROW_TARGET = {0.16f, 0.30f, 0.20f};
-} // namespace
-
-std::vector<std::pair<Entity, int>> SceneEditorScene::HierarchyRows() const
-{
-    std::vector<std::pair<Entity, int>> rows;
-    // Depth first: each object, then (unless collapsed) its children
-    std::vector<std::pair<Entity, int>> stack;
-    std::vector<Entity> roots = m_Editor.RootObjects();
-    for (auto it = roots.rbegin(); it != roots.rend(); ++it)
-        stack.emplace_back(*it, 0);
-    while (!stack.empty())
+    if (!m_PrefabMode)
+        return false;
+    Prefab::Data data = m_Editor.CaptureStage(m_PrefabName);
+    std::string error;
+    if (!Prefab::SaveFile(Prefab::PathOf(m_PrefabName, m_PrefabDirectory), data, error))
     {
-        auto [e, depth] = stack.back();
-        stack.pop_back();
-        rows.emplace_back(e, depth);
-        if (m_Collapsed.count(e) != 0)
-            continue;
-        std::vector<Entity> children = m_Editor.ChildrenOf(e);
-        for (auto it = children.rbegin(); it != children.rend(); ++it)
-            stack.emplace_back(*it, depth + 1);
+        SetStatus("Could not save prefab: " + error, true);
+        return false;
     }
-    return rows;
+    m_Editor.MarkSaved();
+    m_PrefabSaved = true;
+    m_ExitPending = false;
+    RefreshAssets();
+    SetStatus("Saved prefab " + m_PrefabName + " (" + std::to_string(data.Objects.size()) + " objects)");
+    return true;
 }
 
-Entity SceneEditorScene::AddEmpty()
+bool SceneEditorScene::BackToScene()
 {
-    Entity selected = m_Editor.Selected();
-    bool under = selected != NULL_ENTITY && !m_Editor.IsField(selected);
-    Vec3 at = under ? SceneObjects::GetPosition(selected) : m_Editor.ClampToField(m_CamTarget);
-    at.Y = 0.0f;
-    Entity e = m_Editor.AddEmpty(SnapPoint(at), under ? selected : NULL_ENTITY);
-    if (e == NULL_ENTITY)
-        return NULL_ENTITY;
-    SetStatus("Added " + m_Editor.NameOf(e) + (under ? " under " + m_Editor.NameOf(selected) : std::string()));
-    return e;
-}
-
-void SceneEditorScene::RenderHierarchy(float x, float y)
-{
-    float width = PALETTE_W - 20.0f;
-    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "New Empty"))
-        AddEmpty();
-    y -= BUTTON_H + 8.0f;
-
-    // Forget folds of objects that no longer exist
-    for (auto it = m_Collapsed.begin(); it != m_Collapsed.end();)
-        it = m_Editor.IsObject(*it) ? std::next(it) : m_Collapsed.erase(it);
-
-    std::vector<std::pair<Entity, int>> rows = HierarchyRows();
-    float mx = m_UI->mouseX;
-    float my = m_UI->mouseY;
-
-    // A newly selected object is revealed: its parents unfold, the tree
-    // scrolls to it
-    Entity selected = m_Editor.Selected();
-    bool reveal = selected != m_TreeSelected && selected != NULL_ENTITY;
-    m_TreeSelected = selected;
-    if (reveal)
+    if (!m_PrefabMode)
+        return false;
+    if (m_Editor.IsDirty() && !m_ExitPending)
     {
-        bool unfolded = false;
-        for (Entity p = m_Editor.ParentOf(selected); p != NULL_ENTITY; p = m_Editor.ParentOf(p))
-            unfolded = m_Collapsed.erase(p) != 0 || unfolded;
-        if (unfolded)
-            rows = HierarchyRows();
+        m_ExitPending = true;
+        SetStatus(m_PrefabName + " has unsaved changes: Save Prefab, or Back to Scene again to discard them", true);
+        return false;
     }
-
-    // SCENE header: drop a row here to make it a top level object
-    float headerY = y;
-    bool overHeader = mx >= x && mx <= x + width && my >= headerY - 4.0f && my <= headerY + TREE_ROW_H - 4.0f;
-    if (m_TreeDragging && overHeader)
-        DrawPanel(x - 2.0f, headerY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_TARGET, ROW_TARGET);
-    Text(x, headerY + 2.0f, "SCENE", ACCENT);
-    Text(x + 50.0f, headerY + 2.0f, std::to_string(m_Editor.Objects().size()) + " objects", TEXT_DIM);
-    y -= TREE_ROW_H + 2.0f;
-
-    float bottom = STATUS_H + 34.0f;
-    int visible = std::max(1, static_cast<int>((y - bottom) / TREE_ROW_H) + 1);
-    int count = static_cast<int>(rows.size());
-    if (reveal)
+    m_Menu.Close();
+    m_UI->focusedItem = 0;
+    m_PlaceKind = AssetKind::None;
+    m_Editor.Resume(m_Session);
+    m_Session = Editor::SceneEditor::Session{};
+    m_CamTarget = m_SceneCamTarget;
+    m_CamDistance = m_SceneCamDistance;
+    m_PrefabMode = false;
+    std::string name = m_PrefabName;
+    if (!m_PrefabSaved)
     {
-        for (int i = 0; i < count; ++i)
-        {
-            if (rows[i].first != selected)
-                continue;
-            if (i < m_TreeScroll)
-                m_TreeScroll = i;
-            else if (i >= m_TreeScroll + visible)
-                m_TreeScroll = i - visible + 1;
-        }
+        SetStatus("Back to " + m_DocName);
+        return true;
     }
-    m_TreeScroll = std::clamp(m_TreeScroll, 0, std::max(0, count - visible));
-
-    Entity hovered = NULL_ENTITY;
-    for (int i = m_TreeScroll; i < count && i < m_TreeScroll + visible; ++i)
+    // The scene's instances follow the saved prefab
+    Prefab::Data data;
+    std::string error;
+    if (!Prefab::LoadFile(Prefab::PathOf(name, m_PrefabDirectory), data, error))
     {
-        auto [e, depth] = rows[i];
-        float rowY = y - (i - m_TreeScroll) * TREE_ROW_H;
-        float indent = x + depth * TREE_INDENT;
-        bool over = mx >= x && mx <= x + width && my >= rowY - 4.0f && my < rowY + TREE_ROW_H - 4.0f;
-        if (over)
-            hovered = e;
-        if (e == selected)
-            DrawPanel(x - 2.0f, rowY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_SELECTED, ROW_SELECTED);
-        else if (m_TreeDragging && over && e != m_TreePressed)
-            DrawPanel(x - 2.0f, rowY - 4.0f, width + 4.0f, TREE_ROW_H, ROW_TARGET, ROW_TARGET);
-
-        // Fold toggle of an object with children
-        bool hasChildren = !m_Editor.ChildrenOf(e).empty();
-        bool folded = m_Collapsed.count(e) != 0;
-        bool overFold = hasChildren && mx >= indent && mx <= indent + FOLD_W;
-        if (hasChildren && Button(NextId(), indent, rowY - 2.0f, *m_UI, FOLD_W, 16.0f, folded ? "+" : "-"))
-        {
-            if (folded)
-                m_Collapsed.erase(e);
-            else
-                m_Collapsed.insert(e);
-        }
-        std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
-        auto maxChars = static_cast<std::size_t>(std::max(3.0f, (x + width - indent - FOLD_W - 4.0f) / 7.0f));
-        if (name.size() > maxChars)
-            name = name.substr(0, maxChars - 1) + "~";
-        const Color& color = m_Editor.IsField(e) ? TEXT_DIM : (SceneObjects::IsEmpty(e) ? EMPTY_COLOR : TEXT);
-        Text(indent + FOLD_W + 4.0f, rowY + 2.0f, name, color);
-
-        // Press: select (and maybe start dragging it onto another row)
-        if (over && !overFold && m_UI->leftClick && !m_UI->IsTyping())
-        {
-            m_Editor.Select(e);
-            m_TreeSelected = e;
-            m_TreePressed = e;
-            m_TreeDragging = false;
-            m_TreePressX = mx;
-            m_TreePressY = my;
-        }
+        SetStatus("Back to " + m_DocName + ", but " + name + " can not be read: " + error, true);
+        return true;
     }
-
-    // Scroll buttons when the tree is longer than the panel
-    if (count > visible)
-    {
-        float by = STATUS_H + 6.0f;
-        float half = (width - 4.0f) * 0.5f;
-        if (Button(NextId(), x, by, *m_UI, half, 22.0f, "^"))
-            m_TreeScroll = std::max(0, m_TreeScroll - visible / 2);
-        if (Button(NextId(), x + half + 4.0f, by, *m_UI, half, 22.0f, "v"))
-            m_TreeScroll = std::min(count - visible, m_TreeScroll + visible / 2);
-    }
-
-    // Drag and drop: parent the pressed object to the row it is dropped on
-    if (m_TreePressed == NULL_ENTITY)
-        return;
-    if (m_UI->mouseLeftDown)
-    {
-        if (std::fabs(mx - m_TreePressX) > TREE_DRAG_START || std::fabs(my - m_TreePressY) > TREE_DRAG_START)
-            m_TreeDragging = m_Editor.ParentOf(m_TreePressed) != NULL_ENTITY || !m_Editor.IsField(m_TreePressed);
-        if (m_TreeDragging)
-        {
-            m_Hint = "Drop " + m_Editor.NameOf(m_TreePressed) +
-                     " on an object to make it its child, on SCENE for the top level";
-            Text(mx + 12.0f, my - 4.0f, m_Editor.NameOf(m_TreePressed), ACCENT);
-        }
-        return;
-    }
-    // Released
-    Entity dragged = m_TreePressed;
-    bool dropped = m_TreeDragging;
-    m_TreePressed = NULL_ENTITY;
-    m_TreeDragging = false;
-    if (!dropped)
-        return;
-    if (overHeader)
-    {
-        if (m_Editor.ParentOf(dragged) == NULL_ENTITY)
-            return;
-        if (m_Editor.SetParent(dragged, NULL_ENTITY))
-            SetStatus(m_Editor.NameOf(dragged) + " is now a top level object");
-        return;
-    }
-    if (hovered == NULL_ENTITY || hovered == dragged)
-        return;
-    if (m_Editor.SetParent(dragged, hovered))
-    {
-        m_Collapsed.erase(hovered);
-        SetStatus(m_Editor.NameOf(dragged) + " is now a child of " + m_Editor.NameOf(hovered));
-    }
-    else if (m_Editor.IsField(dragged) || m_Editor.IsField(hovered))
-        SetStatus("The field can not be a parent or a child", true);
-    else
-        SetStatus("Can not put " + m_Editor.NameOf(dragged) + " under " + m_Editor.NameOf(hovered) +
-                          " (it is one of its children)",
-                  true);
-}
-
-void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
-{
-    // An empty is a cross on the ground turned with the object, and a short
-    // post showing its height
-    Transform world = ECS.GetComponent<Transform>(entity).GetWorldTransform();
-    Vec3 c = world.LocalPosition;
-    Vec3 right = world.LocalRotation.RotatePoint(Vec3(size, 0.0f, 0.0f));
-    Vec3 forward = world.LocalRotation.RotatePoint(Vec3(0.0f, 0.0f, size));
-    auto line = [&](const Vec3& a, const Vec3& b) {
-        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
-        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
-        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
-    };
-    line(c - right, c + right);
-    line(c - forward, c + forward);
-    line(c, c + Vec3(0.0f, size, 0.0f));
+    int updated = m_Editor.UpdatePrefabInstances(data);
+    SetStatus("Back to " + m_DocName +
+              (updated > 0 ? ": updated " + std::to_string(updated) + " instance(s) of " + name : std::string()));
+    return true;
 }
 
 void SceneEditorScene::ImportModel()
@@ -1158,242 +965,115 @@ void SceneEditorScene::ImportModel()
         SetStatus("Import failed: " + result.Error, true);
         return;
     }
-    m_Models = AssetServer::AvailableModels();
-    m_Brush.Model = result.Name;
-    SelectKind(ObjectKind::Model);
+    RefreshAssets();
+    StartPlacingModel(result.Name);
     std::string message = (result.AlreadyImported ? "Already imported: " : "Imported ") + result.Name + " (" +
-                          std::to_string(result.Triangles) + " triangles). Click the field to place it";
+                          std::to_string(result.Triangles) + " triangles). Click the scene to place it";
     if (!result.Warnings.empty())
         message += ". " + result.Warnings.front();
     SetStatus(message, false);
     m_ImportPath.clear();
 }
 
-void SceneEditorScene::RenderInspector()
+//-----------------------------------------------------------------------------
+// Widgets
+//-----------------------------------------------------------------------------
+
+int SceneEditorScene::Stepper(
+        float x, float y, float width, const std::string& label, const char* minus, const char* plus)
 {
-    float left = SCREEN_W - INSPECTOR_W;
-    float top = SCREEN_H - TOOLBAR_H;
-    DrawPanel(left, STATUS_H, INSPECTOR_W, top - STATUS_H, PANEL_FILL, PANEL_BORDER);
-    float x = left + 10.0f;
-    float y = top - 26.0f;
-    if (m_Editor.IsPlaying())
-    {
-        Text(x, y, "PLAYING", PLAY_TEXT);
-        y -= ROW_H;
-        Text(x, y, "Scripts: " + std::to_string(GameSceneManager.Scripts().InstanceCount()), TEXT_DIM);
-        y -= ROW_H;
-        for (const std::string& missing : GameSceneManager.Scripts().MissingScripts())
-        {
-            Text(x, y, "Missing " + missing, ERROR_TEXT);
-            y -= ROW_H;
-        }
-        return;
-    }
-    if (m_ShowScene)
-        RenderSceneInspector(x, y);
-    else
-        RenderObjectInspector(x, y);
+    // "label        [-] [+]" row, returns -1 / +1 when a button was clicked.
+    // The label is cut before the buttons
+    Text(x, RowY(y), label, TEXT, width - 2 * STEP_W - 10.0f);
+    float right = x + width;
+    int delta = 0;
+    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, WIDGET_H, minus))
+        delta = -1;
+    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, WIDGET_H, plus))
+        delta = 1;
+    return delta;
 }
 
-void SceneEditorScene::RenderObjectInspector(float x, float& y)
+bool SceneEditorScene::NumberRow(
+        float x, float y, float width, const std::string& label, int fieldId, float& value, float step, const char* format)
 {
-    Text(x, y, "OBJECT", ACCENT);
-    // Tabs: Properties (built in values) / Components (add, remove, fields)
-    constexpr float PROPS_W = 78.0f;
-    constexpr float COMPS_W = 86.0f;
-    float tabX = x + INSPECTOR_W - 20.0f - PROPS_W - COMPS_W - 4.0f;
-    if (Button(NextId(), tabX, y - 7.0f, *m_UI, PROPS_W, 22.0f, "Properties"))
-        m_ShowComponents = false;
-    if (Button(NextId(), tabX + PROPS_W + 4.0f, y - 7.0f, *m_UI, COMPS_W, 22.0f, "Components"))
-        m_ShowComponents = true;
-    float lineX = m_ShowComponents ? tabX + PROPS_W + 4.0f : tabX;
-    float lineW = m_ShowComponents ? COMPS_W : PROPS_W;
-    App::DrawLine(lineX, y - 9.0f, lineX + lineW, y - 9.0f, ACCENT.R, ACCENT.G, ACCENT.B);
-    y -= 30.0f;
-    Entity e = m_Editor.Selected();
-    if (e == NULL_ENTITY)
+    // "label [ value ] [-] [+]": type a value (Enter) or step it
+    Text(x, RowY(y), label, TEXT, LABEL_W - 4.0f);
+    float fieldX = x + LABEL_W;
+    float fieldW = width - LABEL_W - 2 * STEP_W - 10.0f;
+    bool changed = false;
+    std::string text = Fmt(format, value);
+    FieldDrawn(fieldId);
+    if (TextField(fieldId, fieldX, y, fieldW, WIDGET_H, *m_UI, text, TextFilter::Number) == TextFieldEvent::Committed)
     {
-        Text(x, y, "Nothing selected", TEXT_DIM);
-        y -= ROW_H;
-        Text(x, y, "Click an object to edit it", TEXT_DIM);
-        return;
+        char* end = nullptr;
+        float typed = std::strtof(text.c_str(), &end);
+        if (end != text.c_str() && std::isfinite(typed))
+        {
+            value = typed;
+            changed = true;
+        }
+        else if (!text.empty())
+            SetStatus("Not a number: " + text, true);
     }
-    if (m_ShowComponents)
-        RenderComponents(e, x, y);
-    else
-        RenderObjectProperties(e, x, y);
+    float right = x + width;
+    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, WIDGET_H, "-"))
+    {
+        value -= step;
+        changed = true;
+    }
+    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, WIDGET_H, "+"))
+    {
+        value += step;
+        changed = true;
+    }
+    return changed;
 }
 
-void SceneEditorScene::RenderObjectProperties(Entity e, float x, float& y)
+void SceneEditorScene::Scrollbar(int id, float x, float bottom, float top, float content, float& scroll)
 {
-    float width = INSPECTOR_W - 20.0f;
-    bool isShape = ECS.HasComponent<Shape2D>(e);
-    bool isField = m_Editor.IsField(e);
-    std::string kind = Editor::ObjectKindName(m_Editor.KindOf(e));
-
-    if (isField)
+    float view = top - bottom;
+    float range = content - view;
+    if (range <= 0.0f)
     {
-        Text(x, y + 7.0f, "Field  #" + std::to_string(e), TEXT_DIM);
-        y -= ROW_H;
-    }
-    else
-    {
-        // Name: type a new one (must be unique)
-        Text(x, y + 7.0f, "Name");
-        std::string name = m_Editor.NameOf(e);
-        if (TextField(ID_FIELD_NAME, x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, name) ==
-                    TextFieldEvent::Committed &&
-            name != m_Editor.NameOf(e) && !m_Editor.Rename(e, name))
-            SetStatus("Can not rename to '" + name + "' (empty or already used)", true);
-        y -= ROW_H;
-        Text(x, y + 7.0f, kind + "  #" + std::to_string(e), TEXT_DIM);
-        std::size_t children = m_Editor.ChildrenOf(e).size();
-        if (children > 0)
-            Text(x + 120.0f, y + 7.0f, std::to_string(children) + (children == 1 ? " child" : " children"), TEXT_DIM);
-        y -= ROW_H;
-
-        // Parent: type an object's name ("-" = top level), or drag it in the
-        // Hierarchy tab
-        Entity parent = m_Editor.ParentOf(e);
-        std::string parentName = parent == NULL_ENTITY ? std::string("-") : m_Editor.NameOf(parent);
-        std::string typed = parentName;
-        Text(x, y + 7.0f, "Parent");
-        if (TextField(ID_FIELD_PARENT, x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, typed) ==
-                    TextFieldEvent::Committed &&
-            typed != parentName)
-        {
-            Entity target = typed.empty() || typed == "-" ? NULL_ENTITY : SceneObjects::FindByName(typed);
-            if (target == NULL_ENTITY && !(typed.empty() || typed == "-"))
-                SetStatus("No object named " + typed, true);
-            else if (!m_Editor.SetParent(e, target))
-                SetStatus("Can not put " + m_Editor.NameOf(e) + " under " + typed, true);
-            else
-                SetStatus(target == NULL_ENTITY ? m_Editor.NameOf(e) + " is now a top level object"
-                                                : m_Editor.NameOf(e) + " is now a child of " + typed);
-        }
-        y -= ROW_H;
-
-        // Position / rotation
-        Vec3 p = SceneObjects::GetPosition(e);
-        float px = p.X, pz = p.Z, yaw = SceneObjects::GetYaw(e);
-        if (NumberRow(x, y, width, "Pos X", ID_FIELD_POS_X, px, SNAP_STEP))
-            m_Editor.Move(e, Vec3(px, p.Y, p.Z));
-        y -= ROW_H;
-        if (NumberRow(x, y, width, "Pos Z", ID_FIELD_POS_Z, pz, SNAP_STEP))
-            m_Editor.Move(e, Vec3(p.X, p.Y, pz));
-        y -= ROW_H;
-        if (NumberRow(x, y, width, "Rot", ID_FIELD_ROT, yaw, ROTATE_STEP, "%.0f"))
-            m_Editor.SetYaw(e, yaw);
-        y -= ROW_H + 4.0f;
-    }
-
-    if (isShape)
-    {
-        Shape2D shape = ECS.GetComponent<Shape2D>(e);
-        bool round = shape.Type == Shape2DType::Circle || shape.Type == Shape2DType::Polygon;
-        float w = shape.Width, h = shape.Height, thick = shape.Thickness, sides = static_cast<float>(shape.Sides);
-        if (NumberRow(x, y, width, round ? "Size" : "Width", ID_FIELD_WIDTH, w, SIZE_STEP))
-            m_Editor.SetSize(e, w, shape.Height);
-        y -= ROW_H;
-        if (!round)
-        {
-            if (NumberRow(x, y, width, "Height", ID_FIELD_HEIGHT, h, SIZE_STEP))
-                m_Editor.SetSize(e, shape.Width, h);
-            y -= ROW_H;
-        }
-        if (shape.Type == Shape2DType::Polygon)
-        {
-            if (NumberRow(x, y, width, "Sides", ID_FIELD_SIDES, sides, 1.0f, "%.0f"))
-                m_Editor.SetSides(e, static_cast<int>(std::lround(sides)));
-            y -= ROW_H;
-        }
-        if (!isField)
-        {
-            if (NumberRow(x, y, width, "Thick", ID_FIELD_THICK, thick, 0.05f))
-                m_Editor.SetThickness(e, thick);
-            y -= ROW_H;
-        }
-        y -= SWATCH - 4.0f;
-        for (int i = 0; i < COLOR_COUNT; ++i)
-        {
-            float sx = x + i * (SWATCH + 6.0f);
-            if (ColorSwatch(NextId(), sx, y, SWATCH, ToColor(COLORS[i]), SameColor(shape.Color, COLORS[i]), *m_UI))
-                m_Editor.SetColor(e, COLORS[i]);
-        }
-        y -= ROW_H + 2.0f;
-    }
-    else
-    {
-        // Models and empties: the transform's scale (an empty's scale also
-        // scales its children)
-        float scale = ECS.GetComponent<Transform>(e).LocalScale.X;
-        if (NumberRow(x, y, width, "Scale", ID_FIELD_SCALE, scale, SIZE_STEP))
-            m_Editor.SetSize(e, scale, scale);
-        y -= ROW_H;
-        if (!m_Models.empty() && ECS.HasComponent<Mesh>(e))
-        {
-            const std::string& model = ECS.GetComponent<Mesh>(e).Model;
-            int d = 0;
-            if ((d = Stepper(x, y, width, "Model " + model.substr(0, 10), "<", ">")) != 0)
-            {
-                int count = static_cast<int>(m_Models.size());
-                m_Editor.SetModel(e, m_Models[Cycle(IndexOf(m_Models, model), d, count)]);
-            }
-            y -= ROW_H;
-        }
-    }
-
-    if (isField)
-    {
-        Text(x, y, "The field holds the scene,", TEXT_DIM);
-        y -= ROW_H;
-        Text(x, y, "size it in the Scene tab", TEXT_DIM);
+        scroll = 0.0f;
+        if (m_ScrollDragId == id)
+            m_ScrollDragId = 0;
         return;
     }
+    scroll = std::clamp(scroll, 0.0f, range);
+    float thumbH = std::max(MIN_THUMB, view * view / content);
+    auto thumbTopFor = [&](float s) { return top - (s / range) * (view - thumbH); };
+    float thumbTop = thumbTopFor(scroll);
 
-    int d = 0;
-    BodyType body = SceneObjects::GetBodyType(e);
-    if ((d = Stepper(x, y, width, std::string("Body ") + SceneObjects::BodyTypeName(body), "<", ">")) != 0)
-        m_Editor.SetBody(e, static_cast<BodyType>(Cycle(static_cast<int>(body), d, static_cast<int>(BodyType::Count))));
-    y -= ROW_H;
-    std::string tag = ECS.GetComponent<SceneObject>(e).Tag;
-    if ((d = Stepper(x, y, width, "Tag " + TagLabel(tag), "<", ">")) != 0)
-        m_Editor.SetTag(e, TAGS[Cycle(IndexOf(TAGS, tag), d, TAG_COUNT)]);
-    y -= ROW_H;
-
-    // Script picker + its declared parameters (typed or stepped)
-    std::vector<std::string> scripts = WithNone(ScriptRegistry::Get().Names(false));
-    std::string script = m_Editor.GetScript(e);
-    std::string scriptLabel = script.empty() ? "-" : script;
-    if ((d = Stepper(x, y, width, "Script " + scriptLabel.substr(0, 11), "<", ">")) != 0)
+    float mx = m_UI->mouseX;
+    float my = m_UI->mouseY;
+    bool overTrack = Inside(mx, my, x, bottom, SCROLLBAR_W, view);
+    bool overThumb = Inside(mx, my, x, thumbTop - thumbH, SCROLLBAR_W, thumbH);
+    if (m_UI->leftClick && overThumb)
     {
-        int count = static_cast<int>(scripts.size());
-        m_Editor.SetScript(e, scripts[Cycle(IndexOf(scripts, script), d, count)]);
+        m_ScrollDragId = id;
+        m_ScrollGrab = thumbTop - my;
     }
-    y -= ROW_H;
-    if (const ScriptInfo* info = ScriptRegistry::Get().Find(script))
+    else if (m_UI->leftClick && overTrack)
     {
-        int index = 0;
-        for (const ScriptParam& param : info->Params)
+        // Page up / down towards the click
+        scroll = std::clamp(scroll + (my > thumbTop ? -view : view) * 0.9f, 0.0f, range);
+    }
+    if (m_ScrollDragId == id)
+    {
+        if (!m_UI->mouseLeftDown)
+            m_ScrollDragId = 0;
+        else
         {
-            if (index >= MAX_PARAM_FIELDS)
-                break;
-            float value = m_Editor.GetScriptParam(e, param.Name);
-            if (NumberRow(x + 10.0f, y, width - 10.0f, param.Name.substr(0, 7), ID_FIELD_PARAM + index, value, param.Step))
-                m_Editor.SetScriptParam(e, param.Name, value);
-            y -= ROW_H;
-            ++index;
+            float newTop = std::clamp(my + m_ScrollGrab, bottom + thumbH, top);
+            scroll = std::clamp((top - newTop) / (view - thumbH) * range, 0.0f, range);
         }
     }
-
-    y -= 6.0f;
-    float third = (width - 16.0f) / 3.0f;
-    if (Button(NextId(), x, y, *m_UI, third, BUTTON_H, "Rot R"))
-        RotateSelected(ROTATE_STEP);
-    if (Button(NextId(), x + third + 8.0f, y, *m_UI, third, BUTTON_H, "Dup F"))
-        DuplicateSelected();
-    if (Button(NextId(), x + 2 * (third + 8.0f), y, *m_UI, third, BUTTON_H, "Del X"))
-        DeleteSelected();
+    thumbTop = thumbTopFor(scroll);
+    DrawPanel(x, bottom, SCROLLBAR_W, view, PANEL_FILL, PANEL_BORDER);
+    const Color& thumb = m_ScrollDragId == id || overThumb ? ACCENT : TEXT_DIM;
+    DrawPanel(x + 1.0f, thumbTop - thumbH, SCROLLBAR_W - 2.0f, thumbH, thumb, thumb);
 }
 
 int SceneEditorScene::NextFieldId()
@@ -1402,297 +1082,108 @@ int SceneEditorScene::NextFieldId()
     return m_NextFieldId <= ID_FIELD_LAST_COMPONENT ? m_NextFieldId++ : ID_FIELD_LAST_COMPONENT;
 }
 
-void SceneEditorScene::RenderComponents(Entity e, float x, float& y)
+//-----------------------------------------------------------------------------
+// Toolbar, status bar, scene view overlay
+//-----------------------------------------------------------------------------
+
+bool SceneEditorScene::RenderToolbar()
 {
-    float width = INSPECTOR_W - 20.0f;
-    float bottom = STATUS_H + 8.0f;
-    std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
-    Text(x, y + 7.0f, name.substr(0, 18) + "  #" + std::to_string(e), TEXT_DIM);
-    y -= ROW_H;
+    float y = SCREEN_H - TOOLBAR_H;
+    DrawPanel(0, y, SCREEN_W, TOOLBAR_H, PANEL_FILL, PANEL_BORDER);
+    float by = y + (TOOLBAR_H - BUTTON_H) * 0.5f;
+    float x = LEFT_W;
+    bool playing = m_Editor.IsPlaying();
 
-    // "Add < Health > [Add]": every component the object does not have yet
-    std::vector<std::string> addable = m_Editor.AddableComponents(e);
-    if (addable.empty())
-        Text(x, y + 7.0f, m_Editor.IsField(e) ? "The field has no components" : "Nothing left to add", TEXT_DIM);
-    else
-    {
-        int count = static_cast<int>(addable.size());
-        m_AddIndex = std::min(std::max(m_AddIndex, 0), count - 1);
-        int d = Stepper(x, y, width - 52.0f, "Add " + addable[m_AddIndex].substr(0, 12), "<", ">");
-        if (d != 0)
-            m_AddIndex = Cycle(m_AddIndex, d, count);
-        if (Button(NextId(), x + width - 46.0f, y, *m_UI, 46.0f, 22.0f, "Add"))
-        {
-            std::string component = addable[m_AddIndex];
-            if (m_Editor.AddComponent(e, component))
-            {
-                m_Folded.erase(component);
-                SetStatus("Added " + component);
-            }
-            else
-                SetStatus("Can not add " + component, true);
-        }
-    }
-    y -= ROW_H + 6.0f;
-
-    for (const Editor::ComponentView& view : m_Editor.ComponentsOf(e))
-    {
-        if (y < bottom)
-        {
-            Text(x, bottom - 4.0f, "More below: fold components", TEXT_DIM);
-            return;
-        }
-        bool folded = m_Folded.count(view.Name) != 0;
-        float headerW = view.Removable ? width - 70.0f : width;
-        if (view.BuiltIn)
-        {
-            // Built in components are edited in the Properties tab
-            Text(x, y + 7.0f, view.Name);
-            if (!view.Summary.empty())
-                Text(x + 90.0f, y + 7.0f, view.Summary.substr(0, view.Removable ? 9 : 18), TEXT_DIM);
-        }
-        else if (Button(NextId(), x, y, *m_UI, headerW, 22.0f, (folded ? "+ " : "- ") + view.Name))
-        {
-            if (folded)
-                m_Folded.erase(view.Name);
-            else
-                m_Folded.insert(view.Name);
-            folded = !folded;
-        }
-        if (view.Removable && Button(NextId(), x + width - 64.0f, y, *m_UI, 64.0f, 22.0f, "Remove"))
-        {
-            if (m_Editor.RemoveComponent(e, view.Name))
-                SetStatus("Removed " + view.Name);
-            else
-                SetStatus("Can not remove " + view.Name, true);
-            // The list changed: the rest is drawn next frame
-            return;
-        }
-        y -= ROW_H;
-        if (view.Type == nullptr || folded)
-            continue;
-        for (const Reflection::FieldInfo& field : view.Type->Fields)
-        {
-            if (field.Hidden)
-                continue;
-            if (!RenderField(e, view.Name, field, x + 10.0f, y))
-            {
-                Text(x, bottom - 4.0f, "More below: fold components", TEXT_DIM);
-                return;
-            }
-        }
-        y -= 4.0f;
-    }
-}
-
-bool SceneEditorScene::RenderField(
-        Entity e, const std::string& component, const Reflection::FieldInfo& field, float x, float& y)
-{
-    using Reflection::FieldType;
-    using Reflection::FieldValue;
-    float width = INSPECTOR_W - 30.0f;
-    int rows = field.Type == FieldType::Vec2 ? 2 : (field.Type == FieldType::Vec3 ? 3 : 1);
-    if (y - (rows - 1) * ROW_H < STATUS_H + 8.0f)
-        return false;
-    FieldValue value;
-    if (!m_Editor.GetField(e, component, field.Name, value))
-        return true;
-
-    // Hovering a field shows its tooltip in the status bar
-    if (!field.Tooltip.empty() && m_UI->mouseX >= x && m_UI->mouseX <= x + width &&
-        m_UI->mouseY >= y - (rows - 1) * ROW_H && m_UI->mouseY <= y + 22.0f)
-        m_Hint = field.Label + ": " + field.Tooltip;
-
-    std::string label = field.Label.substr(0, 8);
-    auto set = [&](const FieldValue& newValue) {
-        if (!m_Editor.SetField(e, component, field.Name, newValue))
-            SetStatus("Can not set " + field.Label + " to " + Reflection::ToString(newValue), true);
-    };
-    auto entityName = [&](const FieldValue& v) {
-        auto target = static_cast<Entity>(std::get<std::int64_t>(v));
-        return m_Editor.IsObject(target) ? (m_Editor.IsField(target) ? std::string("Field") : m_Editor.NameOf(target))
-                                         : std::string("-");
+    // Buttons are as wide as their label needs (at least `width`)
+    auto toolbarButton = [&](const std::string& label, float width) {
+        float w = std::max(width, UIText::Width(label) + 16.0f);
+        bool clicked = Button(NextId(), x, by, *m_UI, w, BUTTON_H, label);
+        x += w + 8.0f;
+        return clicked;
     };
 
-    if (field.ReadOnly)
+    if (m_PrefabMode)
     {
-        std::string shown = field.Type == FieldType::Enum     ? field.OptionName(std::get<std::int64_t>(value))
-                            : field.Type == FieldType::Entity ? entityName(value)
-                                                              : Reflection::ToString(value);
-        Text(x, y + 7.0f, label, TEXT_DIM);
-        Text(x + LABEL_W, y + 7.0f, shown.substr(0, 20), TEXT_DIM);
-        y -= ROW_H;
+        Text(10.0f, RowY(by), "PREFAB " + m_PrefabName, PREFAB_TEXT, LEFT_W - 20.0f);
+        if (toolbarButton("Save Prefab", 90))
+            SavePrefab();
+        if (toolbarButton("Undo", 50) && !m_Editor.Undo())
+            SetStatus("Nothing to undo");
+        if (toolbarButton("Redo", 50) && !m_Editor.Redo())
+            SetStatus("Nothing to redo");
+        if (toolbarButton("Back to Scene", 110))
+            BackToScene();
+        if (m_Editor.IsDirty())
+            Text(x + 4.0f, RowY(by), "*", ACCENT);
         return true;
     }
 
-    switch (field.Type)
+    if (!playing)
     {
-    case FieldType::Bool: {
-        bool b = std::get<bool>(value);
-        Text(x, y + 7.0f, label);
-        if (CheckBox(NextId(), x + LABEL_W, y + 3.0f, b, 16.0f, *m_UI))
-            set(!b);
-        break;
+        if (toolbarButton("New", 50))
+            NewDocument();
+        if (toolbarButton("Revert", 60))
+            RevertScene();
+        if (toolbarButton("Save", 50))
+            SaveDocument();
+        if (toolbarButton("Undo", 50) && !m_Editor.Undo())
+            SetStatus("Nothing to undo");
+        if (toolbarButton("Redo", 50) && !m_Editor.Redo())
+            SetStatus("Nothing to redo");
     }
-    case FieldType::Int:
-    case FieldType::Float: {
-        bool isInt = field.Type == FieldType::Int;
-        double number = isInt ? static_cast<double>(std::get<std::int64_t>(value)) : std::get<double>(value);
-        auto shown = static_cast<float>(number);
-        double step = field.StepOrDefault();
-        const char* format = isInt ? "%.0f" : (step < 0.01 ? "%.3f" : "%.2f");
-        if (NumberRow(x, y, width, label, NextFieldId(), shown, static_cast<float>(step), format))
-            set(static_cast<double>(shown));
-        break;
+    if (toolbarButton(playing ? "Stop" : "Play", 60))
+        TogglePlay();
+    if (!playing && toolbarButton(m_ShowScene ? "Object" : "Scene", 70))
+        m_ShowScene = !m_ShowScene;
+
+    if (playing)
+    {
+        Text(x + 20.0f, RowY(by), "PLAYING " + m_DocName, PLAY_TEXT);
+        return true;
     }
-    case FieldType::String: {
-        std::string text = std::get<std::string>(value);
-        Text(x, y + 7.0f, label);
-        if (TextField(NextFieldId(), x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, text, TextFilter::Any, 64) ==
-                    TextFieldEvent::Committed &&
-            text != std::get<std::string>(value))
-            set(text);
-        break;
-    }
-    case FieldType::Entity: {
-        // Type the name of the object to point at ("-" or empty = none)
-        std::string text = entityName(value);
-        std::string before = text;
-        Text(x, y + 7.0f, label);
-        if (TextField(NextFieldId(), x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, text, TextFilter::Any, 64) ==
-                    TextFieldEvent::Committed &&
-            text != before)
-        {
-            if (text.empty() || text == "-")
-                set(static_cast<std::int64_t>(NULL_ENTITY));
-            else if (Entity target = SceneObjects::FindByName(text); target != NULL_ENTITY)
-                set(static_cast<std::int64_t>(target));
-            else
-                SetStatus("No object named " + text, true);
-        }
-        break;
-    }
-    case FieldType::Enum: {
-        std::int64_t current = std::get<std::int64_t>(value);
-        int d = Stepper(x, y, width, label + " " + field.OptionName(current).substr(0, 12), "<", ">");
-        if (d != 0)
-        {
-            auto count = static_cast<int>(field.EnumMax - field.EnumMin + 1);
-            int index = Cycle(static_cast<int>(current - field.EnumMin), d, count);
-            set(static_cast<std::int64_t>(field.EnumMin + index));
-        }
-        break;
-    }
-    case FieldType::Color: {
-        Vec3 color = std::get<Vec3>(value);
-        Text(x, y + 7.0f, label);
-        constexpr float SMALL_SWATCH = 17.0f;
-        for (int i = 0; i < COLOR_COUNT; ++i)
-        {
-            float sx = x + LABEL_W - 8.0f + i * (SMALL_SWATCH + 3.0f);
-            if (ColorSwatch(NextId(), sx, y + 2.0f, SMALL_SWATCH, ToColor(COLORS[i]), SameColor(color, COLORS[i]), *m_UI))
-                set(COLORS[i]);
-        }
-        break;
-    }
-    case FieldType::Vec2:
-    case FieldType::Vec3: {
-        bool three = field.Type == FieldType::Vec3;
-        Vec3 v = three ? std::get<Vec3>(value) : Vec3(std::get<Vec2>(value).X, std::get<Vec2>(value).Y, 0.0f);
-        float* axes[3] = {&v.X, &v.Y, &v.Z};
-        const char* names[3] = {"X", "Y", "Z"};
-        auto step = static_cast<float>(field.StepOrDefault());
-        const char* format = step < 0.01f ? "%.3f" : "%.2f";
-        bool changed = false;
-        for (int i = 0; i < rows; ++i)
-        {
-            if (NumberRow(x, y, width, field.Label.substr(0, 5) + " " + names[i], NextFieldId(), *axes[i], step, format))
-                changed = true;
-            if (i + 1 < rows)
-                y -= ROW_H;
-        }
-        if (changed)
-            set(three ? FieldValue(v) : FieldValue(Vec2(v.X, v.Y)));
-        break;
-    }
-    }
-    y -= ROW_H;
+    // The scene's name: click it to rename the scene (and its file)
+    float labelW = UIText::Width("Name");
+    Text(x + 4.0f, RowY(by), "Name", TEXT_DIM, labelW + 1.0f);
+    float fieldX = x + 12.0f + labelW;
+    float fieldW = std::max(60.0f, std::min(150.0f, SCREEN_W - fieldX - 24.0f));
+    std::string name = m_DocName;
+    if (TextField(ID_FIELD_SCENE_NAME, fieldX, by + 2.0f, fieldW, WIDGET_H, *m_UI, name, TextFilter::Name) ==
+        TextFieldEvent::Committed)
+        RenameDocument(name);
+    if (m_Editor.IsDirty())
+        Text(fieldX + fieldW + 6.0f, RowY(by), "*", ACCENT);
     return true;
 }
 
-void SceneEditorScene::RenderSceneInspector(float x, float& y)
+void SceneEditorScene::RenderSceneList()
 {
-    float width = INSPECTOR_W - 20.0f;
-    auto settings = ECS.GetResource<SceneSettings>();
-    Text(x, y, "SCENE", ACCENT);
-    y -= 30.0f;
-
-    int d = 0;
-    std::vector<std::string> scripts = WithNone(ScriptRegistry::Get().Names(true));
-    std::string script = settings->SceneScript;
-    std::string scriptLabel = script.empty() ? "-" : script;
-    if ((d = Stepper(x, y, width, "Script " + scriptLabel.substr(0, 11), "<", ">")) != 0)
+    int before = m_SceneIndex;
+    if (!DropdownList(ID_SCENE_LIST,
+                      10.0f,
+                      SCREEN_H - TOOLBAR_H + (TOOLBAR_H - BUTTON_H) * 0.5f,
+                      LEFT_W - 20.0f,
+                      BUTTON_H,
+                      *m_UI,
+                      m_SceneNames,
+                      m_SceneIndex))
+        return;
+    if (m_SceneIndex < 0 || m_SceneIndex >= static_cast<int>(m_SceneNames.size()))
+        return;
+    const std::string picked = m_SceneNames[m_SceneIndex];
+    if (picked == m_DocName)
     {
-        int count = static_cast<int>(scripts.size());
-        m_Editor.SetSceneScript(scripts[Cycle(IndexOf(scripts, script), d, count)]);
+        m_PendingSceneIndex = -1;
+        return;
     }
-    y -= ROW_H;
-    if (const ScriptInfo* info = ScriptRegistry::Get().Find(settings->SceneScript))
+    // Unsaved changes are only thrown away when the scene is picked twice
+    if (m_Editor.IsDirty() && m_PendingSceneIndex != m_SceneIndex)
     {
-        int index = 0;
-        for (const ScriptParam& param : info->Params)
-        {
-            if (index >= MAX_PARAM_FIELDS)
-                break;
-            float value = m_Editor.GetSceneParam(param.Name);
-            if (NumberRow(x + 10.0f, y, width - 10.0f, param.Name.substr(0, 7), ID_FIELD_SCENE_PARAM + index, value, param.Step))
-                m_Editor.SetSceneParam(param.Name, value);
-            y -= ROW_H;
-            ++index;
-        }
+        m_PendingSceneIndex = m_SceneIndex;
+        m_SceneIndex = before;
+        SetStatus(m_DocName + " has unsaved changes: Save, or pick " + picked + " again to discard them", true);
+        return;
     }
-
-    y -= 6.0f;
-    float fieldW = settings->FieldWidth;
-    float fieldH = settings->FieldHeight;
-    if (NumberRow(x, y, width, "Field W", ID_FIELD_FIELD_W, fieldW, 2.0f, "%.0f"))
-        m_Editor.SetFieldSize(fieldW, settings->FieldHeight);
-    y -= ROW_H;
-    if (NumberRow(x, y, width, "Field H", ID_FIELD_FIELD_H, fieldH, 2.0f, "%.0f"))
-        m_Editor.SetFieldSize(settings->FieldWidth, fieldH);
-    y -= ROW_H + 6.0f;
-
-    if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Game camera = view"))
-    {
-        m_Editor.SetGameCamera(m_CamTarget, m_CamDistance);
-        SetStatus("The game will start with the current view");
-    }
-    y -= BUTTON_H + 10.0f;
-
-    // Scene files in plain text (readable / diffable) or binary
-    bool text = Serialization::WorldSerializer::FileFormat() == Serialization::SaveFormat::Text;
-    if (CheckBox(NextId(), x, y, text, 16.0f, *m_UI, "Plain text files"))
-    {
-        text = !text;
-        Serialization::WorldSerializer::SetFileFormat(text ? Serialization::SaveFormat::Text
-                                                           : Serialization::SaveFormat::Binary);
-        SetStatus(text ? "Scenes are saved as plain text (Save to write it)" : "Scenes are saved as binary");
-    }
-    y -= ROW_H + 8.0f;
-
-    Text(x, y, "Objects " + std::to_string(m_Editor.Objects().size()), TEXT_DIM);
-    y -= ROW_H;
-    Text(x, y, "Undo " + std::to_string(m_Editor.UndoCount()) + "  Redo " + std::to_string(m_Editor.RedoCount()), TEXT_DIM);
-    y -= ROW_H;
-    std::vector<std::string> issues = m_Editor.Validate();
-    if (issues.empty())
-        Text(x, y, "Playable", TEXT_DIM);
-    else
-    {
-        Text(x, y, std::to_string(issues.size()) + " problem(s):", ERROR_TEXT);
-        y -= ROW_H;
-        Text(x, y, issues.front().substr(0, 22), ERROR_TEXT);
-    }
+    OpenScene(picked);
 }
 
 void SceneEditorScene::RenderStatusBar()
@@ -1700,10 +1191,11 @@ void SceneEditorScene::RenderStatusBar()
     DrawPanel(0, 0, SCREEN_W, STATUS_H, PANEL_FILL, PANEL_BORDER);
     if (m_StatusTimer > 0.0f)
         Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT);
-    const char* hints = m_Editor.IsPlaying()
-                                ? "P stop  (the keyboard goes to the scene's scripts)"
-                                : "WASD pan Z/C zoom 1-6 place Space select R rotate F dup X del U/Y undo P play (click a value to type)";
-    // The tooltip of the component field under the mouse replaces the hints
+    const char* hints =
+            m_Editor.IsPlaying()
+                    ? "P stop  (the keyboard goes to the scene's scripts)"
+                    : "Right click: menus  WASD pan  Z/C zoom  R rotate  F duplicate  X delete  U/Y undo/redo  G snap  P play";
+    // The tooltip of the field under the mouse replaces the hints
     if (!m_Hint.empty())
         Text(10.0f, 8.0f, m_Hint, ACCENT);
     else
@@ -1721,6 +1213,24 @@ void SceneEditorScene::DrawOutline(Entity entity, float r, float g, float b)
     }
 }
 
+void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
+{
+    // An empty is a cross on the ground turned with the object, and a short
+    // post showing its height
+    Transform world = ECS.GetComponent<Transform>(entity).GetWorldTransform();
+    Vec3 c = world.LocalPosition;
+    Vec3 right = world.LocalRotation.RotatePoint(Vec3(size, 0.0f, 0.0f));
+    Vec3 forward = world.LocalRotation.RotatePoint(Vec3(0.0f, 0.0f, size));
+    auto line = [&](const Vec3& a, const Vec3& b) {
+        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
+        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
+        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
+    };
+    line(c - right, c + right);
+    line(c - forward, c + forward);
+    line(c, c + Vec3(0.0f, size, 0.0f));
+}
+
 void SceneEditorScene::RenderOverlay()
 {
     if (m_Editor.IsPlaying())
@@ -1730,7 +1240,7 @@ void SceneEditorScene::RenderOverlay()
     for (Entity e : m_Editor.Objects())
     {
         if (SceneObjects::IsEmpty(e) && e != selected)
-            DrawCross(e, EMPTY_CROSS, CROSS_SIZE);
+            DrawCross(e, EMPTY_COLOR, CROSS_SIZE);
     }
     if (selected != NULL_ENTITY)
     {
@@ -1751,28 +1261,28 @@ void SceneEditorScene::RenderOverlay()
             link(selected, child, CHILD_LINK);
     }
 
-    if (MouseOverUI() || m_Dragging)
+    if (MouseOverUI() || m_Dragging || m_Menu.IsOpen())
         return;
     Vec3 ground;
     if (!MouseToGround(ground))
         return;
-    if (m_Tool == Tool::Place)
+    if (m_PlaceKind != AssetKind::None)
     {
+        // Where the asset will go
         Vec3 snapped = m_Editor.ClampToField(SnapPoint(ground));
         Vec2 s = m_Cam->WorldPointToScreenSpace(snapped);
         App::DrawLine(s.X - 8, s.Y, s.X + 8, s.Y, 0.4f, 1.0f, 0.4f);
         App::DrawLine(s.X, s.Y - 8, s.X, s.Y + 8, 0.4f, 1.0f, 0.4f);
-        Text(m_UI->mouseX + 14.0f, m_UI->mouseY + 10.0f, Editor::ObjectKindName(m_Kind));
+        Text(m_UI->mouseX + 14.0f, m_UI->mouseY + 10.0f, m_PlaceName,
+             m_PlaceKind == AssetKind::Prefab ? PREFAB_TEXT : TEXT);
+        return;
     }
-    else
+    Entity hovered = PickUnderMouse();
+    if (hovered != NULL_ENTITY && hovered != selected && !m_Editor.IsField(hovered))
     {
-        Entity hovered = PickUnderMouse();
-        if (hovered != NULL_ENTITY && hovered != selected && !m_Editor.IsField(hovered))
-        {
-            if (SceneObjects::IsEmpty(hovered))
-                DrawCross(hovered, TEXT, CROSS_SIZE * 1.2f);
-            else
-                DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
-        }
+        if (SceneObjects::IsEmpty(hovered))
+            DrawCross(hovered, TEXT, CROSS_SIZE * 1.2f);
+        else
+            DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
     }
 }

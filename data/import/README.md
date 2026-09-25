@@ -1,9 +1,9 @@
 # Model import folder
 
 Put `.obj` files (and the `.mtl` files they use) here, then in the
-**SceneEditor** type the file name (without `.obj`) in the palette's
-**IMPORT .OBJ** box and press **Enter**. The model is copied into
-`data/models/` and can be placed with the **Model** tool straight away.
+**SceneEditor** type the file name (without `.obj`) in the **import .obj**
+box at the bottom of **Assets** and press **Enter**. The model is copied into
+`data/models/`, listed under **Models**, and ready to place: click the scene.
 
 You can also type a full path to an `.obj` anywhere on disk.
 

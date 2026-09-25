@@ -116,6 +116,29 @@ namespace Editor
         if (kind == ObjectKind::Model && settings.Model.empty())
             return NULL_ENTITY;
         RecordUndo();
+        Entity e = PlaceObject(kind, position, settings);
+        m_Dirty = true;
+        m_Selected = e;
+        return e;
+    }
+
+    Entity SceneEditor::Create(ObjectKind kind, const Vec3& position, Entity parent, const PlaceSettings& settings)
+    {
+        if (kind >= ObjectKind::Count || (kind == ObjectKind::Model && settings.Model.empty()))
+            return NULL_ENTITY;
+        if (parent != NULL_ENTITY && !CanEdit(parent))
+            return NULL_ENTITY;
+        RecordUndo();
+        Entity e = PlaceObject(kind, position, settings);
+        if (parent != NULL_ENTITY)
+            SceneObjects::SetParent(e, parent);
+        m_Dirty = true;
+        m_Selected = e;
+        return e;
+    }
+
+    Entity SceneEditor::PlaceObject(ObjectKind kind, const Vec3& position, const PlaceSettings& settings)
+    {
         Vec3 p = ClampToField(position);
         p.Y = 0.0f;
         Entity e = NULL_ENTITY;
@@ -152,9 +175,209 @@ namespace Editor
             desc.Body = settings.Body;
             e = SceneObjects::CreateShape(desc);
         }
+        return e;
+    }
+
+    //-----------------------------------------------------------------------------
+    // Prefabs
+    //-----------------------------------------------------------------------------
+
+    Entity SceneEditor::PlacePrefab(const Prefab::Data& prefab, const Vec3& position, Entity parent)
+    {
+        if (prefab.Objects.empty() || (parent != NULL_ENTITY && !CanEdit(parent)))
+            return NULL_ENTITY;
+        RecordUndo();
+        Vec3 p = ClampToField(position);
+        p.Y = 0.0f;
+        Entity e = Prefab::Instantiate(prefab, p, 0.0f, parent);
         m_Dirty = true;
         m_Selected = e;
         return e;
+    }
+
+    std::string SceneEditor::PrefabOf(Entity entity) const
+    {
+        if (!IsObject(entity) || !ECS.HasComponent<PrefabLink>(entity))
+            return {};
+        return ECS.GetComponent<PrefabLink>(entity).Prefab;
+    }
+
+    Prefab::Data SceneEditor::CapturePrefab(Entity root, const std::string& name) const
+    {
+        return Prefab::Capture(root, name);
+    }
+
+    bool SceneEditor::LinkPrefab(Entity root, const std::string& name)
+    {
+        if (!CanEdit(root) || name.empty())
+            return false;
+        RecordUndo();
+        if (ECS.HasComponent<PrefabLink>(root))
+            ECS.GetComponent<PrefabLink>(root).Prefab = name;
+        else
+            ECS.AddComponent<PrefabLink>(root, {name});
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::UnpackPrefab(Entity root)
+    {
+        if (PrefabOf(root).empty())
+            return false;
+        RecordUndo();
+        ECS.RemoveComponent<PrefabLink>(root);
+        m_Dirty = true;
+        return true;
+    }
+
+    namespace
+    {
+        // Replace one instance, keeping its place (no undo step)
+        Entity Replace(Entity root, const Prefab::Data& prefab)
+        {
+            Vec3 position = SceneObjects::GetPosition(root);
+            float yaw = SceneObjects::GetYaw(root);
+            Entity parent = SceneObjects::GetParent(root);
+            std::string name = ECS.GetComponent<SceneObject>(root).Name;
+            // The prefab's own root rotation is part of the instance's yaw
+            float prefabYaw = prefab.Objects.front().Rotation.GetPitch2D() * 57.2957795f;
+            // No FlushECS: the renderer drops the old meshes at the end of the frame
+            SceneObjects::Destroy(root);
+            Entity copy = Prefab::Instantiate(prefab, Vec3(position.X, 0.0f, position.Z), yaw - prefabYaw, parent);
+            // Keep the root where it was (height included) and its name
+            SceneObjects::SetPosition(copy, position);
+            if (SceneObjects::FindByName(name) == NULL_ENTITY)
+                ECS.GetComponent<SceneObject>(copy).Name = name;
+            return copy;
+        }
+    } // namespace
+
+    Entity SceneEditor::ResetToPrefab(Entity root, const Prefab::Data& prefab)
+    {
+        if (PrefabOf(root).empty() || prefab.Objects.empty())
+            return NULL_ENTITY;
+        RecordUndo();
+        std::vector<Entity> old = Prefab::InstanceObjects(root);
+        for (Entity e : old)
+            ClearReferencesTo(e);
+        bool wasSelected = std::find(old.begin(), old.end(), m_Selected) != old.end();
+        Entity copy = Replace(root, prefab);
+        if (wasSelected)
+            m_Selected = copy;
+        m_Dirty = true;
+        return copy;
+    }
+
+    int SceneEditor::UpdatePrefabInstances(const Prefab::Data& prefab)
+    {
+        std::vector<Entity> instances;
+        for (Entity e : Objects())
+        {
+            if (PrefabOf(e) == prefab.Name)
+                instances.push_back(e);
+        }
+        if (instances.empty() || prefab.Objects.empty())
+            return 0;
+        RecordUndo();
+        int updated = 0;
+        for (Entity root : instances)
+        {
+            // An earlier update may already have replaced it (nested instances)
+            if (PrefabOf(root) != prefab.Name)
+                continue;
+            for (Entity e : Prefab::InstanceObjects(root))
+                ClearReferencesTo(e);
+            Entity copy = Replace(root, prefab);
+            if (m_Selected == root)
+                m_Selected = copy;
+            ++updated;
+        }
+        if (!IsObject(m_Selected))
+            m_Selected = NULL_ENTITY;
+        m_Dirty = true;
+        return updated;
+    }
+
+    Prefab::Data SceneEditor::CaptureStage(const std::string& name) const
+    {
+        std::vector<Entity> roots;
+        for (Entity e : RootObjects())
+        {
+            if (!IsField(e))
+                roots.push_back(e);
+        }
+        if (roots.size() == 1)
+        {
+            Prefab::Data single = Prefab::Capture(roots[0], name);
+            return single;
+        }
+        // Several top level objects: grouped under a new empty root at the
+        // stage's origin, each keeping its place relative to it
+        Prefab::Data group;
+        group.Name = name;
+        Prefab::Object root;
+        root.Name = name;
+        root.Type = Prefab::ObjectType::Empty;
+        group.Objects.push_back(root);
+        for (Entity r : roots)
+        {
+            Prefab::Data part = Prefab::Capture(r, name);
+            auto offset = static_cast<std::int32_t>(group.Objects.size());
+            Transform world = ECS.GetComponent<Transform>(r).GetWorldTransform();
+            for (std::size_t i = 0; i < part.Objects.size(); ++i)
+            {
+                Prefab::Object o = part.Objects[i];
+                if (i == 0)
+                {
+                    o.Parent = 0;
+                    o.Position = world.LocalPosition;
+                }
+                else
+                    o.Parent += offset;
+                group.Objects.push_back(std::move(o));
+            }
+        }
+        return group;
+    }
+
+    Entity SceneEditor::OpenPrefabStage(const Prefab::Data* prefab, const std::string& name)
+    {
+        NewScene();
+        Entity root = NULL_ENTITY;
+        if (prefab != nullptr && !prefab->Objects.empty())
+        {
+            root = Prefab::Instantiate(*prefab, {0, 0, 0});
+            // Inside its own stage the prefab is plain objects
+            ECS.RemoveComponent<PrefabLink>(root);
+        }
+        else
+            root = SceneObjects::CreateEmpty(name, {0, 0, 0});
+        m_UndoStack.clear();
+        m_RedoStack.clear();
+        m_Dirty = false;
+        m_Selected = root;
+        return root;
+    }
+
+    SceneEditor::Session SceneEditor::Suspend() const
+    {
+        Session session;
+        session.World = Snapshot();
+        session.Undo = m_UndoStack;
+        session.Redo = m_RedoStack;
+        session.Dirty = m_Dirty;
+        session.Selected = m_Selected;
+        return session;
+    }
+
+    void SceneEditor::Resume(const Session& session)
+    {
+        m_Playing = false;
+        Restore(session.World);
+        m_UndoStack = session.Undo;
+        m_RedoStack = session.Redo;
+        m_Dirty = session.Dirty;
+        m_Selected = IsObject(session.Selected) ? session.Selected : NULL_ENTITY;
     }
 
     Entity SceneEditor::Duplicate(Entity source)

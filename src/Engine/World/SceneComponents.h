@@ -14,6 +14,7 @@
 //   RigidBody       optional physics body (static or dynamic)
 //   FragShaderTag   which shader draws it (shapes use ShapeShaderID)
 //   ScriptComponent optional C++ behaviour script and its parameters
+//   PrefabLink      on the root of a prefab instance: which prefab it came from
 //
 // SceneSettings is an ECS resource holding per scene data (scene script,
 // camera, field size).
@@ -74,6 +75,16 @@ struct ScriptComponent
 {
     std::string Script;
     std::map<std::string, float> Params;
+};
+
+/**
+ * \brief Marks the root object of a prefab instance (World/Prefab.h). The
+ *        editor uses it to update, reset or unpack instances
+ */
+struct PrefabLink
+{
+    // Prefab name (file data/prefabs/<Prefab>.ubprefab)
+    std::string Prefab;
 };
 
 /**

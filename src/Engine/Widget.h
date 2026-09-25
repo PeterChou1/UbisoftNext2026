@@ -40,8 +40,17 @@ int Button(int id,
            float height = 100,
            std::string label = "Default");
 
-int CheckBox(
-        int id, float x, float y, bool state, float size, UIState& uiState, std::string label = "");
+/**
+ * \brief Check box with a label on its right, cut to labelWidth when given
+ */
+int CheckBox(int id,
+             float x,
+             float y,
+             bool state,
+             float size,
+             UIState& uiState,
+             std::string label = "",
+             float labelWidth = 0.0f);
 
 int DropdownList(int id,
                  float x,

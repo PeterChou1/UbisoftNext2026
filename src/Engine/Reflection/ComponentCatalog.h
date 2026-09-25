@@ -47,6 +47,12 @@ struct ComponentEntry
     std::function<void(ECSManager&, Entity, Entity)> Copy;
     // The component's memory, to read / write fields through Type
     std::function<void*(ECSManager&, Entity)> Data;
+    // The component as bytes (its fields by name, see Reflection.h), and
+    // back: Load adds or replaces it. Used by prefabs. Load and Validate
+    // throw Serialization::SerializationError on damaged data
+    std::function<std::vector<std::uint8_t>(ECSManager&, Entity)> SaveBytes;
+    std::function<void(ECSManager&, Entity, const std::vector<std::uint8_t>&)> LoadBytes;
+    std::function<void(const std::vector<std::uint8_t>&)> ValidateBytes;
 };
 
 class ComponentCatalog
@@ -94,6 +100,21 @@ class ComponentCatalog
                 ecs.AddComponent<T>(to, copy);
         };
         entry.Data = [](ECSManager& ecs, Entity e) -> void* { return &ecs.GetComponent<T>(e); };
+        entry.SaveBytes = [version](ECSManager& ecs, Entity e) {
+            return Serialization::ToBytes(ecs.GetComponent<T>(e), version);
+        };
+        entry.LoadBytes = [version](ECSManager& ecs, Entity e, const std::vector<std::uint8_t>& bytes) {
+            T component{};
+            Serialization::FromBytes(bytes, component, version);
+            if (ecs.HasComponent<T>(e))
+                ecs.GetComponent<T>(e) = component;
+            else
+                ecs.AddComponent<T>(e, component);
+        };
+        entry.ValidateBytes = [version](const std::vector<std::uint8_t>& bytes) {
+            T component{};
+            Serialization::FromBytes(bytes, component, version);
+        };
 
         Serialization::SerializationRegistry& registry = Serialization::SceneSerializationRegistry();
         if (registry.FindComponent(name) == nullptr)

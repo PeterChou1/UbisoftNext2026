@@ -108,6 +108,12 @@ class ScriptBase
      */
     Entity Spawn(const SceneObjects::ShapeDesc& desc) { return SceneObjects::CreateShape(desc); }
 
+    /**
+     * \brief Create a copy of a prefab (data/prefabs/<name>.ubprefab) while
+     *        the scene runs. NULL_ENTITY when the prefab can not be loaded
+     */
+    Entity SpawnPrefab(const std::string& prefab, const Vec3& position, float yawDegrees = 0.0f);
+
     void Destroy(Entity entity) { SceneObjects::Destroy(entity); }
 
     // -- Input ------------------------------------------------------------------

@@ -5,6 +5,51 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 11. Unity-style editor: context menus, one inspector, prefabs, responsive GUI
+
+- **The palette and brush are gone.** Objects are created with **right
+  click context menus**:
+  - on the scene: create an empty, a shape, a model or a prefab there;
+  - on an object (scene or hierarchy row): **Create Child >**, Rename,
+    Duplicate, Delete, Unparent, Focus, Save as Prefab, and Edit / Reset /
+    Unpack for prefab instances;
+  - the hierarchy's **+** button and its empty part create objects too.
+
+  Submenus open on hover, and menus stay on the screen.
+- **Left panel:** the Hierarchy (tree, with a scrollbar) on top, **Assets**
+  below.
+  - Assets lists prefabs and models: click one then click the scene, or drag
+    it onto the scene.
+  - **New Prefab** and the `.obj` import box are there too.
+- **Inspector = components:** the Properties and Components tabs are merged
+  into one list of foldable sections, each with its values and **Remove**:
+  Transform, Shape2D or Mesh, RigidBody, Script, the project's components,
+  Prefab.
+  - **Add Component** opens a menu of what can be added.
+  - A **scrollbar** (drag it, or click the track) appears when the sections
+    don't fit.
+- **Prefabs** (`World/Prefab.h`, files in `data/prefabs/*.ubprefab`, binary
+  or text): a root and its children, with shapes, models, bodies, scripts
+  and reflected components.
+  - Entity references inside the group are kept.
+  - **Save as Prefab** turns an object into the first instance.
+  - The **prefab editor** opens a prefab alone on a stage (Save Prefab /
+    Back to Scene); going back updates every instance in one undo step.
+  - Instances carry a `PrefabLink` and are shown in blue; they can be
+    reset or unpacked.
+  - Scripts spawn prefabs with `SpawnPrefab("name", position)`.
+  - Sample: the `turret` prefab, with two instances in `sandbox`.
+- **Responsive GUI (`Engine/UIText`):** text is measured in virtual units
+  for the real window size, using GLUT's own font metrics.
+  - Buttons, lists, check boxes, text boxes, tabs and every editor label
+    stay centered in their box, and are shortened with `..` instead of
+    spilling out of their panel, at any window size.
+  - The window size and the metrics are passed in by the Editor and Game
+    entry points. ContestAPI is unchanged.
+- The old GUI tests for the palette were replaced by tests for the menus,
+  assets, inspector scrolling, the prefab editor and window sizes.
+- 15 new tests (190 in total).
+
 ## 10. Scene hierarchy tree and empty transforms
 
 - **Hierarchy tab** (left panel, next to the Palette): every object as a

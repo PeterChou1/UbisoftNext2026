@@ -12,6 +12,7 @@
 
 #include "SceneEditor.h"
 #include "Serialization/WorldSerializer.h"
+#include "World/Prefab.h"
 
 #include <string>
 #include <vector>
@@ -33,4 +34,16 @@ namespace SampleScenes
     Serialization::SaveFormat FormatOf(const SampleScene& scene);
 
     const std::vector<SampleScene>& All();
+
+    /**
+     * \brief A sample prefab, built in an editor stage like the prefab
+     *        editor does, written to data/prefabs/<name>.ubprefab
+     */
+    struct SamplePrefab
+    {
+        std::string Name;
+        Prefab::Data (*Author)(Editor::SceneEditor& editor);
+    };
+
+    const std::vector<SamplePrefab>& Prefabs();
 } // namespace SampleScenes

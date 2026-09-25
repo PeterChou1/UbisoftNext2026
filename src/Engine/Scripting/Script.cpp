@@ -5,6 +5,7 @@
 #include "../Input.h"
 #include "../RigidBody.h"
 #include "../UIState.h"
+#include "../World/Prefab.h"
 #include "../World/SceneComponents.h"
 #include "ScriptRegistry.h"
 
@@ -20,6 +21,12 @@ namespace
 //-----------------------------------------------------------------------------
 // ScriptBase
 //-----------------------------------------------------------------------------
+
+Entity ScriptBase::SpawnPrefab(const std::string& prefab, const Vec3& position, float yawDegrees)
+{
+    const Prefab::Data* data = Prefab::Find(prefab);
+    return data == nullptr ? NULL_ENTITY : Prefab::Instantiate(*data, position, yawDegrees);
+}
 
 float ScriptBase::Param(const std::string& name) const
 {

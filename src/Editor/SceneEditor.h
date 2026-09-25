@@ -22,6 +22,7 @@
 #include "Reflection/Reflection.h"
 #include "Serialization/WorldSerializer.h"
 #include "Vec3.h"
+#include "World/Prefab.h"
 #include "World/SceneObjects.h"
 #include "World/ScenePlayer.h"
 
@@ -107,6 +108,17 @@ namespace Editor
         Entity Place(ObjectKind kind, const Vec3& position, const PlaceSettings& settings = {});
 
         /**
+         * \brief Create an object with default settings, as a child of
+         *        `parent` when given (it keeps `position` in the world). One
+         *        undo step; the new object is selected. What the "Create"
+         *        context menus call
+         */
+        Entity Create(ObjectKind kind,
+                      const Vec3& position,
+                      Entity parent = NULL_ENTITY,
+                      const PlaceSettings& settings = {});
+
+        /**
          * \brief Copy of an object (same shape, body, tag, script, components)
          *        next to it, with copies of all of its children. The copy has
          *        the same parent as the original
@@ -153,6 +165,96 @@ namespace Editor
          * \brief Delete an object and all of its children
          */
         bool Remove(Entity entity);
+
+        // -- Prefabs ---------------------------------------------------------------
+        //
+        // Instances are ordinary objects whose root has a PrefabLink
+
+        /**
+         * \brief Place a copy of a prefab (under `parent` when given). One undo
+         *        step, the instance's root is selected
+         */
+        Entity PlacePrefab(const Prefab::Data& prefab, const Vec3& position, Entity parent = NULL_ENTITY);
+
+        /**
+         * \brief The prefab an instance root comes from ("" for other objects)
+         */
+        std::string PrefabOf(Entity entity) const;
+
+        /**
+         * \brief The object and its children as a prefab named `name`
+         */
+        Prefab::Data CapturePrefab(Entity root, const std::string& name) const;
+
+        /**
+         * \brief Make an object the root of an instance of `name` (after saving
+         *        it as that prefab)
+         */
+        bool LinkPrefab(Entity root, const std::string& name);
+
+        /**
+         * \brief Turn an instance back into ordinary objects
+         */
+        bool UnpackPrefab(Entity root);
+
+        /**
+         * \brief Replace an instance by a fresh copy of the prefab, at the same
+         *        place, rotation and parent, with the same root name. Returns
+         *        the new root (NULL_ENTITY if it is not an instance)
+         */
+        Entity ResetToPrefab(Entity root, const Prefab::Data& prefab);
+
+        /**
+         * \brief Reset every instance of the prefab (after it was edited). One
+         *        undo step; returns how many were updated
+         */
+        int UpdatePrefabInstances(const Prefab::Data& prefab);
+
+        /**
+         * \brief Every object of the scene (except the field) as one prefab.
+         *        A single top level object is the root; several are grouped
+         *        under a new empty root named `name`. What saving in the
+         *        prefab editor stores
+         */
+        Prefab::Data CaptureStage(const std::string& name) const;
+
+        /**
+         * \brief Replace the world with a prefab stage: the field and a copy
+         *        of `prefab` at the origin (not linked to it), or a new empty
+         *        root named `name` when prefab is null. No undo history, not
+         *        dirty. Returns the root
+         */
+        Entity OpenPrefabStage(const Prefab::Data* prefab, const std::string& name);
+
+        /**
+         * \brief The document was written to its file (clears the unsaved flag)
+         */
+        void MarkSaved() { m_Dirty = false; }
+
+        // -- Sessions (prefab editing) ---------------------------------------------
+
+        /**
+         * \brief Everything needed to come back to a scene: the world, undo /
+         *        redo history, unsaved state and selection
+         */
+        struct Session
+        {
+            std::vector<std::uint8_t> World;
+            std::vector<std::vector<std::uint8_t>> Undo;
+            std::vector<std::vector<std::uint8_t>> Redo;
+            bool Dirty = false;
+            Entity Selected = NULL_ENTITY;
+        };
+
+        /**
+         * \brief Put the scene aside (to edit a prefab in an empty stage)
+         */
+        Session Suspend() const;
+
+        /**
+         * \brief Bring a suspended scene back exactly as it was
+         */
+        void Resume(const Session& session);
 
         // -- Hierarchy -------------------------------------------------------------
 
@@ -351,6 +453,8 @@ namespace Editor
         void Restore(const std::vector<std::uint8_t>& snapshot);
         // One object (no children) at a world position, same world yaw
         Entity CopyObject(Entity source, const Vec3& position);
+        // Place without an undo step
+        Entity PlaceObject(ObjectKind kind, const Vec3& position, const PlaceSettings& settings);
         Entity DuplicateTree(Entity source, const Vec3& offset, Entity parent);
         void PushUndo(std::vector<std::uint8_t> snapshot);
         // Entity fields pointing at a removed object are cleared

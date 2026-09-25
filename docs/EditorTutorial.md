@@ -1,13 +1,23 @@
 # Scene editor tutorial
 
-A walk through the basic actions of the **SceneEditor**. It takes about ten
-minutes: you build a small level, give it behaviour with scripts, test it,
-and play it in the Game.
+This tutorial walks through the **SceneEditor** in about fifteen minutes. You
+build a small level, group objects, turn a group into a prefab, give objects
+behaviour with scripts and components, test the level, and play it in the
+Game.
 
-- **Start the editor**
-  - MacOS: `make run_editor` in `build/macos`.
-  - Windows: run the `SceneEditor` project in Visual Studio.
-- **Quit:** `Q` (ContestAPI), or close the window.
+The editor works like Unity's:
+
+- a **Hierarchy** of the scene's objects;
+- an **Inspector** of the selected object's components;
+- right-click **context menus** to create things;
+- **prefabs** you edit on their own stage.
+
+**Start the editor**
+
+- MacOS: `make run_editor` in `build/macos`.
+- Windows: run the `SceneEditor` project in Visual Studio.
+
+**Quit:** `Q` (ContestAPI), or close the window.
 
 ---
 
@@ -15,35 +25,44 @@ and play it in the Game.
 
 ```
 +---------------------------------------------------------------------------+
-| [scene v]  New Revert Save Undo Redo   Play  Scene     Name [my_level] *  |
-+-----------+-------------------------------------------------+-------------+
-|[Pal][Hier]|                                                 | INSPECTOR   |
-|  Select   |                                                 |  name       |
-|  1 Rect   |            the field (your scene)               |  parent     |
-|  2 Circle |                                                 |  position   |
-|  ...      |                                                 |  size       |
-|  6 Empty  |                                                 |  colour     |
-|  BRUSH    |                                                 |  body / tag |
-|  colours  |                                                 |  script     |
-+-----------+-------------------------------------------------+-------------+
-| status messages / key hints                                               |
+| [scene v]  New Revert Save Undo Redo  Play  Scene   Name [my_level] *      |
++------------+--------------------------------------------+-----------------+
+| HIERARCHY +|                                            | INSPECTOR      ||
+| SCENE      |                                            | Name [Crate  ] ||
+|   Field    |        the scene (your level)              | - Transform    ||
+| - Tank     |                                            | - Shape2D      ||
+|     Hull   |     right click: context menu              | - RigidBody    ||
+|------------|                                            | - Health       ||
+| ASSETS [New Prefab]                                     | [Add Component]||
+| Prefabs    |                                            |                ||
+|   turret   |                                            |                ||
+| Models     |                                            |                ||
+|   Box      |                                            |                ||
+| [import  ][Import]                                      |                ||
++------------+--------------------------------------------+-----------------+
+| status messages / tooltips / key hints                                    |
 +---------------------------------------------------------------------------+
 ```
 
-- **Scene list** (top left): every scene file in `data/scenes`. Pick one to
-  open it.
-- **Left panel**, two tabs:
-  - **Palette**: what you place. **Brush**: the settings new objects get.
-  - **Hierarchy**: every object of the scene as a tree, children under
-    their parent (section 5).
-- **Field** (middle): your scene, seen by the game's 3D renderer.
+- **Toolbar** (top):
+  - the scene list (top left);
+  - **New / Revert / Save / Undo / Redo**, **Play**;
+  - **Scene** (scene settings in the inspector);
+  - the scene's **Name**. A `*` means unsaved changes.
+- **Hierarchy** (left, top): every object of the scene, as a tree. Children
+  are indented under their parent.
+- **Assets** (left, bottom): prefabs and 3D models to place, and the box to
+  import `.obj` files.
+- **Scene view** (middle): your level, drawn by the game's 3D renderer.
   - Move the camera with **W A S D**, zoom with **Z / C**.
-- **Inspector** (right): edit the selected object (**Object** tab) or the
-  whole scene (**Scene** tab). The Object tab has two pages:
-  - **Properties**: position, size, colour, body, tag and script;
-  - **Components**: add, edit and remove components.
-- **Name** (top right): the open scene's name. A `*` means unsaved changes.
-- **Status bar** (bottom): what just happened and the key hints.
+- **Inspector** (right): the selected object's components, one section each.
+  A scrollbar appears when they don't fit.
+- **Status bar** (bottom): what just happened, the tooltip of the value
+  under the mouse, and the key hints.
+
+The layout adapts to the window: labels stay centered in their buttons, and
+text that doesn't fit is shortened with `..` instead of spilling out of its
+panel.
 
 ---
 
@@ -61,38 +80,61 @@ and play it in the Game.
 
 ---
 
-## 3. Place objects
+## 3. Create objects: right click
 
-There are three ways to place an object:
+**Right click** the scene where you want an object. The context menu
+creates it right there:
 
-| Way | How |
-|---|---|
-| Click | Click a shape in the palette (or press **1**-**6**), then click the field. You keep placing that shape until you right click or press **Space** |
-| Drag from the palette | Press a palette button, keep the mouse button down, drag onto the field and release where you want the object |
-| Place and drag | While placing, press on the field and keep the button down: the new object follows the mouse until you release |
+```
+Create Empty
+Create Rectangle
+Create Circle
+Create Triangle
+Create Polygon
+Create Model   >   Box, GolfBall, ...
+Create Prefab  >   turret, ...
+```
 
-Set the **Brush** before placing:
+- **Submenus:** hover an item with a `>` to open it.
+- **Closing:** click an item to create it. A click elsewhere, another right
+  click, or **Esc** closes the menu.
+- **Snap:** with snap on (**G** toggles it), positions snap to a 0.5 grid.
+- **Other ways to open the same menu:**
+  - the **+** button next to **HIERARCHY** (creates at the centre of the
+    view);
+  - a right click on the empty part of the hierarchy.
 
-- width / height, sides (polygons), rotation;
-- body type, tag, model (for **5 Model**), and colour.
+New objects get default settings (1 x 1, grey, no physics body). Change them
+in the inspector (section 6).
 
-With **Snap (G)** on, positions snap to a 0.5 grid.
+### Empties
 
-> Pressing on an existing object never stacks a new one on top of it: it
-> grabs the object, so you can drag it even while a shape is selected in the
-> palette.
+**Create Empty** adds an object that is only a position and a rotation. The
+editor draws it as a light blue cross; the game draws nothing. Use empties
+as:
 
----
+- **groups:** the parent of other objects (section 4);
+- **markers:** spawn points or waypoints;
+- **holders:** for a script or components that belong to no shape.
+
+### Models and prefabs from Assets
+
+- **Click then click:** click a name in **Assets**, then click the scene.
+  Every click places one more, until you right click or press **Esc**.
+- **Drag:** drag the name onto the scene and release it where you want it.
+- **Place and drag:** while placing, press on the scene and keep the button
+  down. The new object follows the mouse until you release.
+- Right click an asset for **Place at View Center** (and **Edit Prefab**).
 
 ### Your own 3D models (.obj)
 
 1. Put the `.obj` file, and the `.mtl` file it uses, in `data/import/`.
 2. Type its name (e.g. `pyramid`, the example that is already there) in the
-   palette's **IMPORT .OBJ** box, and press **Enter** or **Import model**.
-   You can also type a full path to an `.obj` anywhere on disk.
+   **import .obj** box at the bottom of Assets, and press **Enter** or
+   **Import**. You can also type a full path to an `.obj` anywhere on disk.
 
-The model is copied into `data/models/` and selected in the brush, with the
-**Model** tool active: click the field to place it.
+The model is copied into `data/models/`, listed under **Models**, and ready
+to place: click the scene.
 
 - **What the importer accepts:**
   - faces with any number of corners;
@@ -106,91 +148,101 @@ The model is copied into `data/models/` and selected in the brush, with the
 - **Re-importing:** importing the same file twice reuses the first copy, and
   a different file with the same name gets a numbered name (`tree_2`).
 
-**6 Empty** places an empty object: only a position and a rotation, drawn
-in the editor as a light blue cross (nothing in the game). Use empties as:
-- **groups**: the parent of other objects (section 5);
-- **markers**: spawn points or waypoints;
-- **holders**: for a script or components that belong to no shape.
-
-## 4. Select and move objects
-
-- **Select:** click an object. It gets a yellow outline and appears in the
-  inspector. You can click any visible part of it, including the top of a
-  tall object.
-- **Move:**
-  - Drag the object with the mouse. One drag is one undo step.
-  - Or type the position in the inspector (section 6).
-- **Rotate:** **R** turns it 15°, or type an angle in **Rot**.
-- **Duplicate:** **F**. **Delete:** **X**.
-- **Deselect:** right click.
-
-The field can't be moved or deleted. Click it to change its colour, or its
-size in the **Scene** tab.
-
 ---
 
-## 5. The hierarchy: parents and children
+## 4. The hierarchy: parents and children
 
-Every object has a **Transform** (position, rotation, scale). A Transform
-can have a parent: the child is then placed **relative to its parent**.
-Moving, turning or scaling the parent carries its children along, and
-deleting it deletes them too.
-
-Open the **Hierarchy** tab at the top of the left panel:
-
-```
-[Palette][Hierarchy]
-[     New Empty    ]
-SCENE   6 objects
-  Field
-- Tank
-    Hull
-  - Turret
-      Barrel
-  Crate
-```
+Every object has a **Transform** (position, rotation, scale). A Transform can
+have a parent: the child is then placed **relative to its parent**. Moving,
+turning or scaling the parent carries its children along, and deleting it
+deletes them too.
 
 | Action | How |
 |---|---|
-| Select an object | Click its row (selecting in the field also highlights its row, and unfolds its parents) |
+| Select an object | Click its row. Selecting in the scene also highlights its row and unfolds its parents |
 | Make an object a child | Drag its row onto another row |
-| Back to the top level | Drag its row onto **SCENE** |
+| Create a child directly | Right click the parent (scene or hierarchy) → **Create Child >** |
+| Back to the top level | Drag its row onto **SCENE**, or right click → **Unparent** |
 | Fold / unfold children | The **-** / **+** in front of a parent |
-| Add an empty | **New Empty**: under the selected object, or at the view's centre when nothing is selected |
-| Scroll a long tree | **^** / **v** at the bottom |
+| Scroll a long tree | The scrollbar on the right of the tree |
 
-The **Parent** box in the inspector (Properties) does the same by name:
-type the parent's name and press **Enter**, or type `-` for the top level.
-
-- **World positions:** a child keeps its place in the world when it gets a
-  new parent. **Pos X / Pos Z** and **Rot** are always world values, so
-  dragging a child in the field moves only that child.
-- **Links:** in the field, the selected object shows lines to its parent
-  (orange) and to its children (blue).
-- **Refused:** an object can't go under one of its own children (that would
-  be a loop). The field can't be a parent or a child.
-- **Duplicate (F)** copies the object with all of its children. Every
-  change of parent is one undo step.
-
-> Example: in the `sandbox` scene, the empty `Orbit` has the `Rotator`
-> script and two children, `Moon_1` and `Moon_2`. On **Play**, the script
-> turns only `Orbit`, and the moons circle around it.
+- **Parent box:** the **Parent** box of the inspector's Transform section
+  does the same by name. Type the parent's name, or `-` for the top level.
+- **World values:** a child keeps its place in the world when it gets a new
+  parent. **Pos X / Pos Z** and **Rot** are world values, so dragging a child
+  in the scene moves only that child.
+- **Links in the scene:** the selected object shows lines to its parent
+  (orange) and its children (blue).
+- **Refused:** an object can't go under one of its own children, and the
+  field can't be a parent or a child.
 
 ---
 
-## 6. Type exact values
+## 5. An object's context menu
 
-Every number in the inspector is an input box:
+Right click an object, in the scene or on its hierarchy row:
 
-- Name
-- Parent (an object's name, or `-`)
-- Pos X / Pos Z
-- Rot
-- Width / Height / Size / Sides / Thick / Scale
-- script parameters
-- field size
+| Item | What it does |
+|---|---|
+| Create Child > | Creates an object (any kind, model or prefab) as its child |
+| Rename | Starts typing a new name in the inspector (**Enter** applies) |
+| Duplicate | Copies the object with all of its children (also **F**) |
+| Delete | Deletes the object and its children (also **X**) |
+| Unparent | Moves it to the top level, keeping its place |
+| Focus | Centres the view on it |
+| Save as Prefab | Saves it and its children as a prefab (section 7) |
+| Edit / Reset to / Unpack Prefab | For prefab instances (section 7) |
 
-To type a value:
+- **Move:** drag the object with the mouse. One drag is one undo step.
+- **Rotate:** **R** turns it 15°.
+- **Deselect:** click the field.
+
+The field can't be moved or deleted. Click it to change its colour, or its
+size in the **Scene** settings.
+
+---
+
+## 6. The inspector: components
+
+The inspector shows the selected object as a list of **components**, like
+Unity. Each component is a section:
+
+| Section | Values |
+|---|---|
+| (top) | **Name**, kind and id, **Tag** (the object's role: `Player`, `Pickup`, `Wall`...) |
+| Prefab | For instances: **Edit**, **Reset**, **Unpack** |
+| Transform | **Parent**, **Pos X / Pos Z**, **Rot**; **Scale** for models and empties |
+| Shape2D | **Width / Height** (or **Size**), **Sides** (polygons), **Thick**, colour |
+| Mesh | The **Model** |
+| RigidBody | **Body**: Static, Dynamic or Trigger |
+| Script | The **Script** and its parameters |
+| Health, Faction, ... | The fields of the project's components ([ComponentsTutorial.md](ComponentsTutorial.md)) |
+
+- **Fold / unfold** a section by clicking its title (`- Shape2D` /
+  `+ Shape2D`).
+- **Remove** takes a component off the object. Transform, Shape2D and Mesh
+  define the object and stay.
+- **Add Component** at the bottom opens a menu of what the object doesn't
+  have yet: a **RigidBody**, a **Script**, or one of the project's
+  components.
+- **Duplicate** and **Delete** are below it.
+- **Scrollbar:** when the sections don't fit, drag the scrollbar on the
+  right, or click above or below its handle to move a page.
+
+### Physics bodies
+
+| Body | Behaviour |
+|---|---|
+| (no RigidBody) | Decoration, no physics |
+| Static | Solid, never moves (walls) |
+| Dynamic | Solid, pushed around (players, crates) |
+| Trigger | Not solid; reports touches to scripts (pickups, hazards) |
+
+### Type exact values
+
+Every number is an input box: Name, Parent, Pos X / Pos Z, Rot, Width /
+Height / Size / Sides / Thick / Scale, script parameters, component fields,
+and the field size.
 
 1. **Click** the value box. It lights up with a `_` cursor.
 2. **Type** the new value. The first key replaces the old value, and
@@ -205,80 +257,103 @@ doesn't delete the object. Positions are kept on the field, and a text that
 isn't a number is refused, with a message in the status bar. Each change is
 one undo step.
 
----
+### Behaviour: scripts
 
-## 7. Physics body and tag
-
-In the inspector:
-
-- **Body** decides how the object takes part in physics:
-
-  | Body | Behaviour |
-  |---|---|
-  | None | Decoration, no physics |
-  | Static | Solid, never moves (walls) |
-  | Dynamic | Solid, pushed around (players, crates) |
-  | Trigger | Not solid; reports touches to scripts (pickups, hazards) |
-
-- **Tag** is the object's role, used by scripts: `Player`, `Pickup`, `Hazard`,
-  `Wall`, and so on.
-
----
-
-## 8. Give objects behaviour (scripts)
-
-1. Select an object and use **Script < >** to choose a C++ script, e.g.
-   `Rotator`, `Patrol` or `PlayerController`.
-2. Its parameters appear below it (e.g. **Speed**). Type or step them.
+1. Select an object, click **Add Component**, and choose **Script**.
+2. Pick the C++ script with **Script < >**, e.g. `Rotator`, `Patrol` or
+   `PlayerController`.
+3. Its parameters appear below it (e.g. **Speed**). Type or step them.
 
 For a script that runs the whole scene (rules, score, HUD):
 
-1. Open the **Scene** tab.
+1. Click **Scene** in the toolbar.
 2. Choose a **Script** such as `CollectGame` and set its parameters.
 
-In the same tab you can:
+In the same place you can:
 
 - set the field size (**Field W / Field H**);
-- press **Game camera = view** so the game starts with your current view.
+- press **Game camera = view** so the game starts with your current view;
+- choose **Plain text files**;
+- see whether the scene is **Playable**, or its first problem (duplicate
+  names, objects outside the field, unknown scripts).
 
-The scene tab also shows whether the scene is **Playable**, or the first
-problem (duplicate names, objects outside the field, unknown scripts).
+**Object** (the same toolbar button) goes back to the selected object.
 
 > Example: a `Circle` with body **Dynamic**, tag **Player** and script
 > `PlayerController`, a few `Polygon`s with body **Trigger**, tag **Pickup**
 > and script `Collectible`, and scene script `CollectGame`. That is a
 > complete collect-everything level.
 
-### Components
+---
 
-Objects can also carry data components, such as `Health`, `Faction` and
-`Waypoint`, or your own.
+## 7. Prefabs: reusable groups
 
-1. Select an object and click **Components** at the top of the inspector.
-2. Choose a component with **Add < >** and click **Add**.
-3. Its fields appear below its name. Edit them like any other value:
-   - type numbers and text;
-   - tick check boxes;
-   - step enums with **< >**;
-   - click colour swatches;
-   - type another object's name to point at it.
-4. Click a component's name to fold it. **Remove** takes the component off
-   the object.
+A **prefab** is a group of objects (a root and its children) saved to
+`data/prefabs/<name>.ubprefab`. You can place it any number of times. Each
+copy is an **instance**, shown in blue in the hierarchy. Editing the prefab
+updates every instance.
 
-The picker also adds a physics body (**RigidBody**) or a **Script**, and
-**Remove** takes them off again. Components are saved with the scene and
-copied by **Duplicate**.
+### Make one
 
-> Example: in the `sandbox` scene, select `Walker`. Its `Waypoint` points
-> at `Waypoint_1`. Each marker's `Waypoint` points at the next one, so on
-> **Play** the `WaypointFollower` script walks the loop.
+**From objects in the scene**
 
-To write your own components, whose fields and widgets come from a few
-lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
+1. Build the group, for example an empty `Tower` with a base and a turret as
+   its children.
+2. Right click the root → **Save as Prefab**.
+
+   The prefab is saved under the object's name and appears in **Assets**.
+   The object becomes its first instance.
+
+**From scratch**
+
+1. Click **New Prefab** in Assets.
+2. The prefab editor opens with an empty root. Right click the root →
+   **Create Child** to build the group.
+3. Click **Save Prefab**, then **Back to Scene**.
+
+### Place it
+
+Click it in **Assets** and click the scene, drag it onto the scene, or right
+click → **Create Prefab >**.
+
+### Edit it: the prefab editor
+
+Open it in any of these ways:
+
+- right click an instance → **Edit Prefab**;
+- right click the prefab in **Assets** → **Edit Prefab**;
+- click **Edit** in the instance's Prefab section.
+
+The scene is put aside, and the prefab is shown alone on an empty stage.
+
+1. Edit it like a scene: create, move, parent, add components, Undo / Redo.
+   The toolbar shows **PREFAB name**.
+2. Click **Save Prefab** to write the file.
+3. Click **Back to Scene**. The scene comes back as you left it (with its
+   undo history), and **every instance of the prefab is updated**. That
+   update is one undo step.
+
+**Back to Scene** with unsaved prefab changes only warns you the first time.
+Click it again to throw the changes away.
+
+If the stage has several top level objects, they are grouped under a root
+named after the prefab.
+
+### Instances
+
+- **Reset to Prefab:** replaces the instance by a fresh copy, at the same
+  place, rotation and parent, with the same name.
+- **Unpack Prefab:** turns the instance into ordinary objects, no longer
+  updated by the prefab.
+
+Scripts can spawn prefabs too: `SpawnPrefab("turret", position)`.
+
+> Example: `data/prefabs/turret.ubprefab` is an empty root with a base, a
+> spinning head and a barrel. The `sandbox` scene has two instances.
 
 ---
 
-## 9. Test it
+## 8. Test it
 
 - Press **Play** (or **P**). Physics and scripts run inside the editor and
   the keyboard goes to the scripts, so WASD moves your player.
@@ -287,7 +362,7 @@ lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
 
 ---
 
-## 10. Save, open, revert
+## 9. Save, open, revert
 
 | Action | How |
 |---|---|
@@ -295,7 +370,7 @@ lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
 | Open another scene | Pick it in the scene list. With unsaved changes, the first pick only warns you: **Save**, or pick it again to throw the changes away |
 | Throw away changes | **Revert** reloads the scene from its file |
 | Undo / redo | **Undo** / **Redo**, or **U** / **Y** |
-| Save as plain text | **Scene** tab → **Plain text files**, then **Save** |
+| Save as plain text | **Scene** → **Plain text files**, then **Save** |
 
 Scene files are binary by default. With **Plain text files** checked, every
 save is written as readable text instead. You can open it in any text editor,
@@ -304,7 +379,7 @@ same way: the editor and the Game recognise the format by themselves.
 
 ---
 
-## 11. Play it in the Game
+## 10. Play it in the Game
 
 Run the **Game**. Its menu lists every scene in `data/scenes`, including
 yours. Click it to play, and press **Esc** to go back to the menu.
@@ -313,23 +388,22 @@ yours. Click it to play, and press **Esc** to go back to the menu.
 
 ## Shortcuts
 
-| Key | Action |
+| Key / mouse | Action |
 |---|---|
-| W A S D | pan the camera |
-| Z / C | zoom in / out |
-| 1 - 6 | place Rectangle, Circle, Triangle, Polygon, Model, Empty |
-| Space | back to Select |
-| Right click | deselect / stop placing |
-| R | rotate the selection 15° |
-| F | duplicate the selection |
-| X | delete the selection |
-| U / Y | undo / redo |
-| G | snap to grid on / off |
-| P | play / stop |
-| Tab | switch between the hardware and the software renderer |
-| Enter / Esc | apply / cancel a typed value |
+| Right click | Context menu: create here, or the object's actions. While placing an asset: stop |
+| W A S D | Pan the camera |
+| Z / C | Zoom in / out |
+| R | Rotate the selection 15° |
+| F | Duplicate the selection (with its children) |
+| X | Delete the selection (with its children) |
+| U / Y | Undo / redo |
+| G | Snap to grid on / off |
+| P | Play / stop |
+| Esc | Close a menu, stop placing, cancel a typed value |
+| Enter | Apply a typed value |
+| Tab | Switch between the hardware and the software renderer |
 
-For how scenes and scripts work under the hood, see `CHANGELOG.md`. To
-write your own components, see [ComponentsTutorial.md](ComponentsTutorial.md). For a
-complete game made with the editor and scripts, see
+For how scenes and scripts work under the hood, see `CHANGELOG.md`. To write
+your own components, see [ComponentsTutorial.md](ComponentsTutorial.md). For
+a complete game made with the editor and scripts, see
 `src/Game/Scripts/MetalInvasion/README.md`.

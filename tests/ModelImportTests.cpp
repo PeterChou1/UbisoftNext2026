@@ -168,7 +168,7 @@ TEST_CASE("Model import: problems are reported, nothing is copied")
     CHECK(quoted.Warnings[0].find("gone.mtl") != std::string::npos);
 }
 
-TEST_CASE("Model import: the editor's IMPORT .OBJ box, then place the model")
+TEST_CASE("Model import: the editor's import box (Assets), then place the model")
 {
     // A file dropped in data/import, imported by typing its name
     const std::string name = "zz_test_import_cube";
@@ -185,11 +185,11 @@ TEST_CASE("Model import: the editor's IMPORT .OBJ box, then place the model")
     TestEnvironment::RunFrame(16);
     SceneEditorScene& gui = TestEnvironment::Editor();
 
-    const auto* label = AppStub::FindPrinted("IMPORT .OBJ");
+    // The empty box shows "import .obj"
+    const auto* label = AppStub::FindPrinted("import .obj");
     REQUIRE(label != nullptr);
-    // The box is right below its title
-    AppStub::Get().MouseX = label->X + 40.0f;
-    AppStub::Get().MouseY = label->Y - 28.0f + 11.0f;
+    AppStub::Get().MouseX = label->X + 20.0f;
+    AppStub::Get().MouseY = label->Y + 4.0f;
     AppStub::Get().LeftDown = true;
     TestEnvironment::RunFrame(16);
     AppStub::Get().LeftDown = false;
@@ -197,11 +197,15 @@ TEST_CASE("Model import: the editor's IMPORT .OBJ box, then place the model")
     TestEnvironment::RunFrame(16);
     TestEnvironment::RunFrame(16);
     CHECK(fs::exists(model));
-    CHECK_EQ(gui.Brush().Model, name);
+    // Ready to place: it is listed in Assets and the next click places it
+    CHECK_EQ(gui.PlacingAsset(), name);
     CHECK(AppStub::WasPrinted("Imported " + name));
 
     // Placed like any model, rendered by the MeshHandler
-    Entity e = gui.GetEditor().Place(Editor::ObjectKind::Model, {2, 0, 2}, gui.Brush());
+    Editor::PlaceSettings settings;
+    settings.Model = gui.PlacingAsset();
+    Entity e = gui.GetEditor().Create(Editor::ObjectKind::Model, {2, 0, 2}, NULL_ENTITY, settings);
+    gui.StartPlacingModel("");
     TestEnvironment::RunFrame(16);
     REQUIRE(e != NULL_ENTITY);
     CHECK_EQ(ECS.GetComponent<Mesh>(e).Model, name);

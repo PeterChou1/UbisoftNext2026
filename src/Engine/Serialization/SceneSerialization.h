@@ -8,7 +8,8 @@
 // What is saved
 //   Components : Transform, RigidBody, Mesh, FragShaderTag, VertShaderTag,
 //                Particle, Emitter, AIObstacle              (engine)
-//                SceneObject, Shape2D, ScriptComponent      (scene)
+//                SceneObject, Shape2D, ScriptComponent,
+//                PrefabLink                                 (scene)
 //                + the project's reflected components registered with
 //                ComponentCatalog (Reflection/ComponentCatalog.h)
 //   Resources  : SceneSettings
@@ -47,6 +48,12 @@ template <typename Archive>
 void Serialize(Archive& ar, ScriptComponent& script)
 {
     ar(script.Script, script.Params);
+}
+
+template <typename Archive>
+void Serialize(Archive& ar, PrefabLink& link)
+{
+    ar(link.Prefab);
 }
 
 template <typename Archive>

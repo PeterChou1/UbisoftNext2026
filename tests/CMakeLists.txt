@@ -33,6 +33,9 @@ list(APPEND HEADLESS_SRC_FILES
 	"${SRC_DIR}/Game/SceneMenu.cpp"
 	"${SRC_DIR}/Editor/SceneEditor.cpp"
 	"${SRC_DIR}/Editor/SceneEditorScene.cpp"
+	"${SRC_DIR}/Editor/ContextMenu.cpp"
+	"${SRC_DIR}/Editor/EditorLeftPanel.cpp"
+	"${SRC_DIR}/Editor/EditorInspector.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/support/AppStub.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/support/TestEnvironment.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/scenes/SampleScenes.cpp"
@@ -95,7 +98,7 @@ add_executable(AuthorScenes "${CMAKE_CURRENT_SOURCE_DIR}/tools/AuthorScenes.cpp"
 target_link_libraries(AuthorScenes PRIVATE HeadlessEngine)
 
 add_custom_target(author_scenes
-	COMMAND AuthorScenes "${CMAKE_CURRENT_SOURCE_DIR}/../data/scenes"
+	COMMAND AuthorScenes "${CMAKE_CURRENT_SOURCE_DIR}/../data/scenes" "${CMAKE_CURRENT_SOURCE_DIR}/../data/prefabs"
 	DEPENDS AuthorScenes
-	COMMENT "Authoring sample scenes into data/scenes"
+	COMMENT "Authoring sample scenes into data/scenes and prefabs into data/prefabs"
 )
