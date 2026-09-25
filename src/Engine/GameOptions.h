@@ -1,5 +1,4 @@
 #pragma once
-#include "AppSettings.h"
 #include "Resource.h"
 
 class GameOptions : public Resource
@@ -14,8 +13,6 @@ class GameOptions : public Resource
     bool ShadowMapping = true;
     // Set every frame from the scene's light object (SceneLight.h)
     bool LightShadows = true;
-    int VirtualWidth = APP_VIRTUAL_WIDTH;
-    int VirtualHeight = APP_VIRTUAL_HEIGHT;
 
     /**
      * \brief Shadow maps are drawn and sampled this frame

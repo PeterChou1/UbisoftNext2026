@@ -2,6 +2,95 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Codebase cleanup
+
+A behaviour-preserving refactor for size and readability.
+- **Size:** `src/` + `tests/` went from 41,514 to 37,959 lines and from 264
+  to 249 files.
+- **Kept identical:**
+  - save formats;
+  - reflected names;
+  - user-visible text;
+  - widget layout;
+  - rendered pixels;
+  - physics results.
+
+### How dead code was found
+
+- **Whole program:** the tests were linked with
+  `-ffunction-sections -Wl,--gc-sections`. Functions compiled from `src/`
+  but missing from the binary were checked against the Game and SceneEditor
+  entry points and removed. The scan was repeated until nothing was left.
+- **Header-only code:** every name declared in a header was counted across
+  `src/` and `tests/`. Names that only appear where they are declared were
+  removed.
+- **Removed:**
+  - the debug camera / mesh / physics renderer systems (constructed, never
+    updated or rendered);
+  - `BehaviorTree.h` (never included);
+  - `stdafx.cpp`, `ShaderSIMDUtils`, `UIUtilities.h`, `ToonShaderSIMD.cpp`
+    (only commented-out code) and `DefaultVertexShader.cpp` / `Mat2.cpp`
+    (now header-only);
+  - most of Mat2 / Mat3;
+  - unused Vec / Quat / Mat4 operators and helpers;
+  - the camera's orthographic mode (never enabled, so the clipper's
+    orthographic culling branch is gone too);
+  - GameOptions quality presets;
+  - UI context state;
+  - EntityManager's write-only deleted-entity list;
+  - assorted one-off queries.
+
+### Per area
+
+- **Math, transform, UI:**
+  - operators are inline, with the same float operations in the same
+    order;
+  - rule of zero;
+  - one `BuildAffine`;
+  - accurate Transform docs;
+  - Widget hover / click helpers;
+  - `Utils.h` / `Camera.h` include less.
+  - Fixed a MinGW build error (`std::sqrtf`).
+- **Physics, ECS:**
+  - `Circle2Polygon` / `Polygon2Circle` now match their argument order;
+  - `Manifold::EntityA/B`;
+  - simpler Visitor / VisitorManager / ComponentBuffer internals;
+  - unused ECS templates removed;
+  - internal steps made private.
+- **Rendering:**
+  - one loop instead of 8 copied lanes in the fragment stage, and no
+    per-frame copy of the clipped triangles;
+  - clipper planes in a loop, with the camera and light passes shared;
+  - one shader-instance store with factories in `AssetServer`;
+  - `DepthBuffer::ShadowDepth / CameraDepth`;
+  - `AssetServer.h` no longer includes every shader.
+- **Serialization, reflection, scripting:**
+  - binary saves and text-to-binary conversion share one writer, so the
+    same content gives the same bytes by construction;
+  - one size-prefix writer;
+  - merged reflection value (de)serialization;
+  - one "newer version" error.
+- **World and game:**
+  - `CircleOutline` / `RebuildBody` helpers;
+  - Metal Invasion: one `SpawnUnit`, shared `MITurret` aim / fire,
+    `NearestTagged`;
+  - lighting internals made file-local.
+- **Editor:**
+  - recording an undo step marks the scene dirty (about 30 repeated lines
+    gone);
+  - shared undo / redo and new / load paths;
+  - prefab, gizmo line and stepper helpers.
+
+### Verification
+
+- **Tests:** all 229 pass in debug, ASan + UBSan, Release and clang builds.
+- **Scenes:** `author_scenes` output is byte-identical.
+- **Windows:** the MinGW syntax check is clean for all 82 sources.
+- **Physics:**
+  - `PhysicsBenchmark` checksums, pairs and contacts are identical to the
+    pre-cleanup build in every broad-phase mode;
+  - frame times are 10–25% lower at 2000 bodies.
+
 ## Physics: collider shapes, debug outlines, benchmark, optimisation
 
 ### Collider shapes (`World/ColliderShape.h`)

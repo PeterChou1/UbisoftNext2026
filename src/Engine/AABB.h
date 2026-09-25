@@ -54,7 +54,7 @@ struct AABB
     void RecomputeAABB(const Vec2& newPosition, Mat2 matrix, ShapeType shapeType)
     {
         // On the stack (every body, every physics sub step), the same
-        // arithmetic as Utils::TranslatePoints
+        // arithmetic as Utils::TranslatePointsInto
         Vec2 points[4] = {OriginalMax,
                           Vec2(OriginalMin.X, OriginalMax.Y),
                           OriginalMin,

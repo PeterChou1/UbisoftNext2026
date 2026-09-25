@@ -127,8 +127,8 @@ resource if saves must keep them.
 
 ## Differences from the original
 
-- Behaviour trees became per-script state machines. The generic tree nodes
-  are still in `Engine/BehaviorTree.h` if you prefer them.
+- Behaviour trees became per-script state machines. (The engine's unused
+  generic tree nodes, `Engine/BehaviorTree.h`, were later removed.)
 - Units are models normalised to a footprint (`MI::SOLDIER_SCALE`, ...), and
   walls are 2D rectangles.
 - **Explosions:** one explosion damages everything of the other side within

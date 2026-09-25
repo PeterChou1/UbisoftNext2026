@@ -1,6 +1,7 @@
 #include "SceneLight.h"
 
 #include "../DepthBuffer.h"
+#include "AppSettings.h"
 #include "../ECSManager.h"
 #include "../GameOptions.h"
 #include "../Lighting.h"
