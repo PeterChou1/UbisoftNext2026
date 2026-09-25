@@ -15,6 +15,7 @@
 #include "Serialization/SceneSerialization.h"
 #include "Serialization/WorldSerializer.h"
 #include "Tiles.h"
+#include "World/SceneLight.h"
 #include "VertexBuffer.h"
 #include "World/SceneComponents.h"
 #include "app.h"
@@ -101,6 +102,8 @@ void GameManager::Update(float deltaTime)
         m_ScriptSystem->Update(deltaTime);
     }
     m_SceneMap[m_ActiveScene]->Update(deltaTime);
+    // The scene's light object (or the default light) lights this frame
+    SceneLighting::Update(*ECS.GetResource<Lighting>(), *ECS.GetResource<GameOptions>());
     m_ShaderHandler->Update(deltaTime);
     m_MeshHandler->Update();
 }

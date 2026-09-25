@@ -3,6 +3,7 @@
 #include "AssetServer.h"
 #include "Concurrent.h"
 #include "ECSManager.h"
+#include "FragmentShader.h"
 #include "SIMDTriangle.h"
 #include "stdafx.h"
 
@@ -37,37 +38,47 @@ void RasterizerSystem::Rasterize()
 
 void RasterizerSystem::RenderLine()
 {
-
+    // Hardware triangles: no per pixel work, so each triangle's fragment
+    // shader is run at its three corners (in one 8 wide call) and the GPU
+    // blends the corner colours. Every shader (Shape, Lit, Pulse, Rim ...)
+    // shows, with per corner detail; the software rasterizer (Tab) shades
+    // every pixel and draws shadows
     std::vector<unsigned int> coreID = m_RenderConstants->CoreIds;
     AssetServer& loader = AssetServer::GetInstance();
+    DirectionalLight& light = m_Lighting->GetDirectionalLight();
 
     std::for_each(coreID.begin(), coreID.end(), [&](unsigned int binID) {
         std::vector<Triangle>& binnedTriangles = m_ClippedTriangle->CameraClipBuffer[binID];
         for (auto& tri : binnedTriangles)
         {
-            // .obj meshes use their material colour. Procedural shapes (no
-            // material) use their vertex colours, lit like ShapeShader so the
-            // top and the sides of a shape read differently
-            Vec3 colors[3];
-            if (tri.GetTextureID() == -1)
+            SIMDPixel corners(SIMDVec2(0.0f, 0.0f), SIMD::ONE, SIMD::ZERO, SIMD::ZERO, SIMD::ZERO, tri.BinID,
+                              tri.BinIndex);
+            for (int lane = 0; lane < SIMDPixel::PIXEL_WIDTH * SIMDPixel::PIXEL_HEIGHT; ++lane)
             {
-                const Vec3& lightPos = m_Lighting->GetDirectionalLight().Position;
-                for (int i = 0; i < 3; ++i)
-                {
-                    const Vertex& v = tri.verts[i];
-                    Vec3 normal = v.Normal;
-                    Vec3 toLight = lightPos - v.Position;
-                    normal.Normalize();
-                    toLight.Normalize();
-                    float diffuse = std::max(normal.Dot(toLight), 0.0f);
-                    float intensity = std::clamp(0.45f + diffuse * 0.65f, 0.0f, 1.0f);
-                    colors[i] = v.Color * intensity;
-                }
+                const Vertex& v = tri.verts[std::min(lane, 2)];
+                corners.WorldSpacePosition.X.V[lane] = v.Position.X;
+                corners.WorldSpacePosition.Y.V[lane] = v.Position.Y;
+                corners.WorldSpacePosition.Z.V[lane] = v.Position.Z;
+                corners.Normal.X.V[lane] = v.Normal.X;
+                corners.Normal.Y.V[lane] = v.Normal.Y;
+                corners.Normal.Z.V[lane] = v.Normal.Z;
+                corners.VertexColor.X.V[lane] = v.Color.X;
+                corners.VertexColor.Y.V[lane] = v.Color.Y;
+                corners.VertexColor.Z.V[lane] = v.Color.Z;
+                corners.TextureCoord.X.V[lane] = v.UV.X;
+                corners.TextureCoord.Y.V[lane] = v.UV.Y;
             }
-            else
+            corners.Mask = SIMD::ONE;
+            std::shared_ptr<FragmentShader> shader = loader.GetFragShader(tri.GetShaderID());
+            Material& material = loader.GetMaterial(tri.GetTextureID());
+            shader->Shade(corners, *m_DepthBuffer, material, *m_Camera, light);
+
+            Vec3 colors[3];
+            for (int i = 0; i < 3; ++i)
             {
-                Vec3 diffuse = loader.GetMaterial(tri.GetTextureID()).diffuse;
-                colors[0] = colors[1] = colors[2] = diffuse;
+                colors[i] = Vec3(std::clamp(corners.Color.X.V[i], 0.0f, 1.0f),
+                                 std::clamp(corners.Color.Y.V[i], 0.0f, 1.0f),
+                                 std::clamp(corners.Color.Z.V[i], 0.0f, 1.0f));
             }
             App::DrawTriangle(tri.verts[0].Projection.X,
                               tri.verts[0].Projection.Y,
@@ -91,12 +102,6 @@ void RasterizerSystem::RenderLine()
                               colors[2].Y,
                               colors[2].Z,
                               false);
-            // App::DrawLine(tri.verts[0].Projection.X, tri.verts[0].Projection.Y,
-            //               tri.verts[1].Projection.X, tri.verts[1].Projection.Y);
-            // App::DrawLine(tri.verts[1].Projection.X, tri.verts[1].Projection.Y,
-            //               tri.verts[2].Projection.X, tri.verts[2].Projection.Y);
-            // App::DrawLine(tri.verts[2].Projection.X, tri.verts[2].Projection.Y,
-            //               tri.verts[1].Projection.X, tri.verts[1].Projection.Y);
         }
     });
 }
@@ -239,7 +244,7 @@ void RasterizerSystem::AssignTile()
     std::vector<unsigned int> coreID = m_RenderConstants->CoreIds;
     std::vector<Tile>& camTiles = m_Tiles->TilesArray;
     std::vector<Tile>& shadowTiles = m_Tiles->ShadowTilesArray;
-    bool shadowMap = m_GameOptions->ShadowMapping;
+    bool shadowMap = m_GameOptions->ShadowsOn();
     Concurrent::ForEach(coreID.begin(), coreID.end(), [&](unsigned int binID) {
         std::vector<Triangle>& binCamTriangles = m_ClippedTriangle->CameraClipBuffer[binID];
         std::vector<Triangle>& binLightTriangles = m_ClippedTriangle->LightClipBuffer[binID];
@@ -277,7 +282,7 @@ void RasterizerSystem::RasterizeTiles()
             }
         }
     });
-    if (!m_GameOptions->ShadowMapping)
+    if (!m_GameOptions->ShadowsOn())
         return;
 
     Concurrent::ForEach(shadowTiles.begin(), shadowTiles.end(), [&](Tile& tile) {

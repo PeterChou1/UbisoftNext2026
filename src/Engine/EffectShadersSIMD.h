@@ -7,7 +7,7 @@
 // material's diffuse colour (.obj models); it is lit like ShapeShaderSIMD and
 // then:
 //
-//   PulseShaderSIMD    the brightness pulses over time
+//   PulseShaderSIMD    the brightness pulses over time (55% .. 100% + glow)
 //   RimShaderSIMD      edges facing away from the camera glow (rim light)
 //   StripesShaderSIMD  horizontal bands scroll upwards (hologram / scanner)
 //
@@ -25,9 +25,16 @@ namespace EffectShading
     SIMDVec3 BaseColor(const SIMDPixel& pixel, const Material& material);
 
     /**
-     * \brief Ambient + Lambert diffuse from the directional light (0..1)
+     * \brief Ambient + Lambert diffuse from the scene's light, the diffuse
+     *        part only where the shadow map says the light reaches (when
+     *        `shadows`). The light's colour is not applied (see LightColor)
      */
-    SIMDFloat Lighting(SIMDPixel& pixel, DirectionalLight& light);
+    SIMDFloat Lighting(SIMDPixel& pixel, DirectionalLight& light, const DepthBuffer& depthBuffer, bool shadows);
+
+    /**
+     * \brief The light's colour times its intensity, per channel
+     */
+    SIMDVec3 LightColor(const DirectionalLight& light);
 } // namespace EffectShading
 
 class PulseShaderSIMD : public FragmentShader

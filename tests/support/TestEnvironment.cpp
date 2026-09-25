@@ -3,6 +3,7 @@
 #include "AppStub.h"
 
 #include "ECSManager.h"
+#include "GameOptions.h"
 #include "GameManager.h"
 #include "GameScripts.h"
 #include "SceneEditorScene.h"
@@ -39,6 +40,9 @@ namespace TestEnvironment
         GameSceneManager.RegisterScene(EDITOR_SCENE, std::move(editor));
         GameSceneManager.RegisterScene(SceneMenu::NAME, std::make_unique<SceneMenu>());
         GameSceneManager.SetActiveScene(ScenePlayer::NAME);
+        // Tests run with the fast hardware triangles unless they ask for the
+        // software rasterizer
+        ECS.GetResource<GameOptions>()->LineRendering = true;
     }
 
     SceneEditorScene& Editor() { return *g_Editor; }

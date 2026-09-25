@@ -31,7 +31,8 @@
 //
 // Cameras: the scene view has its own camera (m_View: WASD, arrows, E / V,
 // Z / C, Home). The game camera is an object of the scene (SceneCamera.h),
-// drawn as a gizmo and edited like any object.
+// drawn as a gizmo and edited like any object. So is the scene's light
+// (SceneLight.h): a sun marker with its beam and cone.
 //
 // Tutorials: docs/EditorTutorial.md (the editor), docs/Controls.md (every
 // control, also the in-editor Controls panel: H), docs/ComponentsTutorial.md
@@ -230,6 +231,7 @@ class SceneEditorScene : public Scene
     void DrawOutline(Entity entity, float r, float g, float b);
     void DrawCross(Entity entity, const Color& color, float size);
     void DrawCameraGizmo(Entity entity, bool selected);
+    void DrawLightGizmo(Entity entity, bool selected);
     void RenderControlsPanel();
 
     // Left panel (EditorLeftPanel.cpp)

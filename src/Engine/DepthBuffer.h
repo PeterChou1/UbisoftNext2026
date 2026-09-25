@@ -40,7 +40,7 @@ class DepthBuffer : public Resource
         m_DepthShadowBuffer.resize(m_ShadowHeight * m_ShadowWidth);
     }
 
-    void ToShadowSpace(Vec4& point)
+    void ToShadowSpace(Vec4& point) const
     {
         float width = static_cast<float>(SIMDPixel::PIXEL_WIDTH * m_ShadowWidth);
         float height = static_cast<float>(SIMDPixel::PIXEL_HEIGHT * m_ShadowHeight);

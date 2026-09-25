@@ -24,6 +24,10 @@ struct DirectionalLight
     Transform LightTransform{};
     Vec3 Position;
     Vec3 Color = {1, 1, 1};
+    // Brightness of the direct light, and the light every surface gets even
+    // in shadow (set from the scene's light object, SceneLight.h)
+    float Intensity = 1.0f;
+    float Ambient = 0.45f;
     LightType lightType = SpotLight;
 
     void SetColor(float r, float g, float b);

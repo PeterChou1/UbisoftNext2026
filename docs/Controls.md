@@ -57,6 +57,18 @@ scene plays.
 | Add a camera | Right click the scene → **Create Camera** |
 | Look through it | **P** (Play): the view switches to it until Stop |
 
+## Light (the Directional Light object)
+
+| Action | How |
+|---|---|
+| Select it | Its hierarchy row (in orange), or its sun marker in the scene view |
+| Move / turn it | Like any object: drag, **Pos X / Y / Z**, **I / K** (height), **R / J**, **Rot** |
+| Colour, power, ambient, pitch, spread, shadows | Its **SceneLight** section in the inspector |
+| Point it at the view's centre | Right click it → **Aim at View Center** |
+| Point it at an object | Right click the object → **Aim Light Here** |
+| Add a light | Right click the scene → **Create Light** |
+| See the shadows | The software rasterizer (the default; **Tab** switches) |
+
 ## Editing
 
 | Key | Action |
@@ -67,7 +79,7 @@ scene plays.
 | H | Show / hide the Controls panel |
 | Esc | Close a menu or the Controls panel, stop placing, cancel a typed value |
 | Enter | Apply a typed value |
-| Tab | Switch between the hardware and the software renderer |
+| Tab | Switch between the software rasterizer (every pixel, shadows) and the hardware triangles (faster) |
 | Q | Quit (ContestAPI) |
 
 ## Typed values

@@ -5,6 +5,39 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 13. Fragment shaders fixed, shadow maps, the light as a scene object
+
+- **Why the fragment shaders did not show:** the default renderer was the
+  "hardware triangles" path, which never runs fragment shaders (it coloured
+  triangles itself), and nothing turned the software rasterizer on.
+  - The engine's **software rasterizer** is now the default in the editor
+    and the game: every pixel goes through the object's fragment shader.
+  - The **hardware triangles** (Tab) now run each triangle's fragment
+    shader at its three corners, so every shader shows there too.
+  - **Pulse** clipped bright colours at white and barely changed: it now
+    dims to 55% and back. **Rim** keeps some headroom so its glow shows.
+- **Shadow maps work:** `ShadowMapping` was never turned on, and the
+  shadow test was inverted (only surfaces almost level with the shadow
+  map counted as shadowed, so real occluders cast nothing).
+  - `ShadowSampling::Visibility` (a relative depth bias) is shared by the
+    Shape, Lit (Blinn-Phong), Pulse, Rim and Stripes shaders.
+  - Blinn-Phong: materials without an ambient term use the light's, so
+    shadows are dark but not black; the specular `pow` result was thrown
+    away and is now used.
+- **The light is a scene object:** **Directional Light** (Transform +
+  `SceneLight`: Color, Power, Ambient, Pitch, Spread, Shadow) in every new
+  scene, where the old fixed light was.
+  - Applied to the renderer every frame (GameManager), so it can be moved
+    while editing or by scripts. Scenes without one keep the old light.
+  - Editor: orange in the hierarchy; a sun gizmo with its line to the
+    ground and its cone; picked by its marker (lights' and cameras' markers
+    are now picked by screen distance); **Create Light**, **Aim at View
+    Center**, and **Aim Light Here** on objects; I / K set its height.
+  - Its **Shadow** switch turns the shadow map on or off.
+- Controls panel / docs: the light's controls, what Tab does.
+- Tests: `ShadowTests.cpp`, `LightTests.cpp` (the light, a played scene
+  file showing a shader, the hardware path's shader colours) and a GUI test.
+
 ## 12. Shaders on meshes, editor camera controls, the game camera as an object
 
 - **New shaders** for shapes and models, chosen per object in the

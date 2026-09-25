@@ -24,6 +24,7 @@
 #include "Vec3.h"
 #include "World/Prefab.h"
 #include "World/SceneCamera.h"
+#include "World/SceneLight.h"
 #include "World/SceneObjects.h"
 #include "World/ScenePlayer.h"
 
@@ -97,8 +98,9 @@ namespace Editor
         static constexpr size_t MAX_UNDO = 64;
 
         /**
-         * \brief Replace the world with an empty scene: the field and a
-         *        "Main Camera" (without it: a prefab stage)
+         * \brief Replace the world with an empty scene: the field, a "Main
+         *        Camera" and a "Directional Light" (without them: a prefab
+         *        stage)
          */
         void NewScene(bool withCamera = true);
 
@@ -431,6 +433,29 @@ namespace Editor
          *        on the field). One undo step
          */
         bool SetCameraView(Entity camera, const SceneCamera::View& view);
+
+        // -- Light ---------------------------------------------------------------------
+        //
+        // The scene's light is an object too (SceneLight.h): new scenes have a
+        // "Directional Light" where the old fixed light was.
+
+        /**
+         * \brief The scene's light object, NULL_ENTITY when it has none
+         */
+        Entity LightObject() const;
+        bool IsLight(Entity entity) const;
+
+        /**
+         * \brief New light object above `position` (at the default height),
+         *        pointing down. One undo step; it is selected
+         */
+        Entity AddLight(const Vec3& position);
+
+        /**
+         * \brief Turn a light to shine at a point (its yaw and pitch). One
+         *        undo step
+         */
+        bool AimLight(Entity light, const Vec3& point);
 
         // -- Validation / files --------------------------------------------------
 

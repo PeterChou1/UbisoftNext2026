@@ -46,11 +46,11 @@ namespace
     }
 } // namespace
 
-TEST_CASE("Editor: a new scene is the field and the game camera")
+TEST_CASE("Editor: a new scene is the field, the game camera and the light")
 {
     SceneEditor& editor = NewEditor();
     std::vector<Entity> objects = editor.Objects();
-    REQUIRE(objects.size() == 2);
+    REQUIRE(objects.size() == 3);
     Entity field = objects[0];
     // The camera the scene plays with, where the old fixed camera was
     Entity camera = objects[1];
@@ -62,6 +62,15 @@ TEST_CASE("Editor: a new scene is the field and the game camera")
     SceneCamera::View view = SceneCamera::Current();
     CHECK_EQ(view.Distance, 30.0f);
     CHECK_EQ(view.Yaw, 0.0f);
+    // The light, where the old fixed light was: above, shining at the centre
+    Entity light = objects[2];
+    CHECK_EQ(editor.LightObject(), light);
+    CHECK(editor.IsLight(light));
+    CHECK_EQ(editor.NameOf(light), std::string("Directional Light"));
+    CHECK_EQ(ECS.GetComponent<SceneObject>(light).Tag, std::string("Light"));
+    Vec3 aim = SceneLighting::GroundTarget(SceneLighting::Current());
+    CHECK(std::fabs(aim.X) < 0.01f);
+    CHECK(std::fabs(aim.Z) < 0.01f);
     CHECK(editor.IsField(field));
     CHECK_EQ(editor.NameOf(field), std::string("Field"));
     const Shape2D& shape = ECS.GetComponent<Shape2D>(field);
@@ -124,8 +133,8 @@ TEST_CASE("Editor: place every kind of object")
             CHECK_EQ(editor.NameOf(e), std::string(Editor::ObjectKindName(kind)));
         }
     }
-    // + the field and the camera
-    CHECK_EQ(editor.Objects().size(), size_t(8));
+    // + the field, the camera and the light
+    CHECK_EQ(editor.Objects().size(), size_t(9));
     CHECK(editor.IsDirty());
     CHECK(editor.Validate().empty());
 
@@ -323,8 +332,8 @@ TEST_CASE("Editor: save and load a scene file")
     int replaced = 0;
     editor.OnWorldReplaced = [&] { ++replaced; };
     editor.NewScene();
-    // The field and the Main Camera
-    CHECK_EQ(editor.Objects().size(), size_t(2));
+    // The field, the Main Camera and the light
+    CHECK_EQ(editor.Objects().size(), size_t(3));
 
     Serialization::LoadResult loaded = editor.LoadScene(path);
     REQUIRE(loaded.Success);

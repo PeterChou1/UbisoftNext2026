@@ -60,7 +60,9 @@ namespace
     constexpr float CONTROLS_W = SCREEN_W - LEFT_W - INSPECTOR_W - 24.0f;
     constexpr float CONTROLS_TOP = PANEL_TOP - 12.0f;
     constexpr float CONTROLS_BOTTOM = PANEL_BOTTOM + 12.0f;
-    constexpr float CONTROLS_ROW = 19.0f;
+    constexpr float CONTROLS_ROW = 17.0f;
+    // Clicks this close (pixels) to a light's or a camera's marker pick it
+    constexpr float MARKER_PICK_PIXELS = 12.0f;
 
     // Text fields that edit the selected object or the scene settings
     bool InObjectFields(int id)
@@ -91,8 +93,8 @@ void SceneEditorScene::Start()
 
 void SceneEditorScene::Setup()
 {
-    m_Light->SetLightPerspective(120.0f, m_Options->ScreenRatio, 0.1f, 1000.0f);
-    m_Light->SetPositionAndTarget(Vec3(0.0f, 25.0f, -5.0f), Vec3(0.0f, 0.0f, 0.0f));
+    // The light follows the scene's light object (GameManager, SceneLight.h)
+    SceneLighting::Update(*m_Light, *m_Options);
     m_Cam->SetProjectionPerspective();
 
     m_View = DefaultView();
@@ -331,6 +333,40 @@ bool SceneEditorScene::MouseAtHeight(float height, Vec3& point) const
 
 Entity SceneEditorScene::PickUnderMouse(float* hitHeight) const
 {
+    // Markers drawn in the air (a light's sun, a camera's eye) are picked by
+    // their distance on the screen: at a grazing view one pixel is a long
+    // way along a horizontal plane
+    Entity marker = NULL_ENTITY;
+    float markerHeight = 0.0f;
+    float best = MARKER_PICK_PIXELS * MARKER_PICK_PIXELS;
+    Vec3 forward = m_Cam->Backward * -1.0f;
+    for (Entity e : m_Editor.Objects())
+    {
+        Vec3 point;
+        if (m_Editor.IsLight(e))
+            point = SceneObjects::GetPosition(e);
+        else if (m_Editor.IsCamera(e))
+            point = SceneCamera::EyeOf(SceneCamera::ViewOf(e));
+        else
+            continue;
+        if ((point - m_Cam->Position).Dot(forward) <= 0.5f)
+            continue;
+        Vec2 s = m_Cam->WorldPointToScreenSpace(point);
+        float dx = s.X - m_UI->mouseX;
+        float dy = s.Y - m_UI->mouseY;
+        if (dx * dx + dy * dy <= best)
+        {
+            best = dx * dx + dy * dy;
+            marker = e;
+            markerHeight = point.Y;
+        }
+    }
+    if (marker != NULL_ENTITY)
+    {
+        if (hitHeight != nullptr)
+            *hitHeight = markerHeight;
+        return marker;
+    }
     return m_Editor.PickRay(
             [this](float height) {
                 Vec3 point;
@@ -512,9 +548,15 @@ std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity
     }
     prefabs.Enabled = !prefabs.Children.empty();
     items.push_back(prefabs);
-    // A scene's game camera (top level only; prefabs have none)
+    // A scene's game camera and light (top level only; prefabs have none)
     if (parent == NULL_ENTITY && !m_PrefabMode)
     {
+        items.push_back({"Create Light", [this, position] {
+                             Entity e = m_Editor.AddLight(position);
+                             SetStatus("Created " + m_Editor.NameOf(e) +
+                                       (m_Editor.LightObject() == e ? " (the scene's light)"
+                                                                    : " (the scene uses the first light)"));
+                         }});
         items.push_back({"Create Camera", [this, position] {
                              Entity e = m_Editor.AddCamera(position);
                              SetStatus("Created " + m_Editor.NameOf(e) +
@@ -567,6 +609,22 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
                          view.Target = SceneObjects::GetPosition(e);
                          SetEditorView(view);
                      }});
+    if (m_Editor.IsLight(e))
+    {
+        items.push_back({"Aim at View Center", [this, e] {
+                             if (m_Editor.AimLight(e, ViewCenter()))
+                                 SetStatus(m_Editor.NameOf(e) + " now shines at the centre of the view");
+                         }});
+    }
+    else if (!m_Editor.IsCamera(e) && m_Editor.LightObject() != NULL_ENTITY)
+    {
+        // Point the scene's light at this object
+        items.push_back({"Aim Light Here", [this, e] {
+                             Entity light = m_Editor.LightObject();
+                             if (m_Editor.AimLight(light, SceneObjects::GetPosition(e)))
+                                 SetStatus(m_Editor.NameOf(light) + " now shines at " + m_Editor.NameOf(e));
+                         }});
+    }
     if (m_Editor.IsCamera(e))
     {
         // Game camera <-> the editor's view
@@ -1374,12 +1432,17 @@ const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
              {{"Select it", "Its row, its cross or its eye marker"},
               {"Move / rotate", "Like any object: its target and heading"},
               {"Inspector", "GameCamera: Distance, Pitch, FOV"},
-              {"Right click it", "Align with View / View Through Camera"},
-              {"P (Play)", "Plays through the game camera"}}},
-            {"EDITING",
+              {"Right click it", "Align with View / View Through Camera"}}},
+            {"LIGHT (Directional Light object)",
+             {{"Select it", "Its row, or its sun marker in the air"},
+              {"Move / turn it", "Like any object; Pos Y is its height"},
+              {"Inspector", "SceneLight: colour, intensity, pitch, shadows"},
+              {"Right click", "Aim it, or Aim Light Here on an object"}}},
+                        {"EDITING",
              {{"U / Y", "Undo / redo"},
               {"G", "Snap to the grid on / off"},
-              {"P", "Play / stop"},
+              {"P", "Play / stop (through the game camera)"},
+              {"Tab", "Software renderer (shadows) / fast triangles"},
               {"H", "Show / hide this panel"},
               {"Esc", "Close a menu or this panel, stop placing"}}},
     };
@@ -1400,14 +1463,14 @@ void SceneEditorScene::RenderControlsPanel()
     float keysW = std::min(150.0f, width * 0.36f);
     for (const ControlGroup& group : Controls())
     {
-        y -= CONTROLS_ROW + 8.0f;
-        if (y < CONTROLS_BOTTOM + 8.0f)
+        y -= CONTROLS_ROW + 6.0f;
+        if (y < CONTROLS_BOTTOM + 4.0f)
             break;
-        Text(x, y, group.Title, TEXT_DIM, width);
+        Text(x, y, group.Title, ACCENT, width);
         for (const Control& control : group.Controls)
         {
             y -= CONTROLS_ROW;
-            if (y < CONTROLS_BOTTOM + 8.0f)
+            if (y < CONTROLS_BOTTOM + 4.0f)
                 break;
             Text(x + 8.0f, y, control.Keys, TEXT, keysW - 12.0f);
             Text(x + keysW, y, control.Action, TEXT_DIM, width - keysW);
@@ -1459,16 +1522,76 @@ void SceneEditorScene::DrawCameraGizmo(Entity entity, bool selected)
     }
 }
 
+void SceneEditorScene::DrawLightGizmo(Entity entity, bool selected)
+{
+    // A sun: a ring with rays where the light is, a line to where its centre
+    // meets the ground, and the edges of its cone
+    SceneLighting::Settings settings = SceneLighting::SettingsOf(entity);
+    const Color& color = selected ? ACCENT : LIGHT_COLOR;
+    Vec3 forward = m_Cam->Backward * -1.0f;
+    auto visible = [&](const Vec3& p) { return (p - m_Cam->Position).Dot(forward) > 0.5f; };
+    auto line = [&](const Vec3& a, const Vec3& b, const Color& c) {
+        if (!visible(a) || !visible(b))
+            return;
+        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
+        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
+        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, c.R, c.G, c.B);
+    };
+    const Vec3 at = settings.Position;
+    if (!visible(at))
+        return;
+    // The ring and its rays face the view
+    Vec3 right = m_Cam->CamTransform.GetRight();
+    Vec3 up = m_Cam->CamTransform.GetUp();
+    constexpr int SEGMENTS = 12;
+    constexpr float TWO_PI = 6.2831853f;
+    for (int i = 0; i < SEGMENTS; ++i)
+    {
+        float a0 = TWO_PI * static_cast<float>(i) / SEGMENTS;
+        float a1 = TWO_PI * static_cast<float>(i + 1) / SEGMENTS;
+        Vec3 p0 = at + (right * std::cos(a0) + up * std::sin(a0)) * (LIGHT_GIZMO_SIZE * 0.5f);
+        Vec3 p1 = at + (right * std::cos(a1) + up * std::sin(a1)) * (LIGHT_GIZMO_SIZE * 0.5f);
+        line(p0, p1, color);
+        if (i % 2 == 0)
+            line(at + (p0 - at) * 1.4f, at + (p0 - at) * 2.0f, color);
+    }
+    // Where it shines
+    Vec3 target = SceneLighting::GroundTarget(settings);
+    line(at, target, color);
+    Vec3 direction = SceneLighting::Direction(settings.Yaw, settings.Light.Pitch);
+    Vec3 side = direction.Cross(Vec3(0.0f, 1.0f, 0.0f));
+    if (side.Dot(side) < 1e-6f)
+        side = Vec3(1.0f, 0.0f, 0.0f);
+    side.Normalize();
+    Vec3 lift = side.Cross(direction);
+    lift.Normalize();
+    float spread = std::tan(std::clamp(settings.Light.Spread, 30.0f, 150.0f) * 0.25f * 3.14159265f / 180.0f);
+    const Color dim = {color.R * 0.6f, color.G * 0.6f, color.B * 0.6f};
+    for (const Vec3& offset : {side, side * -1.0f, lift, lift * -1.0f})
+    {
+        // Half way out of the cone, to where that ray meets the ground
+        Vec3 ray = direction + offset * spread;
+        ray.Normalize();
+        float length = ray.Y < -1e-3f && at.Y > 0.0f ? at.Y / -ray.Y : 10.0f;
+        line(at, at + ray * std::min(length, 200.0f), dim);
+    }
+    Vec2 label = m_Cam->WorldPointToScreenSpace(at);
+    Text(label.X + 12.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 140.0f);
+}
+
 void SceneEditorScene::RenderOverlay()
 {
     if (m_Editor.IsPlaying())
         return;
     Entity selected = m_Editor.Selected();
-    // Game cameras: where they are and what they see
+    // Game cameras: where they are and what they see; lights: where they
+    // are and where they shine
     for (Entity e : m_Editor.Objects())
     {
         if (m_Editor.IsCamera(e))
             DrawCameraGizmo(e, e == selected);
+        else if (m_Editor.IsLight(e))
+            DrawLightGizmo(e, e == selected);
     }
     // Empty objects: a cross where they are (they have nothing else to show)
     for (Entity e : m_Editor.Objects())

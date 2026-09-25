@@ -15,6 +15,7 @@
 //   FragShaderTag   which fragment shader draws it (shapes use ShapeShaderID)
 //   VertShaderTag   optional animated vertex shader (Wave, Sway)
 //   GameCamera      on the scene's camera object (SceneCamera.h)
+//   SceneLight      on the scene's light object (SceneLight.h)
 //   ScriptComponent optional C++ behaviour script and its parameters
 //   PrefabLink      on the root of a prefab instance: which prefab it came from
 //

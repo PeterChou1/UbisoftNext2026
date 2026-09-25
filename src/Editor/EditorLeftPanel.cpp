@@ -175,10 +175,11 @@ void SceneEditorScene::RenderHierarchy(float top, float bottom)
                 m_Collapsed.insert(e);
         }
         std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
-        // Prefab instances are blue, like in Unity; game cameras yellow
+        // Prefab instances are blue, like in Unity; game cameras yellow, lights orange
         const Color& color = m_Editor.IsField(e)               ? TEXT_DIM
                              : !m_Editor.PrefabOf(e).empty() ? PREFAB_TEXT
                              : m_Editor.IsCamera(e)          ? CAMERA_COLOR
+                             : m_Editor.IsLight(e)           ? LIGHT_COLOR
                                                              : TEXT;
         float textX = indent + FOLD_W + 4.0f;
         Text(textX, UIText::CenterY(rowBottom, TREE_ROW_H), name, color, x + rowW - textX);

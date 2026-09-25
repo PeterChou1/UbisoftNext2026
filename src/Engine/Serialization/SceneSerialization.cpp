@@ -2,6 +2,7 @@
 
 #include "../Log.h"
 #include "../World/SceneCamera.h"
+#include "../World/SceneLight.h"
 #include "../World/SceneObjects.h"
 
 extern ECSManager ECS;
@@ -31,6 +32,7 @@ namespace Serialization
         registry.RegisterComponent<PrefabLink>("PrefabLink");
         // Reflected: also offered by the editor's Add Component (ComponentCatalog)
         registry.RegisterComponent<GameCamera>("GameCamera");
+        registry.RegisterComponent<SceneLight>("SceneLight");
         registry.RegisterResource<SceneSettings>("SceneSettings");
     }
 

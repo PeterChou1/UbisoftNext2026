@@ -100,7 +100,11 @@ namespace Editor
         SceneObjects::CreateShape(field);
         // The game camera, where the old fixed camera was
         if (withCamera)
+        {
             SceneCamera::Create(SceneCamera::FromSettings(*settings));
+            // ... and the light, where the old fixed light was
+            SceneLighting::Create();
+        }
 
         m_UndoStack.clear();
         m_RedoStack.clear();
@@ -308,8 +312,9 @@ namespace Editor
         std::vector<Entity> roots;
         for (Entity e : RootObjects())
         {
-            // The field and the game camera belong to the scene, not to a prefab
-            if (!IsField(e) && !IsCamera(e))
+            // The field, the game camera and the light belong to the scene,
+            // not to a prefab
+            if (!IsField(e) && !IsCamera(e) && !IsLight(e))
                 roots.push_back(e);
         }
         if (roots.size() == 1)
@@ -511,8 +516,9 @@ namespace Editor
                 field = e;
                 continue;
             }
-            // A camera's target never hides the objects it looks at
-            if (IsCamera(e))
+            // A camera's target (or a light high above) never hides the
+            // objects on the ground
+            if (IsCamera(e) || IsLight(e))
             {
                 camera = e;
                 continue;
@@ -693,6 +699,51 @@ namespace Editor
         m_Selected = e;
         m_Dirty = true;
         return e;
+    }
+
+    Entity SceneEditor::LightObject() const
+    {
+        Entity light = SceneLighting::Find();
+        return IsObject(light) ? light : NULL_ENTITY;
+    }
+
+    bool SceneEditor::IsLight(Entity entity) const
+    {
+        return IsObject(entity) && ECS.HasComponent<SceneLight>(entity);
+    }
+
+    Entity SceneEditor::AddLight(const Vec3& position)
+    {
+        RecordUndo();
+        SceneLighting::Settings settings;
+        settings.Position = ClampToField(position);
+        settings.Position.Y = SceneLighting::DEFAULT_POSITION.Y;
+        settings.Light.Pitch = 89.0f;
+        bool first = LightObject() == NULL_ENTITY;
+        Entity e = SceneLighting::Create(settings,
+                                         SceneObjects::UniqueName(first ? SceneLighting::DEFAULT_NAME : "Light"));
+        m_Selected = e;
+        m_Dirty = true;
+        return e;
+    }
+
+    bool SceneEditor::AimLight(Entity light, const Vec3& point)
+    {
+        if (!IsLight(light))
+            return false;
+        Vec3 from = SceneObjects::GetPosition(light);
+        Vec3 to = point - from;
+        float ground = std::sqrt(to.X * to.X + to.Z * to.Z);
+        if (ground < 1e-4f && std::fabs(to.Y) < 1e-4f)
+            return false;
+        RecordUndo();
+        constexpr float TO_DEGREES = 180.0f / 3.14159265358979f;
+        if (ground > 1e-4f)
+            SceneObjects::SetYaw(light, std::atan2(to.X, to.Z) * TO_DEGREES);
+        SceneLight& settings = ECS.GetComponent<SceneLight>(light);
+        settings.Pitch = std::clamp(std::atan2(-to.Y, ground) * TO_DEGREES, 5.0f, 89.0f);
+        m_Dirty = true;
+        return true;
     }
 
     bool SceneEditor::SetCameraView(Entity camera, const SceneCamera::View& view)

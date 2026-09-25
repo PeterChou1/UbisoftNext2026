@@ -213,7 +213,7 @@ void ClipperSystem::Clip()
     std::vector<Vertex>& vertexBuffer = m_VertexBuffer->Buffer;
     std::vector<std::uint32_t> indexBuffer = m_IndexBuffer->Buffer;
     DirectionalLight& Light = m_Lighting->GetDirectionalLight();
-    bool shadowMap = m_GameOptions->ShadowMapping;
+    bool shadowMap = m_GameOptions->ShadowsOn();
 
     Concurrent::ForEach(coreID.begin(), coreID.end(), [&](unsigned int threadID) {
         const int start = static_cast<int>(threadID * coreInterval);

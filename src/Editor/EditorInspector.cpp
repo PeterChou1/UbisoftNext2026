@@ -184,7 +184,9 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         }
         if (Row(WIDGET_H, y))
         {
-            std::string kind = m_Editor.IsCamera(e) ? "Game camera" : Editor::ObjectKindName(m_Editor.KindOf(e));
+            std::string kind = m_Editor.IsCamera(e)  ? "Game camera"
+                               : m_Editor.IsLight(e) ? "Light"
+                                                     : Editor::ObjectKindName(m_Editor.KindOf(e));
             Text(x, RowY(y), kind + "  #" + std::to_string(e), TEXT_DIM, width * 0.55f);
             std::size_t children = m_Editor.ChildrenOf(e).size();
             if (children > 0)

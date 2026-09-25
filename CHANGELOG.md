@@ -2,6 +2,95 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Fragment shaders fixed, shadow maps, the light as a scene object
+
+### Why the fragment shaders did not show
+
+- `GameOptions::LineRendering` defaulted to `true`: the "hardware
+  triangles" path (`RasterizerSystem::RenderLine`), which sends triangles
+  to `App::DrawTriangle` and returns before `FragmentShaderSystem::Shade`.
+  It lit shapes itself (a fixed Lambert term) and drew models in their
+  flat material colour, so no fragment shader ever ran. The original game
+  switched renderers in an options menu, which the engine split removed.
+- **Now:**
+  - `LineRendering` defaults to `false` (the software rasterizer) and
+    `ShadowMapping` to `true`, in the editor and the game. Tab still
+    switches.
+  - `RenderLine` runs each triangle's own fragment shader once, on an
+    8-wide `SIMDPixel` whose lanes hold the three corners (world position,
+    normal, vertex colour, UV). The corner colours are sent to
+    `DrawTriangle`, which blends them, so every shader shows in the fast
+    path too (per-pixel effects like Stripes and shadows are approximate
+    or absent there).
+  - The test environment keeps the hardware path by default for speed;
+    render tests switch to the software rasterizer.
+- **Pulse** scaled the lit colour from 70% to 130%. Bright surfaces were
+  clipped at white for most of the cycle, so nothing seemed to happen. It
+  now goes from 55% to 100% plus a small white glow. **Rim** draws the
+  body at 85% so its additive glow is visible on bright objects.
+
+### Shadow maps
+
+- **The pipeline:** with shadows on, `ClipperSystem` also projects every
+  triangle with the light's matrix (`ShadowProjection`, computed by the
+  vertex shaders), and `RasterizerSystem` draws them into the
+  `DepthBuffer`'s shadow buffer. It keeps the largest 1 / w, i.e. the
+  surface closest to the light.
+- **The bug:** Blinn-Phong treated a pixel as shadowed only when
+  `|closest - own| < 0.001` and `closest > own`, i.e. when the surface was
+  almost the one in the shadow map. Surfaces behind an occluder (a large
+  difference) were lit, so no shadow ever showed. Nothing turned
+  `ShadowMapping` on either.
+- **`ShadowSampling::Visibility`** (`src/Engine/ShadowSampling.h/.cpp`)
+  projects each of the 8 pixels into the light. It returns lit when the
+  pixel is behind the light or outside its view, and shadowed when
+  `closest > own * (1 + 0.015)` (a relative bias against shadow acne,
+  since 1 / w shrinks with distance). The Shape, Blinn-Phong and effect
+  shaders multiply their diffuse term by it (`EffectShading::Lighting`
+  takes the depth buffer and the flag).
+- **When shadows are drawn:** `GameOptions::ShadowsOn()` =
+  `ShadowMapping` (quality setting) && `LightShadows` (the light object's
+  switch) && software rasterizer. The clipper, the rasterizer and the
+  `ShaderHandler` use it.
+- **Blinn-Phong:** the light's colour times its intensity. A zero
+  material ambient (the default material of shapes) falls back to the
+  light's ambient. `spec.pow(shininess)` discarded its result; now
+  `spec = spec.pow(shininess)`.
+- `DirectionalLight` gained `Intensity` and `Ambient`;
+  `DepthBuffer::ToShadowSpace` is `const`.
+
+### The light as a scene object (`src/Engine/World/SceneLight.h/.cpp`)
+
+- **`SceneLight`** is a reflected component: Color, Intensity (shown as
+  "Power"), Ambient, Pitch, Spread (the cone angle) and Shadows. It is
+  registered for scene files and in the `ComponentCatalog`.
+- **Settings:** the object's world position is where the light is (it is
+  a spot light, so height matters), and its yaw is the direction along the
+  ground. `Direction(yaw, pitch)` gives the beam, and `GroundTarget` where
+  its centre meets y = 0. The defaults (position (0, 25, -5), pitch
+  78.69°) are exactly the old fixed light.
+- **`SceneLighting::Update`**, called by `GameManager::Update` every frame,
+  applies the first light object (or the defaults) to the `Lighting`
+  resource: position, target, cone, colour, intensity, ambient. It also
+  sets `GameOptions::LightShadows`. `ScenePlayer` and the editor no longer
+  place the light themselves.
+- **Editor:**
+  - `NewScene` also creates a "Directional Light"; prefab stages have
+    none, and `CaptureStage` skips lights.
+  - `LightObject`, `IsLight`, `AddLight` (above a point, shining down) and
+    `AimLight` (yaw and pitch towards a point, one undo step).
+  - Ground picking (`Pick`) never returns a light, so a light above an
+    object never steals clicks from it.
+- **GUI:**
+  - The light gizmo (`DrawLightGizmo`): a ring with rays facing the view,
+    the beam to the ground, and four cone edges.
+  - The hierarchy row is orange, and the inspector labels it "Light".
+  - Menus: **Create Light**, **Aim at View Center**, and **Aim Light Here**
+    on objects.
+  - `PickUnderMouse` first picks light and camera markers within 12 pixels
+    on the screen. Along a nearly horizontal ray, one pixel covers about a
+    world unit, more than a marker's pick radius.
+
 ## Shaders on meshes, editor camera controls, the game camera as an object
 
 ### Shaders tied to meshes

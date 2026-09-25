@@ -36,7 +36,7 @@ void ShaderHandler::Update(float deltaTime)
 
         std::shared_ptr<FragmentShader> AttachedShader = Server.GetFragShader(shader.FragShaderID);
         AttachedShader->DeltaTime += dt;
-        AttachedShader->ShadowMapping = m_Options->ShadowMapping;
+        AttachedShader->ShadowMapping = m_Options->ShadowsOn();
     }
 
     for (auto e : ECS.Visit<VertShaderTag>())
@@ -53,13 +53,13 @@ void ShaderHandler::Update(float deltaTime)
         }
         std::shared_ptr<VertexShader> AttachedShader = Server.GetVertShader(shader.VertShaderID);
         AttachedShader->DeltaTime += dt;
-        AttachedShader->ShadowMapping = m_Options->ShadowMapping;
+        AttachedShader->ShadowMapping = m_Options->ShadowsOn();
     }
 
     Server.defaultFragShader->DeltaTime += dt;
-    Server.defaultFragShader->ShadowMapping = m_Options->ShadowMapping;
+    Server.defaultFragShader->ShadowMapping = m_Options->ShadowsOn();
     Server.defaultVertShader->DeltaTime += dt;
-    Server.defaultVertShader->ShadowMapping = m_Options->ShadowMapping;
+    Server.defaultVertShader->ShadowMapping = m_Options->ShadowsOn();
 }
 
 void ShaderHandler::HandleShaderDelete()

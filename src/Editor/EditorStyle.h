@@ -73,6 +73,9 @@ namespace EditorStyle
     const Color EMPTY_COLOR = {0.55f, 0.85f, 1.0f};
     // Game camera objects: gizmo in the viewport, name in the hierarchy
     const Color CAMERA_COLOR = {1.0f, 0.85f, 0.35f};
+    // The light object: sun marker, rays to the ground, hierarchy row
+    const Color LIGHT_COLOR = {1.0f, 0.6f, 0.2f};
+    constexpr float LIGHT_GIZMO_SIZE = 0.8f;
     constexpr float CAMERA_GIZMO_SIZE = 1.2f;
     const Color PARENT_LINK = {1.0f, 0.55f, 0.25f};
     const Color CHILD_LINK = {0.45f, 0.75f, 1.0f};
@@ -87,7 +90,7 @@ namespace EditorStyle
                            {0.85f, 0.85f, 0.85f}};
     constexpr int COLOR_COUNT = sizeof(COLORS) / sizeof(COLORS[0]);
 
-    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner", "Camera"};
+    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner", "Camera", "Light"};
     constexpr int TAG_COUNT = sizeof(TAGS) / sizeof(TAGS[0]);
 
     // -- Editing steps ----------------------------------------------------------------

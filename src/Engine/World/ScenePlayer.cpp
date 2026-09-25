@@ -6,6 +6,7 @@
 #include "../Input.h"
 #include "../Lighting.h"
 #include "SceneComponents.h"
+#include "SceneLight.h"
 #include "SceneObjects.h"
 #include "app.h"
 
@@ -13,9 +14,8 @@ extern ECSManager ECS;
 
 void ScenePlayer::Setup()
 {
-    auto light = ECS.GetResource<Lighting>();
-    light->SetLightPerspective(120.0f, ECS.GetResource<GameOptions>()->ScreenRatio, 0.1f, 1000.0f);
-    light->SetPositionAndTarget(Vec3(0.0f, 25.0f, -5.0f), Vec3(0.0f, 0.0f, 0.0f));
+    // The light follows the scene's light object (GameManager, SceneLight.h)
+    SceneLighting::Update(*ECS.GetResource<Lighting>(), *ECS.GetResource<GameOptions>());
     ECS.GetResource<Camera>()->SetProjectionPerspective();
 }
 

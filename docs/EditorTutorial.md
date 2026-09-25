@@ -12,7 +12,8 @@ The editor works like Unity's:
 - right-click **context menus** to create things;
 - **prefabs** you edit on their own stage;
 - a **scene view** with its own camera, separate from the game's camera,
-  which is an object of the scene.
+  which is an object of the scene;
+- a **light** object with shadows, also edited in the hierarchy.
 
 Every key and mouse action is listed in [Controls.md](Controls.md), and in
 the editor itself: press **H** or click **Controls** at the bottom right.
@@ -81,8 +82,8 @@ panel.
 
    A scene called `scene_1` (or `scene_2`, ...) is created, saved to
    `data/scenes/`, added to the scene list, and opened. It contains the
-   field and the **Main Camera**, the camera the game plays with
-   (section 8).
+   field, the **Main Camera** (the camera the game plays with, section 8)
+   and the **Directional Light** (section 9).
 2. Give it a real name: click the **Name** box at the top right, type
    `my_level`, and press **Enter**.
 
@@ -103,6 +104,7 @@ Create Triangle
 Create Polygon
 Create Model   >   Box, GolfBall, ...
 Create Prefab  >   turret, ...
+Create Light
 Create Camera
 ```
 
@@ -232,6 +234,7 @@ Unity. Each component is a section:
 | Mesh | The **Model** |
 | Shader | The **Frag**ment and **Vert**ex shaders that draw a shape or a model |
 | GameCamera | On cameras: **Dist.**, **Pitch**, **FOV** (section 8) |
+| SceneLight | On lights: **Color**, **Power**, **Ambient**, **Pitch**, **Spread**, **Shadow** (section 9) |
 | RigidBody | **Body**: Static, Dynamic or Trigger |
 | Script | The **Script** and its parameters |
 | Health, Faction, ... | The fields of the project's components ([ComponentsTutorial.md](ComponentsTutorial.md)) |
@@ -302,7 +305,15 @@ section. The section's title shows them, e.g. `Rim + Wave`.
   | Sway | Sways sideways, more at the top (grass, flags, beacons) |
 
 The shaders animate in the scene view as well as in the game. Each change is
-one undo step. Duplicates, prefabs and scene files keep them. The `sandbox`
+one undo step.
+
+**Which renderer shows them.** The engine's **software rasterizer** (the
+default, in the editor and the game) runs the fragment shader for every
+pixel and draws shadows. **Tab** switches to the faster **hardware
+triangles**, which run each triangle's fragment shader at its three
+corners and blend between them. Every shader still shows there, but
+Stripes and shadows need the software rasterizer. The status bar says which
+one is on when you press Tab. Duplicates, prefabs and scene files keep them. The `sandbox`
 scene has examples: a box with **Rim**, a golf ball on a **Wave**, and a
 **Beacon** that sways with **Stripes**.
 
@@ -455,7 +466,47 @@ in their scene settings, and **Game camera = view** adds a Main Camera.
 
 ---
 
-## 9. Test it
+## 9. The light and shadows
+
+The scene is lit by an object too: **Directional Light**, drawn in orange in
+the hierarchy. In the scene view it is a sun (a ring with rays) where the
+light is, a line to where it shines on the ground, and the edges of its
+cone.
+
+- **Select it:** its hierarchy row, or click its sun marker in the air.
+- **Move it** like any object. Its position is where the light is, so its
+  height (**Pos Y**, **I / K**) matters: the shadows get longer as it gets
+  lower. **Rot** (or **R / J**) turns the direction it shines along the
+  ground.
+- **Its SceneLight section:**
+
+  | Value | Meaning |
+  |---|---|
+  | Color | The light's colour |
+  | Power | How bright the direct light is (0 .. 3) |
+  | Ambient | The light every surface gets, even in shadow |
+  | Pitch | How steeply it shines down: 90 is straight down |
+  | Spread | The angle of its cone. Only what it covers gets shadows |
+  | Shadow | Casts shadows |
+
+- **Right click it** → **Aim at View Center** to point it at the middle of
+  the view. Right click any object → **Aim Light Here** to point it at that
+  object.
+- **More lights:** right click the scene → **Create Light**. Only the first
+  light lights the scene.
+
+**Shadows** are shadow maps. The renderer also draws the scene from the
+light, and a surface is in shadow when something is closer to the light.
+You see them with the software rasterizer (the default; **Tab** switches)
+when the light's **Shadow** is checked. They show in the scene view as you
+move objects and the light, and in the game.
+
+Scenes made before lights were objects have none. They are lit by the
+default light, which is where the Directional Light of a new scene starts.
+
+---
+
+## 10. Test it
 
 - Press **Play** (or **P**). Physics and scripts run inside the editor and
   the keyboard goes to the scripts, so WASD moves your player.
@@ -466,7 +517,7 @@ in their scene settings, and **Game camera = view** adds a Main Camera.
 
 ---
 
-## 10. Save, open, revert
+## 11. Save, open, revert
 
 | Action | How |
 |---|---|
@@ -483,7 +534,7 @@ same way: the editor and the Game recognise the format by themselves.
 
 ---
 
-## 11. Play it in the Game
+## 12. Play it in the Game
 
 Run the **Game**. Its menu lists every scene in `data/scenes`, including
 yours. Click it to play, and press **Esc** to go back to the menu.
@@ -513,7 +564,7 @@ The full list, grouped, is in [Controls.md](Controls.md) and in the editor's
 | H | Controls panel |
 | Esc | Close a menu or the Controls panel, stop placing, cancel a typed value |
 | Enter | Apply a typed value |
-| Tab | Switch between the hardware and the software renderer |
+| Tab | Switch between the software rasterizer (every pixel, shadows) and the hardware triangles (faster) |
 
 For how scenes and scripts work under the hood, see `CHANGELOG.md`. To write
 your own components, see [ComponentsTutorial.md](ComponentsTutorial.md). For
