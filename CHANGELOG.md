@@ -2,6 +2,137 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Components: reflection, generic serialization, editor add / remove
+
+### Reflection (`src/Engine/Reflection/Reflection.h/.cpp`)
+
+- A `REFLECT(Type) { Field("Name", &Type::Member)...; }` block describes a
+  type's fields.
+  - The macro specialises `Reflection::Describe<Type>`, which derives from
+    `Builder<Type>`, and `Field` is a builder method.
+  - `Reflection::TypeInfoOf<T>()` builds the description once, on first use,
+    and checks it: identifier-like unique names, `Min <= Max`, and known
+    enum values. It returns a `TypeInfo`, the fields in declaration order.
+- **Each `FieldInfo` holds:**
+  - its name, label and tooltip;
+  - the editor's `FieldType`: Bool, Int, Float, String, Vec2, Vec3, Color,
+    Enum or Entity;
+  - the stored `ValueTag` (`b i u f d s v2 v3 e`);
+  - range, step, hidden / read only, and enum options and range;
+  - type-erased `GetValue` / `SetValue`.
+- **Values travel as `FieldValue`**
+  (`variant<bool, int64, double, string, Vec2, Vec3>`). `SetValue`:
+  - converts between integer and floating point numbers;
+  - rounds integers and clamps to the range and to the C++ type;
+  - refuses enum values that don't exist, NaN, and unrelated types (a
+    string into a number).
+- **Unsupported member types** (64-bit integers, structs, containers) are a
+  `static_assert` with an explanation. Hints that don't fit the member
+  (`AsColor` on a float, `Options` on a non-enum) throw `std::logic_error`.
+- **Enums** take their valid values from `SERIALIZATION_ENUM_RANGE` when it
+  is declared, otherwise from `.Options({...})` as 0..n-1.
+
+### Generic serialization, by field name
+
+- `Serialization::Serialize(Archive&, T&)` is defined for every reflected T.
+  It is found through the archive's namespace, so `Dispatch` picks it up
+  for components, resources and nested uses alike.
+- **Layout:** `[n]`, then for each field its name, its type tag and its
+  value.
+  - Binary: a u32 count; then per field a string, a u8 tag and the value.
+  - Text: `Name:tag value` words, e.g.
+    `[3] Current:f 100 Max:f 100 Invulnerable:b false`. This uses the new
+    `TextOutputArchive::WriteWord`.
+- **Loading** reads each saved field by its own tag, so a field the type no
+  longer has is skipped whatever its type.
+  - It then looks the field up by name and applies it with `SetValue`.
+  - Missing fields keep their defaults, and values that no longer fit are
+    ignored.
+  - Unknown tags or malformed headers throw `SerializationError`.
+- **Versions** still work (`Register<T>(name, version)`), but matching by
+  name makes most layout changes free.
+
+### Component catalog (`src/Engine/Reflection/ComponentCatalog.h/.cpp`)
+
+- `ComponentCatalog::Get().Register<T>(name, description, version)` records
+  type-erased `Has / Add / Remove / Copy / Data` for the editor.
+- It also registers the component in the scene serialization registry. The
+  new `Serialization::SceneSerializationRegistry()` gives mutable access; the
+  const `GetSceneSerializationRegistry()` is unchanged.
+- The ECS auto-registers the type when it is first added, so components stay
+  ordinary ECS components: systems and scripts use `HasComponent<T>` /
+  `GetComponent<T>` as for engine components.
+- Registration is idempotent. A name clash, or one type under two names,
+  throws.
+- `RegisterGameScripts()` calls the game's `RegisterGameComponents()`, so the
+  editor, the game and the tests share one list.
+
+### Editor
+
+- **Core (`SceneEditor`):**
+  - `ComponentsOf(e)`: `ComponentView`s with the built-in components first,
+    their summaries, and whether they can be removed.
+  - `AddableComponents(e)`, `HasComponent`.
+  - `AddComponent` / `RemoveComponent`: RigidBody maps to `SetBody`
+    Static / None, Script to `SetScript`, anything else to the catalog.
+  - `SetField` / `GetField` by component and field name.
+- **Editing rules:**
+  - Every add, remove or field change is one undo step. A field set to the
+    value it already has (for example after clamping) records nothing.
+  - Entity fields only accept objects.
+  - `Duplicate` copies catalog components.
+  - `Remove` clears Entity fields that point at the removed object.
+- **GUI (`SceneEditorScene`):** the object inspector has **Properties** /
+  **Components** tabs. The Components tab has an **Add < >** picker, and
+  lists components as headers (click to fold) with **Remove** buttons.
+  - Fields are drawn by `RenderField` from their `FieldInfo`:
+    - `NumberRow` for numbers and each vector axis;
+    - `CheckBox`, `TextField` for strings and object names;
+    - an enum `Stepper`;
+    - colour swatches;
+    - dimmed text for read-only fields.
+  - Hovering a field with a tooltip shows it in the status bar. Rows that
+    don't fit end with "More below: fold components".
+  - Component text fields have fixed ids 100..699, so dynamic widget ids now
+    start at 1000. The picker resets when the selection changes.
+
+### Game examples (`src/Game/Scripts/Components`)
+
+- **`Health`**: range, step, labels.
+- **`Faction`**: an enum with a `SERIALIZATION_ENUM_RANGE`, a string, a
+  colour, and a read-only counter.
+- **`Waypoint`**: an Entity reference with a tooltip.
+- **Scripts:**
+  - `WaypointFollower` walks the Waypoint chain.
+  - `DamageZone` removes Health on contact and destroys the object at 0
+    unless told not to.
+- The `sandbox` sample scene has a waypoint loop with a walker, a damage
+  zone, and a player with `Health` and `Faction`.
+
+### Other changes
+
+- **Scene files only contain the component types their entities use.**
+  Before, every registered type was written, even with no instances, so
+  registering a component changed every file.
+  - Old files, with empty lists, still load.
+  - The committed scenes were regenerated.
+- **`Vec2::operator==`** returned false for equal vectors (the comparison was
+  inverted). It now compares exactly, like `Vec3`. Nothing in the engine
+  relied on it; the component round-trip tests found it.
+- **`TextOutputArchive::FormatFloat`** writes whole numbers without an
+  exponent (`100`, not `1e+02`). They still read back to the same bits.
+- **Docs:**
+  - `docs/ComponentsTutorial.md` (new);
+  - a Components section in `docs/EditorTutorial.md` and the README.
+- **Tests:**
+  - `tests/ComponentTests.cpp` has 17 tests: descriptions and their errors,
+    conversions and ranges, exact binary / text round trips, schema
+    evolution in both formats, damaged data, the catalog, scene files
+    including hand edits and old files, editor add / remove / fields /
+    duplicate / delete / undo, save and load, the scripts, and the sandbox
+    scene.
+  - Two GUI tests drive the Components tab with the mouse and keyboard.
+
 ## Plain text save files and custom .obj import
 
 ### Plain text saves

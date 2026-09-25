@@ -2,7 +2,52 @@
 
 A short log of everything changed on this branch, newest first. Details and
 explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
-editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md).
+editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
+the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
+
+## 9. Components: add / remove in the editor, generated inspectors, saved by name
+
+- **Reflection (`Engine/Reflection/Reflection.h`):** a component describes
+  its fields once, with editor hints:
+
+  ```cpp
+  REFLECT(Health) { Field("Current", &Health::Current).Range(0, 10000).Step(10); ... }
+  ```
+
+  Supported: bool, integers, float, double, strings, Vec2, Vec3, enums,
+  colours and object references. Hints: range, step, label, tooltip, read
+  only, hidden.
+- **Generic serialization, like Unity:** every reflected type is saved field
+  by field (name, type tag, value) in binary and text, with no `Serialize`
+  function. Loading matches fields by name:
+  - added fields keep their default;
+  - removed fields are skipped;
+  - reordered fields and int / float changes keep their values;
+  - values that no longer fit are ignored.
+- **`ComponentCatalog`:** one `Register<T>("Name")` call puts a component in
+  the editor and in scene files.
+- **Editor:** the inspector's **Components** tab lists an object's
+  components.
+  - **Add** a registered component, a RigidBody or a Script; **Remove** takes
+    one off.
+  - Every field gets a generated widget: number box with - / +, check box,
+    text, `< >` enum stepper, colour swatches, or object name.
+  - Components fold away, and tooltips show in the status bar.
+  - Every change is one undo step. Duplicate copies components, and deleting
+    an object clears references to it.
+  - `SceneEditor::AddComponent / RemoveComponent / SetField / GetField` do
+    the same from code.
+- **Examples** (`src/Game/Scripts/Components`):
+  - components `Health`, `Faction` and `Waypoint`;
+  - scripts `WaypointFollower` and `DamageZone`;
+  - the `sandbox` scene uses them.
+- **Tutorial:** [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
+- **Fixes:**
+  - `Vec2 ==` returned false for equal vectors;
+  - text saves wrote whole floats as `1e+02`, now `100`.
+- **Scene files** only list the component types they use. Registering a new
+  component no longer changes existing files, and older files still load.
+- 19 new tests (162 in total).
 
 ## 8. Plain text save files, custom .obj import
 

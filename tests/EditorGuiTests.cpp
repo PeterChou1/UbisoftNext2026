@@ -12,6 +12,7 @@
 #include "SceneEditorScene.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Scripting/ScriptSystem.h"
+#include "Scripts/Components/GameComponents.h"
 #include "WorldFixture.h"
 
 #include <cmath>
@@ -655,4 +656,103 @@ TEST_CASE("Editor GUI: New adds a saved scene to the list, rename it, switch sce
     CHECK_EQ(GameSceneManager.GetActiveScene(), std::string(ScenePlayer::NAME));
     TestEnvironment::RunFrames(5, 20.0f);
     CHECK(GameSceneManager.Scripts().GetScript(e) != nullptr);
+}
+
+TEST_CASE("Editor GUI: add components, edit their generated fields, fold and remove them")
+{
+    OpenEditor();
+    Entity e = Core().Place(Editor::ObjectKind::Rectangle, {0, 0, 0});
+    Entity other = Core().Place(Editor::ObjectKind::Circle, {4, 0, 0});
+    Core().Select(e);
+    TestEnvironment::RunFrame(FRAME_MS);
+
+    REQUIRE(ClickButton("Components", INSPECTOR_X));
+    CHECK(FindText("Transform", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Shape2D", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Pos X", INSPECTOR_X) == nullptr);
+
+    // Pick Health in the Add picker (RigidBody, Script, Health, ...) and add it
+    CHECK(FindText("Add RigidBody", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickStepper("Add ", 1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Add ", 1, INSPECTOR_X));
+    REQUIRE(FindText("Add Health", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickButton("Add", INSPECTOR_X));
+    REQUIRE(ECS.HasComponent<Health>(e));
+    CHECK(FindText("- Health", INSPECTOR_X) != nullptr);
+
+    // Widgets generated from the REFLECT block: number, check box
+    REQUIRE(TypeInto("Current", "250\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Health>(e).Current, 250.0f);
+    REQUIRE(TypeInto("Max", "0\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Health>(e).Max, 1.0f); // Range(1, 10000)
+    const auto* invulnerable = FindText("Invuln.", INSPECTOR_X);
+    REQUIRE(invulnerable != nullptr);
+    Click(invulnerable->X + 70.0f, invulnerable->Y + 4.0f);
+    CHECK(ECS.GetComponent<Health>(e).Invulnerable);
+
+    // Faction: enum stepper, text, colour swatches, read only value
+    REQUIRE(FindText("Add Faction", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickButton("Add", INSPECTOR_X));
+    REQUIRE(ECS.HasComponent<Faction>(e));
+    REQUIRE(ClickStepper("Side Neutral", 1, INSPECTOR_X));
+    CHECK(ECS.GetComponent<Faction>(e).Side == Team::Player);
+    CHECK(FindText("Side Player", INSPECTOR_X) != nullptr);
+    REQUIRE(TypeInto("Title", "Blue team\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Faction>(e).Title, std::string("Blue team"));
+    CHECK(FindText("Kills", INSPECTOR_X) != nullptr);
+    const auto* banner = FindText("Banner", INSPECTOR_X);
+    REQUIRE(banner != nullptr);
+    Click(banner->X + 62.0f, banner->Y + 2.0f);
+    CHECK(!(ECS.GetComponent<Faction>(e).Banner == Vec3(0.85f, 0.85f, 0.85f)));
+
+    // Waypoint: type the name of the object to point at; tooltip on hover
+    REQUIRE(FindText("Add Waypoint", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickButton("Add", INSPECTOR_X));
+    REQUIRE(TypeInto("Next", Core().NameOf(other) + "\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Waypoint>(e).Next, other);
+    REQUIRE(TypeInto("Next", "nobody\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Waypoint>(e).Next, other);
+    CHECK(AppStub::WasPrinted("No object named nobody"));
+    const auto* next = FindText("Next", INSPECTOR_X);
+    REQUIRE(next != nullptr);
+    AppStub::Get().MouseX = next->X + 5.0f;
+    AppStub::Get().MouseY = next->Y;
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(AppStub::WasPrinted("Next: Object to go to next"));
+
+    // Fold a component away, then remove Health (the first Remove)
+    REQUIRE(ClickButton("- Health", INSPECTOR_X));
+    CHECK(FindText("+ Health", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Current", INSPECTOR_X) == nullptr);
+    REQUIRE(ClickButton("Remove", INSPECTOR_X));
+    CHECK(!ECS.HasComponent<Health>(e));
+    CHECK(ECS.HasComponent<Faction>(e));
+    CHECK(AppStub::WasPrinted("Removed Health"));
+    REQUIRE(Core().Undo());
+    CHECK(ECS.HasComponent<Health>(e));
+
+    // Back to the properties
+    REQUIRE(ClickButton("Properties", INSPECTOR_X));
+    CHECK(FindText("Pos X", INSPECTOR_X) != nullptr);
+    Gui().ShowComponents(false);
+}
+
+TEST_CASE("Editor GUI: built in components are added and removed from the Components tab")
+{
+    OpenEditor();
+    Entity e = Core().Place(Editor::ObjectKind::Rectangle, {0, 0, 0});
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(ClickButton("Components", INSPECTOR_X));
+    REQUIRE(FindText("Add RigidBody", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickButton("Add", INSPECTOR_X));
+    CHECK(SceneObjects::GetBodyType(e) == BodyType::Static);
+    CHECK(FindText("RigidBody", INSPECTOR_X) != nullptr);
+    CHECK(FindText("Static", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickButton("Remove", INSPECTOR_X));
+    CHECK(SceneObjects::GetBodyType(e) == BodyType::None);
+    // The field has nothing to add
+    Core().Select(Core().Objects()[0]);
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(FindText("The field has no components", INSPECTOR_X) != nullptr);
+    Gui().ShowComponents(false);
 }

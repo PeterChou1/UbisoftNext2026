@@ -36,7 +36,9 @@ and play it in the Game.
 - **Field** (middle): your scene, seen by the game's 3D renderer.
   - Move the camera with **W A S D**, zoom with **Z / C**.
 - **Inspector** (right): edit the selected object (**Object** tab) or the
-  whole scene (**Scene** tab).
+  whole scene (**Scene** tab). The Object tab has two pages:
+  - **Properties**: position, size, colour, body, tag and script;
+  - **Components**: add, edit and remove components.
 - **Name** (top right): the open scene's name. A `*` means unsaved changes.
 - **Status bar** (bottom): what just happened and the key hints.
 
@@ -188,6 +190,33 @@ problem (duplicate names, objects outside the field, unknown scripts).
 > and script `Collectible`, and scene script `CollectGame`. That is a
 > complete collect-everything level.
 
+### Components
+
+Objects can also carry data components, such as `Health`, `Faction` and
+`Waypoint`, or your own.
+
+1. Select an object and click **Components** at the top of the inspector.
+2. Choose a component with **Add < >** and click **Add**.
+3. Its fields appear below its name. Edit them like any other value:
+   - type numbers and text;
+   - tick check boxes;
+   - step enums with **< >**;
+   - click colour swatches;
+   - type another object's name to point at it.
+4. Click a component's name to fold it. **Remove** takes the component off
+   the object.
+
+The picker also adds a physics body (**RigidBody**) or a **Script**, and
+**Remove** takes them off again. Components are saved with the scene and
+copied by **Duplicate**.
+
+> Example: in the `sandbox` scene, select `Walker`. Its `Waypoint` points
+> at `Waypoint_1`. Each marker's `Waypoint` points at the next one, so on
+> **Play** the `WaypointFollower` script walks the loop.
+
+To write your own components, whose fields and widgets come from a few
+lines of C++, follow [ComponentsTutorial.md](ComponentsTutorial.md).
+
 ---
 
 ## 8. Test it
@@ -241,6 +270,7 @@ yours. Click it to play, and press **Esc** to go back to the menu.
 | Tab | switch between the hardware and the software renderer |
 | Enter / Esc | apply / cancel a typed value |
 
-For how scenes and scripts work under the hood, see `CHANGELOG.md`. For a
+For how scenes and scripts work under the hood, see `CHANGELOG.md`. To
+write your own components, see [ComponentsTutorial.md](ComponentsTutorial.md). For a
 complete game made with the editor and scripts, see
 `src/Game/Scripts/MetalInvasion/README.md`.

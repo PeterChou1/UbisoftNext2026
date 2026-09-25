@@ -9,6 +9,8 @@
 //   Components : Transform, RigidBody, Mesh, FragShaderTag, VertShaderTag,
 //                Particle, Emitter, AIObstacle              (engine)
 //                SceneObject, Shape2D, ScriptComponent      (scene)
+//                + the project's reflected components registered with
+//                ComponentCatalog (Reflection/ComponentCatalog.h)
 //   Resources  : SceneSettings
 //
 // What is NOT saved (rebuilt at runtime)
@@ -71,4 +73,11 @@ namespace Serialization
      * \brief Registry with every engine + scene serializer, built once
      */
     const SerializationRegistry& GetSceneSerializationRegistry();
+
+    /**
+     * \brief The same registry, to add the project's own components at
+     *        startup (ComponentCatalog::Register does it). Register before
+     *        loading scenes that contain them
+     */
+    SerializationRegistry& SceneSerializationRegistry();
 } // namespace Serialization

@@ -39,11 +39,8 @@ Vec2& Vec2::operator=(const Vec2& rhs) = default;
 
 bool Vec2::operator==(const Vec2& rhs) const
 {
-    if (std::abs(X - rhs.X) < std::numeric_limits<float>::epsilon())
-        return false;
-    if (std::abs(Y - rhs.Y) < std::numeric_limits<float>::epsilon())
-        return false;
-    return true;
+    // Exact, like Vec3 (this used to return false for equal vectors)
+    return X == rhs.X && Y == rhs.Y;
 }
 
 bool Vec2::operator!=(const Vec2& rhs) const

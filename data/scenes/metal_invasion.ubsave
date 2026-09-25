@@ -14,10 +14,6 @@ component "Mesh" 1 [1]
 component "FragShaderTag" 1 [2]
 1: 8
 2: 1
-component "VertShaderTag" 1 [0]
-component "Particle" 1 [0]
-component "Emitter" 1 [0]
-component "AIObstacle" 1 [0]
 component "SceneObject" 1 [2]
 1: "Field" "Field"
 2: "PlayerBase" "Base"

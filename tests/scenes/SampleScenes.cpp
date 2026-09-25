@@ -2,6 +2,7 @@
 
 #include "Scripts/MetalInvasion/MINames.h"
 #include "Scripts/MetalInvasion/MIPrefabs.h"
+#include "Scripts/Components/GameComponents.h"
 #include "Scripts/ScriptNames.h"
 
 using Editor::ObjectKind;
@@ -116,7 +117,7 @@ namespace
     void Sandbox(SceneEditor& editor)
     {
         editor.NewScene();
-        PlacePlayer(editor, {0, 0, -8});
+        Entity player = PlacePlayer(editor, {0, 0, -8});
         // One of every shape, spinning
         const ObjectKind kinds[] = {ObjectKind::Rectangle, ObjectKind::Circle, ObjectKind::Triangle, ObjectKind::Polygon};
         const Vec3 colors[] = {RED, GREEN, PURPLE, TEAL};
@@ -136,6 +137,42 @@ namespace
         Entity chaser = editor.Place(ObjectKind::Triangle, {10, 0, -10}, Brush(1.0f, 1.2f, RED, BodyType::Trigger, "Enemy"));
         editor.SetScript(chaser, ScriptNames::Follower);
         editor.SetScriptParam(chaser, "Range", 12.0f);
+
+        // Components (Scripts/Components): a walker going round a path of
+        // Waypoint markers, and a zone that takes the player's Health
+        Entity points[3];
+        const Vec3 path[] = {{-12, 0, -5}, {-6, 0, -5}, {-9, 0, -10}};
+        for (int i = 0; i < 3; ++i)
+        {
+            PlaceSettings marker = Brush(0.5f, 0.5f, YELLOW, BodyType::None);
+            marker.Thickness = 0.05f;
+            points[i] = editor.Place(ObjectKind::Circle, path[i], marker);
+            editor.Rename(points[i], "Waypoint_" + std::to_string(i + 1));
+            editor.AddComponent(points[i], ComponentNames::Waypoint);
+        }
+        for (int i = 0; i < 3; ++i)
+            editor.SetField(points[i], ComponentNames::Waypoint, "Next", static_cast<std::int64_t>(points[(i + 1) % 3]));
+        editor.SetField(points[1], ComponentNames::Waypoint, "WaitSeconds", 1.0);
+        Entity walker = editor.Place(ObjectKind::Polygon, {-12, 0, -8}, Brush(0.8f, 0.8f, BLUE, BodyType::None));
+        editor.Rename(walker, "Walker");
+        editor.SetScript(walker, ScriptNames::WaypointFollower);
+        editor.AddComponent(walker, ComponentNames::Waypoint);
+        editor.SetField(walker, ComponentNames::Waypoint, "Next", static_cast<std::int64_t>(points[0]));
+        editor.AddComponent(walker, ComponentNames::Faction);
+        editor.SetField(walker, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Neutral));
+        editor.SetField(walker, ComponentNames::Faction, "Title", std::string("Patrol"));
+        editor.SetField(walker, ComponentNames::Faction, "Banner", Reflection::FieldValue(BLUE));
+
+        Entity zone = editor.Place(ObjectKind::Rectangle, {6, 0, -6}, Brush(2.0f, 2.0f, RED, BodyType::Trigger));
+        editor.Rename(zone, "DamageZone");
+        editor.SetThickness(zone, 0.05f);
+        editor.SetScript(zone, ScriptNames::DamageZone);
+        editor.AddComponent(player, ComponentNames::Health);
+        editor.SetField(player, ComponentNames::Health, "DestroyAtZero", false);
+        editor.AddComponent(player, ComponentNames::Faction);
+        editor.SetField(player, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Player));
+        editor.SetField(player, ComponentNames::Faction, "Title", std::string("Hero"));
+
         // 3D models from data/models on the same field
         PlaceSettings model;
         model.Model = "Box";
@@ -177,7 +214,7 @@ namespace SampleScenes
                 {"empty", "Just the field", Empty},
                 {"level_1", "CollectGame level 1: pickups and walls", Level1},
                 {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
-                {"sandbox", "Every shape type, crates, a chaser and 3D models", Sandbox},
+                {"sandbox", "Every shape type, crates, a chaser, 3D models and components", Sandbox},
                 {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel, true},
         };
         return scenes;

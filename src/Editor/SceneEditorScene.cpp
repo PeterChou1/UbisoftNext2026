@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "Mesh.h"
 #include "ModelImport.h"
+#include "Reflection/ComponentCatalog.h"
 #include "Scripting/ScriptRegistry.h"
 #include "UIState.h"
 #include "Widget.h"
@@ -85,7 +86,10 @@ namespace
     constexpr int ID_FIELD_FIELD_H = 41;
     constexpr int ID_FIELD_SCENE_PARAM = 42;
     constexpr int MAX_PARAM_FIELDS = 8;
-    constexpr int FIRST_DYNAMIC_ID = 100;
+    // Text fields of the Components tab (reflected fields, in drawing order)
+    constexpr int ID_FIELD_FIRST_COMPONENT = 100;
+    constexpr int ID_FIELD_LAST_COMPONENT = 699;
+    constexpr int FIRST_DYNAMIC_ID = 1000;
     // Width of the labels in front of typed values
     constexpr float LABEL_W = 62.0f;
     const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner"};
@@ -218,6 +222,8 @@ void SceneEditorScene::Update(float deltaTime)
 void SceneEditorScene::Render()
 {
     m_NextId = FIRST_DYNAMIC_ID;
+    m_NextFieldId = ID_FIELD_FIRST_COMPONENT;
+    m_Hint.clear();
     // While the scene list is open it covers other widgets: they must not
     // receive the click meant for a list entry
     bool listOpen = m_UI->openDropDownId == ID_SCENE_LIST;
@@ -229,9 +235,13 @@ void SceneEditorScene::Render()
     // in progress is dropped when the selection changes
     if (m_Editor.Selected() != m_FieldsEntity)
     {
-        if (m_UI->focusedItem >= ID_FIELD_FIRST_OBJECT && m_UI->focusedItem <= ID_FIELD_LAST_OBJECT)
+        bool objectField = m_UI->focusedItem >= ID_FIELD_FIRST_OBJECT && m_UI->focusedItem <= ID_FIELD_LAST_OBJECT;
+        bool componentField =
+                m_UI->focusedItem >= ID_FIELD_FIRST_COMPONENT && m_UI->focusedItem <= ID_FIELD_LAST_COMPONENT;
+        if (objectField || componentField)
             m_UI->focusedItem = 0;
         m_FieldsEntity = m_Editor.Selected();
+        m_AddIndex = 0;
     }
 
     RenderOverlay();
@@ -938,9 +948,18 @@ void SceneEditorScene::RenderInspector()
 
 void SceneEditorScene::RenderObjectInspector(float x, float& y)
 {
-    float width = INSPECTOR_W - 20.0f;
     Text(x, y, "OBJECT", ACCENT);
-    Text(x + 80.0f, y, "click a value to type it", TEXT_DIM);
+    // Tabs: Properties (built in values) / Components (add, remove, fields)
+    constexpr float PROPS_W = 78.0f;
+    constexpr float COMPS_W = 86.0f;
+    float tabX = x + INSPECTOR_W - 20.0f - PROPS_W - COMPS_W - 4.0f;
+    if (Button(NextId(), tabX, y - 7.0f, *m_UI, PROPS_W, 22.0f, "Properties"))
+        m_ShowComponents = false;
+    if (Button(NextId(), tabX + PROPS_W + 4.0f, y - 7.0f, *m_UI, COMPS_W, 22.0f, "Components"))
+        m_ShowComponents = true;
+    float lineX = m_ShowComponents ? tabX + PROPS_W + 4.0f : tabX;
+    float lineW = m_ShowComponents ? COMPS_W : PROPS_W;
+    App::DrawLine(lineX, y - 9.0f, lineX + lineW, y - 9.0f, ACCENT.R, ACCENT.G, ACCENT.B);
     y -= 30.0f;
     Entity e = m_Editor.Selected();
     if (e == NULL_ENTITY)
@@ -950,7 +969,15 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
         Text(x, y, "Click an object to edit it", TEXT_DIM);
         return;
     }
+    if (m_ShowComponents)
+        RenderComponents(e, x, y);
+    else
+        RenderObjectProperties(e, x, y);
+}
 
+void SceneEditorScene::RenderObjectProperties(Entity e, float x, float& y)
+{
+    float width = INSPECTOR_W - 20.0f;
     bool isShape = ECS.HasComponent<Shape2D>(e);
     bool isField = m_Editor.IsField(e);
     std::string kind = Editor::ObjectKindName(m_Editor.KindOf(e));
@@ -1094,6 +1121,230 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
         DeleteSelected();
 }
 
+int SceneEditorScene::NextFieldId()
+{
+    // Past the range, fields share the last id (never reached in practice)
+    return m_NextFieldId <= ID_FIELD_LAST_COMPONENT ? m_NextFieldId++ : ID_FIELD_LAST_COMPONENT;
+}
+
+void SceneEditorScene::RenderComponents(Entity e, float x, float& y)
+{
+    float width = INSPECTOR_W - 20.0f;
+    float bottom = STATUS_H + 8.0f;
+    std::string name = m_Editor.IsField(e) ? std::string("Field") : m_Editor.NameOf(e);
+    Text(x, y + 7.0f, name.substr(0, 18) + "  #" + std::to_string(e), TEXT_DIM);
+    y -= ROW_H;
+
+    // "Add < Health > [Add]": every component the object does not have yet
+    std::vector<std::string> addable = m_Editor.AddableComponents(e);
+    if (addable.empty())
+        Text(x, y + 7.0f, m_Editor.IsField(e) ? "The field has no components" : "Nothing left to add", TEXT_DIM);
+    else
+    {
+        int count = static_cast<int>(addable.size());
+        m_AddIndex = std::min(std::max(m_AddIndex, 0), count - 1);
+        int d = Stepper(x, y, width - 52.0f, "Add " + addable[m_AddIndex].substr(0, 12), "<", ">");
+        if (d != 0)
+            m_AddIndex = Cycle(m_AddIndex, d, count);
+        if (Button(NextId(), x + width - 46.0f, y, *m_UI, 46.0f, 22.0f, "Add"))
+        {
+            std::string component = addable[m_AddIndex];
+            if (m_Editor.AddComponent(e, component))
+            {
+                m_Folded.erase(component);
+                SetStatus("Added " + component);
+            }
+            else
+                SetStatus("Can not add " + component, true);
+        }
+    }
+    y -= ROW_H + 6.0f;
+
+    for (const Editor::ComponentView& view : m_Editor.ComponentsOf(e))
+    {
+        if (y < bottom)
+        {
+            Text(x, bottom - 4.0f, "More below: fold components", TEXT_DIM);
+            return;
+        }
+        bool folded = m_Folded.count(view.Name) != 0;
+        float headerW = view.Removable ? width - 70.0f : width;
+        if (view.BuiltIn)
+        {
+            // Built in components are edited in the Properties tab
+            Text(x, y + 7.0f, view.Name);
+            if (!view.Summary.empty())
+                Text(x + 90.0f, y + 7.0f, view.Summary.substr(0, view.Removable ? 9 : 18), TEXT_DIM);
+        }
+        else if (Button(NextId(), x, y, *m_UI, headerW, 22.0f, (folded ? "+ " : "- ") + view.Name))
+        {
+            if (folded)
+                m_Folded.erase(view.Name);
+            else
+                m_Folded.insert(view.Name);
+            folded = !folded;
+        }
+        if (view.Removable && Button(NextId(), x + width - 64.0f, y, *m_UI, 64.0f, 22.0f, "Remove"))
+        {
+            if (m_Editor.RemoveComponent(e, view.Name))
+                SetStatus("Removed " + view.Name);
+            else
+                SetStatus("Can not remove " + view.Name, true);
+            // The list changed: the rest is drawn next frame
+            return;
+        }
+        y -= ROW_H;
+        if (view.Type == nullptr || folded)
+            continue;
+        for (const Reflection::FieldInfo& field : view.Type->Fields)
+        {
+            if (field.Hidden)
+                continue;
+            if (!RenderField(e, view.Name, field, x + 10.0f, y))
+            {
+                Text(x, bottom - 4.0f, "More below: fold components", TEXT_DIM);
+                return;
+            }
+        }
+        y -= 4.0f;
+    }
+}
+
+bool SceneEditorScene::RenderField(
+        Entity e, const std::string& component, const Reflection::FieldInfo& field, float x, float& y)
+{
+    using Reflection::FieldType;
+    using Reflection::FieldValue;
+    float width = INSPECTOR_W - 30.0f;
+    int rows = field.Type == FieldType::Vec2 ? 2 : (field.Type == FieldType::Vec3 ? 3 : 1);
+    if (y - (rows - 1) * ROW_H < STATUS_H + 8.0f)
+        return false;
+    FieldValue value;
+    if (!m_Editor.GetField(e, component, field.Name, value))
+        return true;
+
+    // Hovering a field shows its tooltip in the status bar
+    if (!field.Tooltip.empty() && m_UI->mouseX >= x && m_UI->mouseX <= x + width &&
+        m_UI->mouseY >= y - (rows - 1) * ROW_H && m_UI->mouseY <= y + 22.0f)
+        m_Hint = field.Label + ": " + field.Tooltip;
+
+    std::string label = field.Label.substr(0, 8);
+    auto set = [&](const FieldValue& newValue) {
+        if (!m_Editor.SetField(e, component, field.Name, newValue))
+            SetStatus("Can not set " + field.Label + " to " + Reflection::ToString(newValue), true);
+    };
+    auto entityName = [&](const FieldValue& v) {
+        auto target = static_cast<Entity>(std::get<std::int64_t>(v));
+        return m_Editor.IsObject(target) ? (m_Editor.IsField(target) ? std::string("Field") : m_Editor.NameOf(target))
+                                         : std::string("-");
+    };
+
+    if (field.ReadOnly)
+    {
+        std::string shown = field.Type == FieldType::Enum     ? field.OptionName(std::get<std::int64_t>(value))
+                            : field.Type == FieldType::Entity ? entityName(value)
+                                                              : Reflection::ToString(value);
+        Text(x, y + 7.0f, label, TEXT_DIM);
+        Text(x + LABEL_W, y + 7.0f, shown.substr(0, 20), TEXT_DIM);
+        y -= ROW_H;
+        return true;
+    }
+
+    switch (field.Type)
+    {
+    case FieldType::Bool: {
+        bool b = std::get<bool>(value);
+        Text(x, y + 7.0f, label);
+        if (CheckBox(NextId(), x + LABEL_W, y + 3.0f, b, 16.0f, *m_UI))
+            set(!b);
+        break;
+    }
+    case FieldType::Int:
+    case FieldType::Float: {
+        bool isInt = field.Type == FieldType::Int;
+        double number = isInt ? static_cast<double>(std::get<std::int64_t>(value)) : std::get<double>(value);
+        auto shown = static_cast<float>(number);
+        double step = field.StepOrDefault();
+        const char* format = isInt ? "%.0f" : (step < 0.01 ? "%.3f" : "%.2f");
+        if (NumberRow(x, y, width, label, NextFieldId(), shown, static_cast<float>(step), format))
+            set(static_cast<double>(shown));
+        break;
+    }
+    case FieldType::String: {
+        std::string text = std::get<std::string>(value);
+        Text(x, y + 7.0f, label);
+        if (TextField(NextFieldId(), x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, text, TextFilter::Any, 64) ==
+                    TextFieldEvent::Committed &&
+            text != std::get<std::string>(value))
+            set(text);
+        break;
+    }
+    case FieldType::Entity: {
+        // Type the name of the object to point at ("-" or empty = none)
+        std::string text = entityName(value);
+        std::string before = text;
+        Text(x, y + 7.0f, label);
+        if (TextField(NextFieldId(), x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, text, TextFilter::Any, 64) ==
+                    TextFieldEvent::Committed &&
+            text != before)
+        {
+            if (text.empty() || text == "-")
+                set(static_cast<std::int64_t>(NULL_ENTITY));
+            else if (Entity target = SceneObjects::FindByName(text); target != NULL_ENTITY)
+                set(static_cast<std::int64_t>(target));
+            else
+                SetStatus("No object named " + text, true);
+        }
+        break;
+    }
+    case FieldType::Enum: {
+        std::int64_t current = std::get<std::int64_t>(value);
+        int d = Stepper(x, y, width, label + " " + field.OptionName(current).substr(0, 12), "<", ">");
+        if (d != 0)
+        {
+            auto count = static_cast<int>(field.EnumMax - field.EnumMin + 1);
+            int index = Cycle(static_cast<int>(current - field.EnumMin), d, count);
+            set(static_cast<std::int64_t>(field.EnumMin + index));
+        }
+        break;
+    }
+    case FieldType::Color: {
+        Vec3 color = std::get<Vec3>(value);
+        Text(x, y + 7.0f, label);
+        constexpr float SMALL_SWATCH = 17.0f;
+        for (int i = 0; i < COLOR_COUNT; ++i)
+        {
+            float sx = x + LABEL_W - 8.0f + i * (SMALL_SWATCH + 3.0f);
+            if (ColorSwatch(NextId(), sx, y + 2.0f, SMALL_SWATCH, ToColor(COLORS[i]), SameColor(color, COLORS[i]), *m_UI))
+                set(COLORS[i]);
+        }
+        break;
+    }
+    case FieldType::Vec2:
+    case FieldType::Vec3: {
+        bool three = field.Type == FieldType::Vec3;
+        Vec3 v = three ? std::get<Vec3>(value) : Vec3(std::get<Vec2>(value).X, std::get<Vec2>(value).Y, 0.0f);
+        float* axes[3] = {&v.X, &v.Y, &v.Z};
+        const char* names[3] = {"X", "Y", "Z"};
+        auto step = static_cast<float>(field.StepOrDefault());
+        const char* format = step < 0.01f ? "%.3f" : "%.2f";
+        bool changed = false;
+        for (int i = 0; i < rows; ++i)
+        {
+            if (NumberRow(x, y, width, field.Label.substr(0, 5) + " " + names[i], NextFieldId(), *axes[i], step, format))
+                changed = true;
+            if (i + 1 < rows)
+                y -= ROW_H;
+        }
+        if (changed)
+            set(three ? FieldValue(v) : FieldValue(Vec2(v.X, v.Y)));
+        break;
+    }
+    }
+    y -= ROW_H;
+    return true;
+}
+
 void SceneEditorScene::RenderSceneInspector(float x, float& y)
 {
     float width = INSPECTOR_W - 20.0f;
@@ -1177,7 +1428,11 @@ void SceneEditorScene::RenderStatusBar()
     const char* hints = m_Editor.IsPlaying()
                                 ? "P stop  (the keyboard goes to the scene's scripts)"
                                 : "WASD pan Z/C zoom 1-5 shape Space select R rotate F dup X del U/Y undo P play (click a value to type)";
-    Text(10.0f, 8.0f, hints, TEXT_DIM);
+    // The tooltip of the component field under the mouse replaces the hints
+    if (!m_Hint.empty())
+        Text(10.0f, 8.0f, m_Hint, ACCENT);
+    else
+        Text(10.0f, 8.0f, hints, TEXT_DIM);
 }
 
 void SceneEditorScene::DrawOutline(Entity entity, float r, float g, float b)

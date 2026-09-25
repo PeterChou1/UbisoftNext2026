@@ -19,6 +19,18 @@ namespace Serialization
 
         SaveFormat g_FileFormat = SaveFormat::Binary;
 
+        // Living entities that have the serializer's component
+        std::vector<Entity> Owners(ECSManager& ecs, const ComponentSerializer& serializer, const std::vector<Entity>& living)
+        {
+            std::vector<Entity> owners;
+            for (Entity e : living)
+            {
+                if (serializer.Has(ecs, e))
+                    owners.push_back(e);
+            }
+            return owners;
+        }
+
         // Entity id lists in text: [count] then ids, runs of consecutive ids
         // written as first..last (the free id queue is mostly one long run)
         void WriteEntityList(TextOutputArchive& ar, const std::vector<Entity>& ids)
@@ -180,17 +192,19 @@ namespace Serialization
         // -- Components ------------------------------------------------------
         {
             ChunkWriter chunk(ar, CHUNK_COMPONENTS);
-            const auto& serializers = m_Registry.Components();
-            ar.WriteSize(serializers.size());
-            for (const ComponentSerializer& serializer : serializers)
+            // Types no entity has are left out: a file only depends on the
+            // components it uses, not on everything the program registers
+            std::vector<std::pair<const ComponentSerializer*, std::vector<Entity>>> used;
+            for (const ComponentSerializer& serializer : m_Registry.Components())
             {
-                std::vector<Entity> owners;
-                for (Entity e : living)
-                {
-                    if (serializer.Has(ecs, e))
-                        owners.push_back(e);
-                }
-
+                std::vector<Entity> owners = Owners(ecs, serializer, living);
+                if (!owners.empty())
+                    used.emplace_back(&serializer, std::move(owners));
+            }
+            ar.WriteSize(used.size());
+            for (auto& [serializerPtr, owners] : used)
+            {
+                const ComponentSerializer& serializer = *serializerPtr;
                 std::string name = serializer.Name;
                 std::uint32_t version = serializer.Version;
                 ar(name, version);
@@ -593,12 +607,9 @@ namespace Serialization
 
         for (const ComponentSerializer& serializer : m_Registry.Components())
         {
-            std::vector<Entity> owners;
-            for (Entity e : living)
-            {
-                if (serializer.Has(ecs, e))
-                    owners.push_back(e);
-            }
+            std::vector<Entity> owners = Owners(ecs, serializer, living);
+            if (owners.empty())
+                continue;
             ar.Raw("component");
             std::string name = serializer.Name;
             std::uint32_t version = serializer.Version;

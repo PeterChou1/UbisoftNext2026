@@ -12,7 +12,8 @@
 //   | PALETTE  |                                                 | INSPECTOR  |
 //   |  Select  |          field seen by the 3D renderer          | typed and  |
 //   |  shapes  |  click = place / select, drag = move, drag a    | stepped    |
-//   |  BRUSH   |  palette shape onto the field to drop it there  | values     |
+//   |  BRUSH   |  palette shape onto the field to drop it there  | values,    |
+//   |          |                                                 | components |
 //   +----------+-------------------------------------------------+------------+
 //   | status line + key hints                                                 |
 //   +-------------------------------------------------------------------------+
@@ -24,7 +25,12 @@
 // Play runs the scene's C++ scripts inside the editor (physics, scripts,
 // particles on). Stop restores the scene exactly as it was before Play.
 //
-// A tutorial for the basic actions is in docs/EditorTutorial.md.
+// The object inspector has two tabs: Properties (shape, body, tag, script) and
+// Components, where components are added / removed and every reflected field
+// (Reflection/Reflection.h) gets a widget generated from its description.
+//
+// Tutorials: docs/EditorTutorial.md (basic actions) and
+// docs/ComponentsTutorial.md (writing components).
 //
 #pragma once
 
@@ -33,6 +39,7 @@
 #include "app.h"
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -63,6 +70,11 @@ class SceneEditorScene : public Scene
     /**
      * \brief Import a model (what the palette's Import box does)
      */
+    /**
+     * \brief Show the Components tab (true) or the Properties tab
+     */
+    void ShowComponents(bool show) { m_ShowComponents = show; }
+
     bool Import(const std::string& path)
     {
         m_ImportPath = path;
@@ -129,6 +141,13 @@ class SceneEditorScene : public Scene
     void RenderPalette();
     void RenderInspector();
     void RenderObjectInspector(float x, float& y);
+    void RenderObjectProperties(Entity e, float x, float& y);
+    void RenderComponents(Entity e, float x, float& y);
+    /**
+     * \brief Widget(s) of one reflected field, generated from its FieldInfo.
+     *        False when there was no room left to draw it
+     */
+    bool RenderField(Entity e, const std::string& component, const Reflection::FieldInfo& field, float x, float& y);
     void RenderSceneInspector(float x, float& y);
     void RenderStatusBar();
     void RenderOverlay();
@@ -152,6 +171,8 @@ class SceneEditorScene : public Scene
                    float step,
                    const char* format = "%.2f");
     int NextId() { return m_NextId++; }
+    // Fixed ids of the Components tab's text fields, in drawing order
+    int NextFieldId();
 
     Editor::SceneEditor m_Editor;
     Tool m_Tool = Tool::Select;
@@ -170,6 +191,15 @@ class SceneEditorScene : public Scene
     bool m_PaletteDrag = false;
     // Object whose values the inspector's text fields show
     Entity m_FieldsEntity = NULL_ENTITY;
+    // Object inspector tab: properties or components
+    bool m_ShowComponents = false;
+    // Components whose fields are folded away
+    std::set<std::string> m_Folded;
+    // Component picked in the "Add" picker
+    int m_AddIndex = 0;
+    int m_NextFieldId = 0;
+    // Tooltip of the field under the mouse (status bar)
+    std::string m_Hint;
 
     Vec3 m_CamTarget = {0, 0, 0};
     float m_CamDistance = 30.0f;

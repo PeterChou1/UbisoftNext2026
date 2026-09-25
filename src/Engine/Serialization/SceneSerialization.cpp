@@ -25,14 +25,19 @@ namespace Serialization
         registry.RegisterResource<SceneSettings>("SceneSettings");
     }
 
-    const SerializationRegistry& GetSceneSerializationRegistry()
+    SerializationRegistry& SceneSerializationRegistry()
     {
-        static const SerializationRegistry registry = [] {
+        static SerializationRegistry registry = [] {
             SerializationRegistry r;
             RegisterEngineSerializers(r);
             RegisterSceneSerializers(r);
             return r;
         }();
         return registry;
+    }
+
+    const SerializationRegistry& GetSceneSerializationRegistry()
+    {
+        return SceneSerializationRegistry();
     }
 } // namespace Serialization

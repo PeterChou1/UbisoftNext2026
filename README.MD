@@ -16,6 +16,8 @@ Top 5 contest submission for ubisoft 2026 next programming contest
   polygon) and 3D models placed on a field, with physics bodies, tags and C++ scripts
 - **Game**: a separate program that plays the authored scenes, driven by C++ scripts
   (per object scripts and scene scripts, running on top of the ECS)
+- **Reflected components**: describe a component's fields once (`REFLECT`). The editor then generates its inspector
+  and lets you add and remove it, and scene files save it by field name, like Unity.
 
 See [CHANGES.md](CHANGES.md) for a high level log of all changes and [CHANGELOG.md](CHANGELOG.md) for how the editor,
 the scenes and the scripts work with the ECS.
@@ -26,7 +28,7 @@ the scenes and the scripts work with the ECS.
 |---|---|---|
 | `src/ContestAPI` | `ContestAPI` | window, input, drawing (unchanged) |
 | `src/Engine` | `Engine` (library) | ECS, renderer, physics, UI, serialization, scene objects, scripting |
-| `src/Game/Scripts` + `GameScripts.*` | `GameScripts` (library) | the C++ scripts, shared by the editor and the game |
+| `src/Game/Scripts` + `GameScripts.*` | `GameScripts` (library) | the C++ scripts and components (`Scripts/Components`), shared by the editor and the game |
 | `src/Editor` | `SceneEditor` (program) | the scene editor |
 | `src/Game` | `Game` (program) | scene menu + scene player |
 | `data/scenes` | | authored scenes (`*.ubsave`) |
@@ -81,6 +83,9 @@ Both programs must run from the repository root (the build does this) to find `d
   Press + drag places and positions in one go. Right click stops placing.
 * Click an object to select it, drag it to move it. In the inspector click any value (name, position, rotation,
   size, script parameters...) and type it, **Enter** applies. The **- / +** buttons step values.
+* **Components** (inspector tab): add / remove components (`Health`, `Faction`, `Waypoint`, your own, a RigidBody or
+  a Script) and edit their fields with widgets generated from the component's description. See
+  [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 * The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
 * Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
@@ -94,7 +99,7 @@ Both programs must run from the repository root (the build does this) to find `d
 
 The game lists the scenes of `data/scenes`: click one to play it. **Esc** goes back to the menu, **Tab** switches
 between the hardware and the software renderer. `level_1` and `level_2` are small `CollectGame` levels (WASD / arrows:
-collect every pickup, avoid hazards), `sandbox` shows every object type.
+collect every pickup, avoid hazards), `sandbox` shows every object type and the example components.
 
 **`metal_invasion`** is the original Metal Invasion rebuilt as a scene + C++ scripts: the reference for how to make a
 game with this engine. See [src/Game/Scripts/MetalInvasion/README.md](src/Game/Scripts/MetalInvasion/README.md).
@@ -113,6 +118,27 @@ r.Register<Spinner>("Spinner", "Spins the object", {{"Speed", 90.0f, 15.0f}});
 ```
 
 Derive from `SceneScript` for a script that drives a whole scene. Both programs pick new scripts up after a rebuild.
+
+## Components
+
+Data lives in components. Describe the fields once and register the component. The editor then shows it in the
+Components tab with a generated inspector, and scenes save it by field name, so adding, removing or reordering fields
+never breaks saved scenes:
+
+```cpp
+struct Health { float Current = 100; float Max = 100; bool Invulnerable = false; };
+
+REFLECT(Health)
+{
+    Field("Current", &Health::Current).Range(0, 10000).Step(10);
+    Field("Max", &Health::Max).Min(1);
+    Field("Invulnerable", &Health::Invulnerable);
+}
+// RegisterGameComponents():
+ComponentCatalog::Get().Register<Health>("Health", "Hit points");
+```
+
+Scripts use them with `Has<Health>(e)` / `Get<Health>(e)`. Full walkthrough: [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
 ## Save files: binary or plain text
 

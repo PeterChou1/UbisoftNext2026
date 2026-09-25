@@ -2,6 +2,8 @@
 
 #include "Scripting/ScriptRegistry.h"
 #include "Scripts/CollectGame.h"
+#include "Scripts/Components/ComponentScripts.h"
+#include "Scripts/Components/GameComponents.h"
 #include "Scripts/GameplayScripts.h"
 #include "Scripts/MetalInvasion/MIScripts.h"
 #include "Scripts/MovementScripts.h"
@@ -36,6 +38,13 @@ void RegisterGameScripts()
     r.Register<Spawner>(ScriptNames::Spawner,
                         "Fires projectiles in its facing direction",
                         {{"Interval", 2.0f, 0.25f}, {"Speed", 6.0f, 0.5f}, {"Lifetime", 3.0f, 0.5f}});
+    // Scripts working with the example components (Scripts/Components)
+    r.Register<WaypointFollower>(ScriptNames::WaypointFollower,
+                                 "Walks along Waypoint components (Next)",
+                                 {{"Speed", 2.0f, 0.5f}});
+    r.Register<DamageZone>(ScriptNames::DamageZone,
+                           "Removes Health from objects entering it",
+                           {{"Damage", 25.0f, 5.0f}});
     // Scene scripts
     r.Register<CollectGame>(ScriptNames::CollectGame,
                             "Collect every Pickup, avoid hazards, next level",
@@ -43,4 +52,7 @@ void RegisterGameScripts()
 
     // Metal Invasion, the original game rebuilt on scenes + scripts
     RegisterMetalInvasionScripts(r);
+
+    // Components the editor can add to objects (reflected, saved by name)
+    RegisterGameComponents();
 }

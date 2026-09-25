@@ -17,6 +17,7 @@
 #pragma once
 
 #include "Entity.h"
+#include "Reflection/Reflection.h"
 #include "Serialization/WorldSerializer.h"
 #include "Vec3.h"
 #include "World/SceneObjects.h"
@@ -59,6 +60,22 @@ namespace Editor
         std::string Tag;
         // Model name (data/models) when placing ObjectKind::Model
         std::string Model;
+    };
+
+    /**
+     * \brief One component of an object, as the inspector lists it
+     */
+    struct ComponentView
+    {
+        std::string Name;
+        // Transform, SceneObject, Shape2D / Mesh, RigidBody, Script: edited
+        // by the object's properties, not field by field
+        bool BuiltIn = false;
+        bool Removable = false;
+        // Short state of a built in component ("Static", "Rotator")
+        std::string Summary;
+        // Reflected fields of a catalog component (null for built-ins)
+        const Reflection::TypeInfo* Type = nullptr;
     };
 
     class SceneEditor
@@ -153,6 +170,60 @@ namespace Editor
         std::string GetScript(Entity entity) const;
         float GetScriptParam(Entity entity, const std::string& param) const;
 
+        // -- Components ------------------------------------------------------------
+        //
+        // Besides its built in components, an object can have any component
+        // registered in the ComponentCatalog (Reflection/ComponentCatalog.h).
+        // Their fields are read and written by name through reflection.
+
+        static constexpr const char* COMPONENT_RIGIDBODY = "RigidBody";
+        static constexpr const char* COMPONENT_SCRIPT = "Script";
+
+        /**
+         * \brief Components of an object, built in ones first
+         */
+        std::vector<ComponentView> ComponentsOf(Entity entity) const;
+
+        /**
+         * \brief Components that can still be added to the object (RigidBody,
+         *        Script and the catalog components it does not have)
+         */
+        std::vector<std::string> AddableComponents(Entity entity) const;
+
+        bool HasComponent(Entity entity, const std::string& component) const;
+
+        /**
+         * \brief Add a component with its default values. RigidBody adds a
+         *        static body, Script the first registered object script
+         */
+        bool AddComponent(Entity entity, const std::string& component);
+
+        /**
+         * \brief Remove a removable component (RigidBody, Script, catalog
+         *        components). Transform, SceneObject, Shape2D and Mesh stay
+         */
+        bool RemoveComponent(Entity entity, const std::string& component);
+
+        /**
+         * \brief Set a reflected field. The value is converted and kept inside
+         *        the field's range; false (nothing changed) when it does not
+         *        fit, the field is read only, or the object / component /
+         *        field does not exist. Entity fields only take objects (or
+         *        NULL_ENTITY)
+         */
+        bool SetField(Entity entity,
+                      const std::string& component,
+                      const std::string& field,
+                      const Reflection::FieldValue& value);
+
+        /**
+         * \brief Current value of a reflected field, false when it does not exist
+         */
+        bool GetField(Entity entity,
+                      const std::string& component,
+                      const std::string& field,
+                      Reflection::FieldValue& value) const;
+
         // -- Scene settings ------------------------------------------------------
 
         bool SetSceneScript(const std::string& script);
@@ -235,6 +306,9 @@ namespace Editor
       private:
         std::vector<std::uint8_t> Snapshot() const;
         void Restore(const std::vector<std::uint8_t>& snapshot);
+        void PushUndo(std::vector<std::uint8_t> snapshot);
+        // Entity fields pointing at a removed object are cleared
+        void ClearReferencesTo(Entity removed);
         void WorldReplaced();
         bool CanEdit(Entity entity) const;
 

@@ -3,6 +3,7 @@
 #include "ECSManager.h"
 #include "GameManager.h"
 #include "Mesh.h"
+#include "Reflection/ComponentCatalog.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Serialization/SceneSerialization.h"
 #include "Transform.h"
@@ -174,6 +175,11 @@ namespace Editor
         }
         if (ECS.HasComponent<ScriptComponent>(source))
             ECS.AddComponent<ScriptComponent>(copy, ECS.GetComponent<ScriptComponent>(source));
+        for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
+        {
+            if (entry.Has(ECS, source))
+                entry.Copy(ECS, source, copy);
+        }
         m_Dirty = true;
         m_Selected = copy;
         return copy;
@@ -313,6 +319,7 @@ namespace Editor
         if (!CanEdit(entity))
             return false;
         RecordUndo();
+        ClearReferencesTo(entity);
         // No FlushECS: the render systems pick the deletion up next frame
         SceneObjects::Destroy(entity);
         if (m_Selected == entity)
@@ -485,6 +492,180 @@ namespace Editor
                 script, ECS.GetComponent<ScriptComponent>(entity).Params);
         auto it = params.find(param);
         return it == params.end() ? 0.0f : it->second;
+    }
+
+    //-----------------------------------------------------------------------------
+    // Components
+    //-----------------------------------------------------------------------------
+
+    std::vector<ComponentView> SceneEditor::ComponentsOf(Entity entity) const
+    {
+        std::vector<ComponentView> result;
+        if (!IsObject(entity))
+            return result;
+        auto builtIn = [&](const char* name, bool removable, const std::string& summary) {
+            ComponentView view;
+            view.Name = name;
+            view.BuiltIn = true;
+            view.Removable = removable && CanEdit(entity);
+            view.Summary = summary;
+            result.push_back(view);
+        };
+        const SceneObject& object = ECS.GetComponent<SceneObject>(entity);
+        builtIn("Transform", false, "");
+        builtIn("SceneObject", false, object.Tag.empty() ? "" : "tag " + object.Tag);
+        if (ECS.HasComponent<Shape2D>(entity))
+            builtIn("Shape2D", false, ObjectKindName(KindOf(entity)));
+        if (ECS.HasComponent<Mesh>(entity))
+            builtIn("Mesh", false, ECS.GetComponent<Mesh>(entity).Model);
+        BodyType body = SceneObjects::GetBodyType(entity);
+        if (body != BodyType::None)
+            builtIn(COMPONENT_RIGIDBODY, true, SceneObjects::BodyTypeName(body));
+        if (ECS.HasComponent<ScriptComponent>(entity))
+            builtIn(COMPONENT_SCRIPT, true, ECS.GetComponent<ScriptComponent>(entity).Script);
+
+        for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
+        {
+            if (!entry.Has(ECS, entity))
+                continue;
+            ComponentView view;
+            view.Name = entry.Name;
+            view.Removable = CanEdit(entity);
+            view.Type = entry.Type;
+            result.push_back(view);
+        }
+        return result;
+    }
+
+    std::vector<std::string> SceneEditor::AddableComponents(Entity entity) const
+    {
+        std::vector<std::string> result;
+        if (!CanEdit(entity))
+            return result;
+        if (SceneObjects::GetBodyType(entity) == BodyType::None)
+            result.push_back(COMPONENT_RIGIDBODY);
+        if (!ECS.HasComponent<ScriptComponent>(entity) && !ScriptRegistry::Get().Names(false).empty())
+            result.push_back(COMPONENT_SCRIPT);
+        for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
+        {
+            if (!entry.Has(ECS, entity))
+                result.push_back(entry.Name);
+        }
+        return result;
+    }
+
+    bool SceneEditor::HasComponent(Entity entity, const std::string& component) const
+    {
+        for (const ComponentView& view : ComponentsOf(entity))
+        {
+            if (view.Name == component)
+                return true;
+        }
+        return false;
+    }
+
+    bool SceneEditor::AddComponent(Entity entity, const std::string& component)
+    {
+        std::vector<std::string> addable = AddableComponents(entity);
+        if (std::find(addable.begin(), addable.end(), component) == addable.end())
+            return false;
+        if (component == COMPONENT_RIGIDBODY)
+            return SetBody(entity, BodyType::Static);
+        if (component == COMPONENT_SCRIPT)
+            return SetScript(entity, ScriptRegistry::Get().Names(false).front());
+        const ComponentEntry* entry = ComponentCatalog::Get().Find(component);
+        if (entry == nullptr)
+            return false;
+        RecordUndo();
+        entry->Add(ECS, entity);
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::RemoveComponent(Entity entity, const std::string& component)
+    {
+        if (!CanEdit(entity) || !HasComponent(entity, component))
+            return false;
+        if (component == COMPONENT_RIGIDBODY)
+            return SetBody(entity, BodyType::None);
+        if (component == COMPONENT_SCRIPT)
+            return SetScript(entity, "");
+        const ComponentEntry* entry = ComponentCatalog::Get().Find(component);
+        if (entry == nullptr)
+            return false;
+        RecordUndo();
+        entry->Remove(ECS, entity);
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::SetField(Entity entity,
+                               const std::string& component,
+                               const std::string& field,
+                               const Reflection::FieldValue& value)
+    {
+        const ComponentEntry* entry = ComponentCatalog::Get().Find(component);
+        if (!CanEdit(entity) || entry == nullptr || !entry->Has(ECS, entity))
+            return false;
+        const Reflection::FieldInfo* info = entry->Type->Find(field);
+        if (info == nullptr || info->ReadOnly)
+            return false;
+        if (info->Type == Reflection::FieldType::Entity)
+        {
+            const auto* target = std::get_if<std::int64_t>(&value);
+            if (target == nullptr ||
+                (*target != static_cast<std::int64_t>(NULL_ENTITY) && !IsObject(static_cast<Entity>(*target))))
+                return false;
+        }
+        void* data = entry->Data(ECS, entity);
+        Reflection::FieldValue before = info->GetValue(data);
+        std::vector<std::uint8_t> snapshot = Snapshot();
+        if (!info->SetValue(data, value))
+            return false;
+        // Values that end up unchanged (clamped to the same value) are not an
+        // edit: no undo step, the scene stays clean
+        if (info->GetValue(data) == before)
+            return true;
+        PushUndo(std::move(snapshot));
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::GetField(Entity entity,
+                               const std::string& component,
+                               const std::string& field,
+                               Reflection::FieldValue& value) const
+    {
+        const ComponentEntry* entry = ComponentCatalog::Get().Find(component);
+        if (!IsObject(entity) || entry == nullptr || !entry->Has(ECS, entity))
+            return false;
+        const Reflection::FieldInfo* info = entry->Type->Find(field);
+        if (info == nullptr)
+            return false;
+        value = info->GetValue(entry->Data(ECS, entity));
+        return true;
+    }
+
+    void SceneEditor::ClearReferencesTo(Entity removed)
+    {
+        const Reflection::FieldValue target = static_cast<std::int64_t>(removed);
+        const Reflection::FieldValue none = static_cast<std::int64_t>(NULL_ENTITY);
+        for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
+        {
+            for (const Reflection::FieldInfo& field : entry.Type->Fields)
+            {
+                if (field.Type != Reflection::FieldType::Entity)
+                    continue;
+                for (Entity e : ECS.GetLivingEntities())
+                {
+                    if (!entry.Has(ECS, e))
+                        continue;
+                    void* data = entry.Data(ECS, e);
+                    if (field.GetValue(data) == target)
+                        field.SetValue(data, none);
+                }
+            }
+        }
     }
 
     //-----------------------------------------------------------------------------
@@ -703,7 +884,12 @@ namespace Editor
 
     void SceneEditor::RecordUndo()
     {
-        m_UndoStack.push_back(Snapshot());
+        PushUndo(Snapshot());
+    }
+
+    void SceneEditor::PushUndo(std::vector<std::uint8_t> snapshot)
+    {
+        m_UndoStack.push_back(std::move(snapshot));
         if (m_UndoStack.size() > MAX_UNDO)
             m_UndoStack.erase(m_UndoStack.begin());
         m_RedoStack.clear();

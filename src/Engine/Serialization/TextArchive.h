@@ -7,7 +7,7 @@
 // text without any change:
 //
 //   numbers   shortest decimal that reads back to the exact same bits
-//             (floats: 0.1, 3.5, -0, inf, nan)
+//             (floats: 0.1, 3.5, 100, -0, inf, nan)
 //   bool      true / false
 //   enums     their integer value
 //   strings   "quoted" with \" \\ \n \t \r escapes
@@ -120,6 +120,12 @@ namespace Serialization
         }
 
         /**
+         * \brief One bare word, separated from the previous token (the field
+         *        headers of reflected types: Name:type)
+         */
+        void WriteWord(const std::string& word) { Token(word); }
+
+        /**
          * \brief Write text as is (keywords, separators, comments)
          */
         void Raw(const std::string& text) { m_Text += text; }
@@ -146,6 +152,10 @@ namespace Serialization
                 if (std::memcmp(&back, &value, sizeof(T)) == 0)
                     break;
             }
+            // Whole numbers without an exponent (100, not 1e+02)
+            if (std::strchr(buffer, 'e') != nullptr && std::fabs(value) < static_cast<T>(1e15) &&
+                value == std::floor(value))
+                std::snprintf(buffer, sizeof(buffer), "%.0f", static_cast<double>(value));
             return buffer;
         }
 

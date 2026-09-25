@@ -20,6 +20,8 @@ namespace ScriptNames
     constexpr const char* MovingHazard = "MovingHazard";
     constexpr const char* Projectile = "Projectile";
     constexpr const char* Spawner = "Spawner";
+    constexpr const char* WaypointFollower = "WaypointFollower";
+    constexpr const char* DamageZone = "DamageZone";
     // Scene scripts
     constexpr const char* CollectGame = "CollectGame";
 } // namespace ScriptNames
