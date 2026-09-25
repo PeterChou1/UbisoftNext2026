@@ -3,7 +3,6 @@
 #include "../Camera.h"
 #include "../ECSManager.h"
 #include "../Transform.h"
-#include "../Utils.h"
 #include "SceneComponents.h"
 #include "SceneObjects.h"
 
@@ -18,14 +17,17 @@ namespace SceneCamera
     {
         constexpr float TO_RADIANS = 3.14159265358979f / 180.0f;
 
-        bool Near(float a, float b) { return std::fabs(a - b) <= 1e-5f; }
+        bool Near(float a, float b)
+        {
+            return std::fabs(a - b) <= 1e-5f;
+        }
     } // namespace
 
     bool View::operator==(const View& rhs) const
     {
-        return Near(Target.X, rhs.Target.X) && Near(Target.Y, rhs.Target.Y) && Near(Target.Z, rhs.Target.Z) &&
-               Near(Yaw, rhs.Yaw) && Near(Pitch, rhs.Pitch) && Near(Distance, rhs.Distance) &&
-               Near(FieldOfView, rhs.FieldOfView);
+        return Near(Target.X, rhs.Target.X) && Near(Target.Y, rhs.Target.Y) &&
+               Near(Target.Z, rhs.Target.Z) && Near(Yaw, rhs.Yaw) && Near(Pitch, rhs.Pitch) &&
+               Near(Distance, rhs.Distance) && Near(FieldOfView, rhs.FieldOfView);
     }
 
     Vec3 Forward(float yawDegrees)

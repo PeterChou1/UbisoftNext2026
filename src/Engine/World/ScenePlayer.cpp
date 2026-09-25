@@ -5,9 +5,7 @@
 #include "../GameOptions.h"
 #include "../Input.h"
 #include "../Lighting.h"
-#include "SceneComponents.h"
 #include "SceneLight.h"
-#include "SceneObjects.h"
 #include "app.h"
 
 extern ECSManager ECS;

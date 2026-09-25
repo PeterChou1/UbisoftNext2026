@@ -6,6 +6,7 @@
 #include "World/SceneComponents.h"
 #include "World/SceneObjects.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <string>
@@ -41,7 +42,8 @@ namespace MI
 
         Entity SpawnModel(const ModelDesc& desc)
         {
-            Entity e = SceneObjects::CreateModel(desc.Name, desc.Model, desc.Position, desc.Yaw, desc.Scale);
+            Entity e = SceneObjects::CreateModel(
+                    desc.Name, desc.Model, desc.Position, desc.Yaw, desc.Scale);
             ECS.GetComponent<SceneObject>(e).Tag = desc.Tag;
             SceneObjects::SetBodyType(e, desc.Body);
             if (!desc.Script.empty())
@@ -61,19 +63,42 @@ namespace MI
             }
         }
 
-        Entity PlayerUnit(const char* name, const char* model, const char* script, float scale,
-                          const Vec3& position, int battalion, float health)
+        // A unit fighting for a side: a model with a dynamic body
+        Entity SpawnUnit(const char* name,
+                         const char* model,
+                         const char* tag,
+                         const char* script,
+                         float scale,
+                         const Vec3& position,
+                         std::map<std::string, float> params)
         {
             ModelDesc desc;
             desc.Name = NextName(name);
             desc.Model = model;
-            desc.Tag = Tags::Unit;
+            desc.Tag = tag;
             desc.Script = script;
-            desc.Params = {{"Battalion", static_cast<float>(battalion)}, {"Health", health}};
+            desc.Params = std::move(params);
             desc.Position = position;
             desc.Scale = scale;
             desc.Body = SceneObjects::BodyType::Dynamic;
             return SpawnModel(desc);
+        }
+
+        Entity PlayerUnit(const char* name,
+                          const char* model,
+                          const char* script,
+                          float scale,
+                          const Vec3& position,
+                          int battalion,
+                          float health)
+        {
+            return SpawnUnit(name,
+                             model,
+                             Tags::Unit,
+                             script,
+                             scale,
+                             position,
+                             {{"Battalion", static_cast<float>(battalion)}, {"Health", health}});
         }
     } // namespace
 
@@ -88,24 +113,38 @@ namespace MI
 
     Side SideOf(Entity entity)
     {
-        if (entity == NULL_ENTITY || !ECS.IsEntityAlive(entity) || !ECS.HasComponent<SceneObject>(entity))
+        if (entity == NULL_ENTITY || !ECS.IsEntityAlive(entity) ||
+            !ECS.HasComponent<SceneObject>(entity))
             return Side::Neutral;
         return SideOfTag(ECS.GetComponent<SceneObject>(entity).Tag);
     }
 
     Entity SpawnSoldier(const Vec3& position, int battalion)
     {
-        return PlayerUnit("Soldier", Models::Soldier, Scripts::Soldier, SOLDIER_SCALE, position, battalion, 100.0f);
+        return PlayerUnit("Soldier",
+                          Models::Soldier,
+                          Scripts::Soldier,
+                          SOLDIER_SCALE,
+                          position,
+                          battalion,
+                          100.0f);
     }
 
     Entity SpawnSupport(const Vec3& position, int battalion)
     {
-        return PlayerUnit("Support", Models::Support, Scripts::Support, SUPPORT_SCALE, position, battalion, 100.0f);
+        return PlayerUnit("Support",
+                          Models::Support,
+                          Scripts::Support,
+                          SUPPORT_SCALE,
+                          position,
+                          battalion,
+                          100.0f);
     }
 
     Entity SpawnTank(const Vec3& position, int battalion)
     {
-        return PlayerUnit("Tank", Models::TankHull, Scripts::Tank, TANK_SCALE, position, battalion, 200.0f);
+        return PlayerUnit(
+                "Tank", Models::TankHull, Scripts::Tank, TANK_SCALE, position, battalion, 200.0f);
     }
 
     void SpawnBattalion(const Vec3& position, int count, int battalion, bool support)
@@ -120,35 +159,30 @@ namespace MI
 
     Entity SpawnEnemySoldier(const Vec3& position, float speed, float health)
     {
-        ModelDesc desc;
-        desc.Name = NextName("Enemy");
-        desc.Model = Models::Enemy;
-        desc.Tag = Tags::Enemy;
-        desc.Script = Scripts::EnemySoldier;
-        desc.Params = {{"Speed", speed}, {"Health", health}};
-        desc.Position = position;
-        desc.Scale = SOLDIER_SCALE;
-        desc.Body = SceneObjects::BodyType::Dynamic;
-        return SpawnModel(desc);
+        return SpawnUnit("Enemy",
+                         Models::Enemy,
+                         Tags::Enemy,
+                         Scripts::EnemySoldier,
+                         SOLDIER_SCALE,
+                         position,
+                         {{"Speed", speed}, {"Health", health}});
     }
 
     Entity SpawnEnemyTank(const Vec3& position, float health)
     {
-        ModelDesc desc;
-        desc.Name = NextName("Enemy tank");
-        desc.Model = Models::TankHull;
-        desc.Tag = Tags::Enemy;
-        desc.Script = Scripts::EnemyTank;
-        desc.Params = {{"Health", health}};
-        desc.Position = position;
-        desc.Scale = TANK_SCALE;
-        desc.Body = SceneObjects::BodyType::Dynamic;
-        return SpawnModel(desc);
+        return SpawnUnit("Enemy tank",
+                         Models::TankHull,
+                         Tags::Enemy,
+                         Scripts::EnemyTank,
+                         TANK_SCALE,
+                         position,
+                         {{"Health", health}});
     }
 
     void SpawnEnemyBattalion(const Vec3& position, int count, float speed, float health)
     {
-        Formation(position, count, 0.6f, [&](const Vec3& p) { SpawnEnemySoldier(p, speed, health); });
+        Formation(
+                position, count, 0.6f, [&](const Vec3& p) { SpawnEnemySoldier(p, speed, health); });
     }
 
     Entity SpawnCrystal(const Vec3& position, int amount)

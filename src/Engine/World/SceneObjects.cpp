@@ -3,11 +3,10 @@
 #include "../Camera.h"
 #include "../ECSManager.h"
 #include "../FragShaderTag.h"
-#include "../VertShaderTag.h"
 #include "../Mesh.h"
 #include "../RigidBody.h"
 #include "../Transform.h"
-#include "ColliderShape.h"
+#include "../VertShaderTag.h"
 #include "ShapeGeometry.h"
 
 #include <algorithm>
@@ -28,11 +27,22 @@ namespace SceneObjects
         // Footprint used for bodies / picking of model objects
         constexpr float MODEL_RADIUS = 0.5f;
 
+        // Radius around an empty's position that picks it
+        constexpr float EMPTY_PICK_RADIUS = 0.4f;
+
         Transform MakeTransform(const Vec3& position, float yawDegrees)
         {
             Transform t(position, Quat(Vec3(0, 1, 0), yawDegrees * DEG_TO_RAD));
             t.Plane = XZ;
             return t;
+        }
+
+        std::vector<Vec2> CircleOutline(float diameter)
+        {
+            Shape2D circle;
+            circle.Type = Shape2DType::Circle;
+            circle.Width = diameter;
+            return ShapeGeometry::Outline(circle);
         }
 
         // The object's footprint: its outline (local x, z) and the shape the
@@ -49,46 +59,45 @@ namespace SceneObjects
         Footprint FootprintOf(Entity entity)
         {
             Footprint footprint;
-            if (ECS.HasComponent<Shape2D>(entity))
+            if (!ECS.HasComponent<Shape2D>(entity))
             {
-                const Shape2D& shape = ECS.GetComponent<Shape2D>(entity);
-                footprint.Outline = ShapeGeometry::Outline(shape);
-                footprint.Width = std::max(shape.Width, 0.01f);
-                footprint.Height = shape.Type == Shape2DType::Rectangle ? std::max(shape.Height, 0.01f)
-                                                                         : footprint.Width;
-                footprint.Radius = std::max(footprint.Width, footprint.Height) * 0.5f;
-                if (shape.Type == Shape2DType::Rectangle)
-                    footprint.Auto = ColliderShapeType::Box;
-                else if (shape.Type == Shape2DType::Circle)
-                    footprint.Auto = ColliderShapeType::Circle;
-                else
-                    footprint.Auto = ColliderShapeType::Polygon;
-                // Polygons: the box and circle around the outline
-                if (shape.Type != Shape2DType::Rectangle && shape.Type != Shape2DType::Circle)
-                {
-                    Vec2 min = footprint.Outline.front(), max = min;
-                    float radius = 0.0f;
-                    for (const Vec2& p : footprint.Outline)
-                    {
-                        min = Vec2(std::min(min.X, p.X), std::min(min.Y, p.Y));
-                        max = Vec2(std::max(max.X, p.X), std::max(max.Y, p.Y));
-                        radius = std::max(radius, std::sqrt(p.X * p.X + p.Y * p.Y));
-                    }
-                    footprint.Width = std::max(max.X - min.X, 0.01f);
-                    footprint.Height = std::max(max.Y - min.Y, 0.01f);
-                    footprint.Radius = std::max(radius, 0.005f);
-                }
+                // Models and empties: a circle of MODEL_RADIUS scaled
+                float scale = ECS.GetComponent<Transform>(entity).LocalScale.X;
+                footprint.Radius = std::max(MODEL_RADIUS * scale, 0.005f);
+                footprint.Width = footprint.Height = footprint.Radius * 2.0f;
+                footprint.Outline = CircleOutline(footprint.Width);
                 return footprint;
             }
-            // Models and empties: a circle of MODEL_RADIUS scaled
-            float scale = ECS.GetComponent<Transform>(entity).LocalScale.X;
-            footprint.Radius = std::max(MODEL_RADIUS * scale, 0.005f);
-            footprint.Width = footprint.Height = footprint.Radius * 2.0f;
-            Shape2D circle;
-            circle.Type = Shape2DType::Circle;
-            circle.Width = footprint.Width;
-            footprint.Outline = ShapeGeometry::Outline(circle);
-            footprint.Auto = ColliderShapeType::Circle;
+            const Shape2D& shape = ECS.GetComponent<Shape2D>(entity);
+            footprint.Outline = ShapeGeometry::Outline(shape);
+            footprint.Width = std::max(shape.Width, 0.01f);
+            switch (shape.Type)
+            {
+            case Shape2DType::Rectangle:
+                footprint.Auto = ColliderShapeType::Box;
+                footprint.Height = std::max(shape.Height, 0.01f);
+                footprint.Radius = std::max(footprint.Width, footprint.Height) * 0.5f;
+                return footprint;
+            case Shape2DType::Circle:
+                footprint.Height = footprint.Width;
+                footprint.Radius = footprint.Width * 0.5f;
+                return footprint;
+            default:
+                break;
+            }
+            // Polygons: the box and circle around the outline
+            footprint.Auto = ColliderShapeType::Polygon;
+            Vec2 min = footprint.Outline.front(), max = min;
+            float radius = 0.0f;
+            for (const Vec2& p : footprint.Outline)
+            {
+                min = Vec2(std::min(min.X, p.X), std::min(min.Y, p.Y));
+                max = Vec2(std::max(max.X, p.X), std::max(max.Y, p.Y));
+                radius = std::max(radius, std::sqrt(p.X * p.X + p.Y * p.Y));
+            }
+            footprint.Width = std::max(max.X - min.X, 0.01f);
+            footprint.Height = std::max(max.Y - min.Y, 0.01f);
+            footprint.Radius = std::max(radius, 0.005f);
             return footprint;
         }
 
@@ -118,6 +127,31 @@ namespace SceneObjects
                 return RigidBody(footprint.Radius * scale);
             }
         }
+
+        // After the shape or collider changed: a body is rebuilt to match
+        void RebuildBody(Entity entity)
+        {
+            BodyType body = GetBodyType(entity);
+            if (body != BodyType::None)
+                SetBodyType(entity, body);
+        }
+
+        bool HasTransform(Entity e)
+        {
+            return e != NULL_ENTITY && ECS.IsEntityAlive(e) && ECS.HasComponent<Transform>(e);
+        }
+
+        void Unlink(Entity child)
+        {
+            Transform& t = ECS.GetComponent<Transform>(child);
+            if (HasTransform(t.Parent))
+            {
+                std::vector<Entity>& siblings = ECS.GetComponent<Transform>(t.Parent).Children;
+                siblings.erase(std::remove(siblings.begin(), siblings.end(), child),
+                               siblings.end());
+            }
+            t.Parent = NULL_ENTITY;
+        }
     } // namespace
 
     const char* BodyTypeName(BodyType type)
@@ -139,7 +173,8 @@ namespace SceneObjects
     {
         Entity e = ECS.CreateEntity();
         ECS.AddComponent<Transform>(e, MakeTransform(desc.Position, desc.YawDegrees));
-        ECS.AddComponent<SceneObject>(e, {desc.Name.empty() ? UniqueName("Shape") : desc.Name, desc.Tag});
+        ECS.AddComponent<SceneObject>(
+                e, {desc.Name.empty() ? UniqueName("Shape") : desc.Name, desc.Tag});
         Shape2D shape = desc.Shape;
         shape.Built = false;
         ECS.AddComponent<Shape2D>(e, shape);
@@ -180,25 +215,6 @@ namespace SceneObjects
                !ECS.HasComponent<Shape2D>(entity) && !ECS.HasComponent<Mesh>(entity);
     }
 
-    namespace
-    {
-        bool HasTransform(Entity e)
-        {
-            return e != NULL_ENTITY && ECS.IsEntityAlive(e) && ECS.HasComponent<Transform>(e);
-        }
-
-        void Unlink(Entity child)
-        {
-            Transform& t = ECS.GetComponent<Transform>(child);
-            if (HasTransform(t.Parent))
-            {
-                std::vector<Entity>& siblings = ECS.GetComponent<Transform>(t.Parent).Children;
-                siblings.erase(std::remove(siblings.begin(), siblings.end(), child), siblings.end());
-            }
-            t.Parent = NULL_ENTITY;
-        }
-    } // namespace
-
     bool SetParent(Entity child, Entity parent)
     {
         if (!HasTransform(child) || (parent != NULL_ENTITY && !HasTransform(parent)))
@@ -224,7 +240,9 @@ namespace SceneObjects
         auto unscale = [](float v, float s) { return std::fabs(s) > 1e-6f ? v / s : v; };
         Quat inverse = frame.Rotation.Inverse();
         Vec3 offset = inverse.RotatePoint(world.LocalPosition - frame.Position);
-        Vec3 position(unscale(offset.X, frame.Scale.X), unscale(offset.Y, frame.Scale.Y), unscale(offset.Z, frame.Scale.Z));
+        Vec3 position(unscale(offset.X, frame.Scale.X),
+                      unscale(offset.Y, frame.Scale.Y),
+                      unscale(offset.Z, frame.Scale.Z));
         Vec3 scale(unscale(world.LocalScale.X, frame.Scale.X),
                    unscale(world.LocalScale.Y, frame.Scale.Y),
                    unscale(world.LocalScale.Z, frame.Scale.Z));
@@ -273,29 +291,31 @@ namespace SceneObjects
     int RepairHierarchy()
     {
         int fixes = 0;
-        std::vector<Entity> living = ECS.GetLivingEntities();
-        for (Entity e : living)
+        std::vector<Entity> objects;
+        for (Entity e : ECS.GetLivingEntities())
         {
-            if (!ECS.HasComponent<Transform>(e))
-                continue;
+            if (ECS.HasComponent<Transform>(e))
+                objects.push_back(e);
+        }
+        for (Entity e : objects)
+        {
             Transform& t = ECS.GetComponent<Transform>(e);
             // Children: alive, with a Transform, pointing back, listed once
             std::vector<Entity> kept;
             for (Entity child : t.Children)
             {
-                bool valid = HasTransform(child) && ECS.GetComponent<Transform>(child).Parent == e &&
+                bool valid = HasTransform(child) &&
+                             ECS.GetComponent<Transform>(child).Parent == e &&
                              std::find(kept.begin(), kept.end(), child) == kept.end();
                 if (valid)
                     kept.push_back(child);
                 else
                     ++fixes;
             }
-            t.Children = kept;
+            t.Children = std::move(kept);
         }
-        for (Entity e : living)
+        for (Entity e : objects)
         {
-            if (!ECS.HasComponent<Transform>(e))
-                continue;
             Transform& t = ECS.GetComponent<Transform>(e);
             if (t.Parent == NULL_ENTITY)
                 continue;
@@ -313,10 +333,8 @@ namespace SceneObjects
             }
         }
         // Loops: walking up from an entity must end at a root
-        for (Entity e : living)
+        for (Entity e : objects)
         {
-            if (!ECS.HasComponent<Transform>(e))
-                continue;
             std::vector<Entity> path;
             Entity it = e;
             while (it != NULL_ENTITY)
@@ -334,11 +352,8 @@ namespace SceneObjects
         }
         if (fixes > 0)
         {
-            for (Entity e : living)
-            {
-                if (ECS.HasComponent<Transform>(e))
-                    ECS.GetComponent<Transform>(e).IsDirty = true;
-            }
+            for (Entity e : objects)
+                ECS.GetComponent<Transform>(e).IsDirty = true;
         }
         return fixes;
     }
@@ -350,14 +365,13 @@ namespace SceneObjects
             ECS.GetComponent<ColliderShape>(entity) = collider;
         else
             ECS.AddComponent<ColliderShape>(entity, collider);
-        BodyType body = GetBodyType(entity);
-        if (body != BodyType::None)
-            SetBodyType(entity, body);
+        RebuildBody(entity);
     }
 
     ColliderShape ColliderShapeOf(Entity entity)
     {
-        return ECS.HasComponent<ColliderShape>(entity) ? ECS.GetComponent<ColliderShape>(entity) : ColliderShape{};
+        return ECS.HasComponent<ColliderShape>(entity) ? ECS.GetComponent<ColliderShape>(entity)
+                                                       : ColliderShape{};
     }
 
     ColliderShapeType EffectiveColliderShape(Entity entity)
@@ -399,7 +413,8 @@ namespace SceneObjects
     {
         if (ECS.HasComponent<Shape2D>(entity))
             return std::max(ECS.GetComponent<Shape2D>(entity).Thickness, 0.05f);
-        return std::max(ECS.GetComponent<Transform>(entity).LocalScale.Y * MODEL_RADIUS * 2.0f, 0.1f);
+        return std::max(ECS.GetComponent<Transform>(entity).LocalScale.Y * MODEL_RADIUS * 2.0f,
+                        0.1f);
     }
 
     void SetBodyType(Entity entity, BodyType type)
@@ -430,9 +445,7 @@ namespace SceneObjects
     {
         if (ECS.HasComponent<Shape2D>(entity))
             ECS.GetComponent<Shape2D>(entity).Built = false;
-        BodyType body = GetBodyType(entity);
-        if (body != BodyType::None)
-            SetBodyType(entity, body);
+        RebuildBody(entity);
     }
 
     void SetYaw(Entity entity, float degrees)
@@ -443,7 +456,8 @@ namespace SceneObjects
 
     float GetYaw(Entity entity)
     {
-        float degrees = ECS.GetComponent<Transform>(entity).GetWorldRotation().GetPitch2D() * RAD_TO_DEG;
+        float degrees =
+                ECS.GetComponent<Transform>(entity).GetWorldRotation().GetPitch2D() * RAD_TO_DEG;
         degrees = std::fmod(degrees, 360.0f);
         if (degrees < 0.0f)
             degrees += 360.0f;
@@ -565,16 +579,9 @@ namespace SceneObjects
         Transform t = ECS.GetComponent<Transform>(entity).GetWorldTransform();
         std::vector<Vec2> local;
         if (ECS.HasComponent<Shape2D>(entity))
-        {
             local = ShapeGeometry::Outline(ECS.GetComponent<Shape2D>(entity));
-        }
         else
-        {
-            Shape2D circle;
-            circle.Type = Shape2DType::Circle;
-            circle.Width = MODEL_RADIUS * 2.0f;
-            local = ShapeGeometry::Outline(circle);
-        }
+            local = CircleOutline(MODEL_RADIUS * 2.0f);
         for (const Vec2& p : local)
             outline.push_back(t.Affine * Vec3(p.X, 0.0f, p.Y));
         return outline;
@@ -604,14 +611,16 @@ namespace SceneObjects
 
     FragShaderTypeID FragmentShaderOf(Entity entity)
     {
-        return ECS.HasComponent<FragShaderTag>(entity) ? ECS.GetComponent<FragShaderTag>(entity).FragAssetId
-                                                       : DefaultFragShaderID;
+        return ECS.HasComponent<FragShaderTag>(entity)
+                       ? ECS.GetComponent<FragShaderTag>(entity).FragAssetId
+                       : DefaultFragShaderID;
     }
 
     VertShaderTypeID VertexShaderOf(Entity entity)
     {
-        return ECS.HasComponent<VertShaderTag>(entity) ? ECS.GetComponent<VertShaderTag>(entity).VertAssetId
-                                                       : DefaultVertShaderID;
+        return ECS.HasComponent<VertShaderTag>(entity)
+                       ? ECS.GetComponent<VertShaderTag>(entity).VertAssetId
+                       : DefaultVertShaderID;
     }
 
     void ApplyCamera(Camera& camera, const Vec3& target, float distance)

@@ -1,6 +1,5 @@
 #include "SceneMenu.h"
 
-#include "Camera.h"
 #include "ECSManager.h"
 #include "GameManager.h"
 #include "UIState.h"

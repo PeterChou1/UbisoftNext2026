@@ -60,8 +60,8 @@ namespace ShapeGeometry
         case Shape2DType::Circle:
             return RegularPolygon(CIRCLE_SEGMENTS, w * 0.5f);
         case Shape2DType::Polygon:
-            return RegularPolygon(
-                    std::clamp(shape.Sides, MIN_POLYGON_SIDES, MAX_POLYGON_SIDES), w * 0.5f);
+            return RegularPolygon(std::clamp(shape.Sides, MIN_POLYGON_SIDES, MAX_POLYGON_SIDES),
+                                  w * 0.5f);
         case Shape2DType::Triangle:
             // Isosceles, pointing towards +Z, CCW seen from above
             return {Vec2(-w * 0.5f, -h * 0.5f), Vec2(0.0f, h * 0.5f), Vec2(w * 0.5f, -h * 0.5f)};
@@ -83,7 +83,7 @@ namespace ShapeGeometry
         const size_t n = outline.size();
 
         // Top face: triangle fan around the centre (the outline is convex)
-        std::uint32_t centre = static_cast<std::uint32_t>(mesh.Vertices.size());
+        constexpr std::uint32_t centre = 0;
         mesh.Vertices.push_back(MakeVertex(Vec3(0.0f, top, 0.0f), up, shape.Color));
         for (const Vec2& p : outline)
             mesh.Vertices.push_back(MakeVertex(Vec3(p.X, top, p.Y), up, shape.Color));

@@ -4,7 +4,6 @@
 #include "FragShaderTag.h"
 #include "MIGame.h"
 #include "MINames.h"
-#include "RigidBody.h"
 #include "World/SceneComponents.h"
 
 #include <algorithm>
@@ -53,8 +52,21 @@ namespace
         return v;
     }
 
-    const char* const PLAYER_TAGS[] = {MI::Tags::Unit, MI::Tags::Wall};
-    const char* const ENEMY_TAGS[] = {MI::Tags::Enemy};
+    // Tags of the objects fighting for `side` (the base optionally)
+    std::vector<const char*> TagsOf(MI::Side side, bool includeBase)
+    {
+        switch (side)
+        {
+        case MI::Side::Player:
+            if (includeBase)
+                return {MI::Tags::Unit, MI::Tags::Wall, MI::Tags::Base};
+            return {MI::Tags::Unit, MI::Tags::Wall};
+        case MI::Side::Enemy:
+            return {MI::Tags::Enemy};
+        default:
+            return {};
+        }
+    }
 } // namespace
 
 //-----------------------------------------------------------------------------
@@ -86,35 +98,28 @@ MetalInvasion* MIUnit::Game() const
 
 Entity MIUnit::NearestOf(MI::Side side, float range, bool includeBase)
 {
-    Vec3 here = Position();
+    return NearestTagged(TagsOf(side, includeBase), range);
+}
+
+Entity MIUnit::NearestTagged(const std::vector<const char*>& tags, float range)
+{
     Entity best = NULL_ENTITY;
     float bestDistance = range;
-    auto consider = [&](Entity e) {
-        if (e == Self())
-            return;
-        if (auto* unit = ScriptOf<MIUnit>(e); unit != nullptr && unit->IsDead())
-            return;
-        float d = Flat(PositionOf(e) - here).GetMagnitude();
-        if (d <= bestDistance)
+    for (const char* tag : tags)
+    {
+        for (Entity e : FindByTag(tag))
         {
-            best = e;
-            bestDistance = d;
+            if (e == Self())
+                continue;
+            if (auto* unit = ScriptOf<MIUnit>(e); unit != nullptr && unit->IsDead())
+                continue;
+            float d = DistanceTo(e);
+            if (d <= bestDistance)
+            {
+                best = e;
+                bestDistance = d;
+            }
         }
-    };
-    if (side == MI::Side::Player)
-    {
-        for (const char* tag : PLAYER_TAGS)
-            for (Entity e : FindByTag(tag))
-                consider(e);
-        if (includeBase)
-            for (Entity e : FindByTag(MI::Tags::Base))
-                consider(e);
-    }
-    else if (side == MI::Side::Enemy)
-    {
-        for (const char* tag : ENEMY_TAGS)
-            for (Entity e : FindByTag(tag))
-                consider(e);
     }
     return best;
 }
@@ -147,6 +152,13 @@ float MIUnit::DistanceTo(Entity other) const
     return Flat(PositionOf(other) - Position()).GetMagnitude();
 }
 
+void MIUnit::ExplodeWithTurret(MITurret& turret)
+{
+    MI::SpawnExplosion(Position(), MI::Side::Neutral);
+    turret.Remove();
+    DestroySelf();
+}
+
 //-----------------------------------------------------------------------------
 // MITurret
 //-----------------------------------------------------------------------------
@@ -158,8 +170,11 @@ void MITurret::Attach(Entity hull, const std::string& hullName)
     m_Cannon = SceneObjects::FindByName(name);
     if (m_Cannon == NULL_ENTITY)
     {
-        m_Cannon = SceneObjects::CreateModel(name, MI::Models::TankCannon, SceneObjects::GetPosition(hull),
-                                             SceneObjects::GetYaw(hull), MI::TANK_SCALE);
+        m_Cannon = SceneObjects::CreateModel(name,
+                                             MI::Models::TankCannon,
+                                             SceneObjects::GetPosition(hull),
+                                             SceneObjects::GetYaw(hull),
+                                             MI::TANK_SCALE);
         ECS.GetComponent<SceneObject>(m_Cannon).Tag = MI::Tags::Turret;
     }
     Follow(hull);
@@ -186,6 +201,20 @@ bool MITurret::Aim(const Vec3& target, float deltaSeconds)
         return true;
     SceneObjects::SetYaw(m_Cannon, (current + std::clamp(diff, -step, step)) * RAD_TO_DEG);
     return false;
+}
+
+void MITurret::Update(Entity hull, float deltaSeconds)
+{
+    Follow(hull);
+    m_Cooldown = std::max(0.0f, m_Cooldown - deltaSeconds);
+}
+
+void MITurret::FireAt(const Vec3& target, float deltaSeconds, MI::Side side)
+{
+    if (!Aim(target, deltaSeconds) || m_Cooldown > 0.0f)
+        return;
+    m_Cooldown = TANK_RELOAD;
+    MI::SpawnBullet(SceneObjects::GetPosition(m_Cannon), SceneObjects::GetYaw(m_Cannon), side);
 }
 
 void MITurret::Remove()
@@ -235,10 +264,7 @@ void MIPlayerUnit::UpdateHighlight()
     // Selected units are drawn with the engine's red shader
     if (!Has<FragShaderTag>(Self()))
         return;
-    FragShaderTag& shader = Get<FragShaderTag>(Self());
-    FragShaderTypeID wanted = m_Selected ? RedShaderID : BlinnPhongID;
-    if (shader.FragAssetId != wanted)
-        shader.FragAssetId = wanted;
+    Get<FragShaderTag>(Self()).FragAssetId = m_Selected ? RedShaderID : BlinnPhongID;
 }
 
 void MISoldier::Act(float deltaSeconds)
@@ -256,17 +282,7 @@ void MISoldier::Act(float deltaSeconds)
 
 void MISupport::Act(float deltaSeconds)
 {
-    Entity nearest = NULL_ENTITY;
-    float best = MINING_RANGE;
-    for (Entity crystal : FindByTag(MI::Tags::Crystal))
-    {
-        float d = DistanceTo(crystal);
-        if (d <= best)
-        {
-            best = d;
-            nearest = crystal;
-        }
-    }
+    Entity nearest = NearestTagged({MI::Tags::Crystal}, MINING_RANGE);
     if (nearest == NULL_ENTITY)
     {
         m_Mining = MINING_TIME;
@@ -290,24 +306,15 @@ void MITank::OnStart()
 
 void MITank::Act(float deltaSeconds)
 {
-    m_Turret.Follow(Self());
-    m_Turret.Cooldown = std::max(0.0f, m_Turret.Cooldown - deltaSeconds);
+    m_Turret.Update(Self(), deltaSeconds);
     Entity target = NearestOf(MI::Side::Enemy, TANK_RANGE);
-    if (target == NULL_ENTITY)
-        return;
-    if (m_Turret.Aim(PositionOf(target), deltaSeconds) && m_Turret.Cooldown <= 0.0f)
-    {
-        m_Turret.Cooldown = TANK_RELOAD;
-        Entity cannon = m_Turret.Cannon();
-        MI::SpawnBullet(PositionOf(cannon), SceneObjects::GetYaw(cannon), MI::Side::Player);
-    }
+    if (target != NULL_ENTITY)
+        m_Turret.FireAt(PositionOf(target), deltaSeconds, MI::Side::Player);
 }
 
 void MITank::OnKilled()
 {
-    MI::SpawnExplosion(Position(), MI::Side::Neutral);
-    m_Turret.Remove();
-    DestroySelf();
+    ExplodeWithTurret(m_Turret);
 }
 
 void MIBase::OnKilled()
@@ -366,8 +373,7 @@ void MIEnemyTank::OnStart()
 
 void MIEnemyTank::OnUpdate(float deltaSeconds)
 {
-    m_Turret.Follow(Self());
-    m_Turret.Cooldown = std::max(0.0f, m_Turret.Cooldown - deltaSeconds);
+    m_Turret.Update(Self(), deltaSeconds);
     Entity target = NearestOf(MI::Side::Player, TANK_RANGE);
     if (target == NULL_ENTITY)
     {
@@ -377,19 +383,12 @@ void MIEnemyTank::OnUpdate(float deltaSeconds)
         return;
     }
     Halt();
-    if (m_Turret.Aim(PositionOf(target), deltaSeconds) && m_Turret.Cooldown <= 0.0f)
-    {
-        m_Turret.Cooldown = TANK_RELOAD;
-        Entity cannon = m_Turret.Cannon();
-        MI::SpawnBullet(PositionOf(cannon), SceneObjects::GetYaw(cannon), MI::Side::Enemy);
-    }
+    m_Turret.FireAt(PositionOf(target), deltaSeconds, MI::Side::Enemy);
 }
 
 void MIEnemyTank::OnKilled()
 {
-    MI::SpawnExplosion(Position(), MI::Side::Neutral);
-    m_Turret.Remove();
-    DestroySelf();
+    ExplodeWithTurret(m_Turret);
 }
 
 //-----------------------------------------------------------------------------
@@ -428,7 +427,8 @@ void MIBullet::OnUpdate(float deltaSeconds)
         return;
     }
     float yaw = Yaw() / RAD_TO_DEG;
-    SetPosition(Position() + Vec3(std::sin(yaw), 0.0f, std::cos(yaw)) * (BULLET_SPEED * deltaSeconds));
+    SetPosition(Position() +
+                Vec3(std::sin(yaw), 0.0f, std::cos(yaw)) * (BULLET_SPEED * deltaSeconds));
 }
 
 void MIBullet::OnCollisionEnter(Entity other)
@@ -454,25 +454,17 @@ void MIExplosion::OnStart()
     // tank's explosion (Enemy < 0) is only visual
     if (Param("Enemy") < -0.5f)
         return;
-    MI::Side attacker = Param("Enemy") > 0.5f ? MI::Side::Enemy : MI::Side::Player;
-    const char* const playerTags[] = {MI::Tags::Unit, MI::Tags::Wall, MI::Tags::Base};
-    const char* const enemyTags[] = {MI::Tags::Enemy};
-    auto blast = [&](const char* tag) {
+    MI::Side victims = Param("Enemy") > 0.5f ? MI::Side::Player : MI::Side::Enemy;
+    for (const char* tag : TagsOf(victims, true))
+    {
         for (Entity e : FindByTag(tag))
         {
-            if (Flat(PositionOf(e) - Position()).GetMagnitude() <= EXPLOSION_RADIUS)
-            {
-                if (auto* unit = ScriptOf<MIUnit>(e))
-                    unit->Damage(EXPLOSION_DAMAGE);
-            }
+            auto* unit = ScriptOf<MIUnit>(e);
+            if (unit != nullptr &&
+                Flat(PositionOf(e) - Position()).GetMagnitude() <= EXPLOSION_RADIUS)
+                unit->Damage(EXPLOSION_DAMAGE);
         }
-    };
-    if (attacker == MI::Side::Enemy)
-        for (const char* tag : playerTags)
-            blast(tag);
-    else
-        for (const char* tag : enemyTags)
-            blast(tag);
+    }
 }
 
 void MIExplosion::OnUpdate(float deltaSeconds)

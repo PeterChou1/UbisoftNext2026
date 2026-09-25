@@ -59,7 +59,6 @@ namespace App
                   const float b)
     {
         auto& state = AppStub::Get();
-        ++state.LinesDrawn;
         // The renderer presents every pixel as a 1 px diagonal line
         if (ex - sx == 1.0f && ey - sy == 1.0f)
         {
@@ -120,12 +119,27 @@ namespace App
         return controller;
     }
 
-    void DrawTriangle(const float p1x, const float p1y, const float, const float p1w,
-                      const float p2x, const float p2y, const float, const float p2w,
-                      const float p3x, const float p3y, const float, const float p3w,
-                      const float r1, const float g1, const float b1,
-                      const float r2, const float g2, const float b2,
-                      const float r3, const float g3, const float b3,
+    void DrawTriangle(const float p1x,
+                      const float p1y,
+                      const float,
+                      const float p1w,
+                      const float p2x,
+                      const float p2y,
+                      const float,
+                      const float p2w,
+                      const float p3x,
+                      const float p3y,
+                      const float,
+                      const float p3w,
+                      const float r1,
+                      const float g1,
+                      const float b1,
+                      const float r2,
+                      const float g2,
+                      const float b2,
+                      const float r3,
+                      const float g3,
+                      const float b3,
                       const bool)
     {
         AppStub::State::DrawnTriangle t;

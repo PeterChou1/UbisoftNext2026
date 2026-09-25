@@ -1,8 +1,8 @@
 #include "SampleScenes.h"
 
+#include "Scripts/Components/GameComponents.h"
 #include "Scripts/MetalInvasion/MINames.h"
 #include "Scripts/MetalInvasion/MIPrefabs.h"
-#include "Scripts/Components/GameComponents.h"
 #include "Scripts/ScriptNames.h"
 
 using Editor::ObjectKind;
@@ -20,7 +20,8 @@ namespace
     const Vec3 PURPLE = {0.60f, 0.40f, 0.85f};
     const Vec3 TEAL = {0.25f, 0.70f, 0.70f};
 
-    PlaceSettings Brush(float w, float h, const Vec3& color, BodyType body, const std::string& tag = "")
+    PlaceSettings
+    Brush(float w, float h, const Vec3& color, BodyType body, const std::string& tag = "")
     {
         PlaceSettings s;
         s.Width = w;
@@ -42,7 +43,8 @@ namespace
 
     Entity PlacePlayer(SceneEditor& editor, const Vec3& at)
     {
-        Entity player = editor.Place(ObjectKind::Circle, at, Brush(1.0f, 1.0f, BLUE, BodyType::Dynamic, "Player"));
+        Entity player = editor.Place(
+                ObjectKind::Circle, at, Brush(1.0f, 1.0f, BLUE, BodyType::Dynamic, "Player"));
         editor.SetScript(player, ScriptNames::PlayerController);
         return player;
     }
@@ -68,11 +70,13 @@ namespace
         editor.Place(ObjectKind::Rectangle, {-w * 0.5f, 0, 0}, side);
     }
 
+    // Just the field
     void Empty(SceneEditor& editor)
     {
         editor.NewScene();
     }
 
+    // CollectGame level 1: pickups and walls
     void Level1(SceneEditor& editor)
     {
         editor.NewScene();
@@ -83,7 +87,8 @@ namespace
         PlaceSettings wall = Brush(8.0f, 0.6f, GREY, BodyType::Static, "Wall");
         wall.Thickness = 0.8f;
         editor.Place(ObjectKind::Rectangle, {0, 0, 0}, wall);
-        const Vec3 pickups[] = {{-8, 0, -5}, {8, 0, -5}, {-8, 0, 5}, {8, 0, 5}, {0, 0, 4}, {-3, 0, 6}};
+        const Vec3 pickups[] = {
+                {-8, 0, -5}, {8, 0, -5}, {-8, 0, 5}, {8, 0, 5}, {0, 0, 4}, {-3, 0, 6}};
         for (const Vec3& p : pickups)
             PlacePickup(editor, p);
         editor.SetSceneScript(ScriptNames::CollectGame);
@@ -92,6 +97,7 @@ namespace
         AimCamera(editor, {0, 0, -1}, 24.0f);
     }
 
+    // CollectGame level 2: patrolling hazards and a turret
     void Level2(SceneEditor& editor)
     {
         editor.NewScene();
@@ -114,7 +120,13 @@ namespace
         Entity t = editor.Place(ObjectKind::Triangle, {-12, 0, 7}, turret);
         editor.SetScript(t, ScriptNames::Spawner);
         editor.SetScriptParam(t, "Interval", 1.5f);
-        const Vec3 pickups[] = {{-10, 0, -6}, {10, 0, -6}, {-10, 0, 7}, {10, 0, 7}, {0, 0, 8}, {5, 0, 0}, {-5, 0, 0}};
+        const Vec3 pickups[] = {{-10, 0, -6},
+                                {10, 0, -6},
+                                {-10, 0, 7},
+                                {10, 0, 7},
+                                {0, 0, 8},
+                                {5, 0, 0},
+                                {-5, 0, 0}};
         for (const Vec3& p : pickups)
             PlacePickup(editor, p);
         editor.SetSceneScript(ScriptNames::CollectGame);
@@ -129,7 +141,8 @@ namespace
         editor.NewScene(false);
         Entity root = editor.AddEmpty({0, 0, 0});
         editor.Rename(root, "Turret");
-        Entity base = editor.Create(ObjectKind::Rectangle, {0, 0, 0}, root, Brush(1.2f, 1.2f, GREY, BodyType::Static));
+        Entity base = editor.Create(
+                ObjectKind::Rectangle, {0, 0, 0}, root, Brush(1.2f, 1.2f, GREY, BodyType::Static));
         editor.Rename(base, "Base");
         PlaceSettings head = Brush(0.8f, 0.8f, RED, BodyType::None);
         head.Thickness = 0.5f;
@@ -144,6 +157,7 @@ namespace
         return editor.CaptureStage("turret");
     }
 
+    // Every shape type, crates, a chaser, 3D models, components and a hierarchy
     void Sandbox(SceneEditor& editor)
     {
         // The turret prefab is built first (in its own stage)
@@ -151,7 +165,10 @@ namespace
         editor.NewScene();
         Entity player = PlacePlayer(editor, {0, 0, -8});
         // One of every shape, spinning
-        const ObjectKind kinds[] = {ObjectKind::Rectangle, ObjectKind::Circle, ObjectKind::Triangle, ObjectKind::Polygon};
+        const ObjectKind kinds[] = {ObjectKind::Rectangle,
+                                    ObjectKind::Circle,
+                                    ObjectKind::Triangle,
+                                    ObjectKind::Polygon};
         const Vec3 colors[] = {RED, GREEN, PURPLE, TEAL};
         for (int i = 0; i < 4; ++i)
         {
@@ -164,9 +181,13 @@ namespace
         }
         // Crates to push around (dynamic bodies, no script)
         for (int i = 0; i < 3; ++i)
-            editor.Place(ObjectKind::Rectangle, {-3.0f + 3.0f * i, 0, -2}, Brush(1.0f, 1.0f, GREY, BodyType::Dynamic));
+            editor.Place(ObjectKind::Rectangle,
+                         {-3.0f + 3.0f * i, 0, -2},
+                         Brush(1.0f, 1.0f, GREY, BodyType::Dynamic));
         // Something that chases the player
-        Entity chaser = editor.Place(ObjectKind::Triangle, {10, 0, -10}, Brush(1.0f, 1.2f, RED, BodyType::Trigger, "Enemy"));
+        Entity chaser = editor.Place(ObjectKind::Triangle,
+                                     {10, 0, -10},
+                                     Brush(1.0f, 1.2f, RED, BodyType::Trigger, "Enemy"));
         editor.SetScript(chaser, ScriptNames::Follower);
         editor.SetScriptParam(chaser, "Range", 12.0f);
 
@@ -183,26 +204,34 @@ namespace
             editor.AddComponent(points[i], ComponentNames::Waypoint);
         }
         for (int i = 0; i < 3; ++i)
-            editor.SetField(points[i], ComponentNames::Waypoint, "Next", static_cast<std::int64_t>(points[(i + 1) % 3]));
+            editor.SetField(points[i],
+                            ComponentNames::Waypoint,
+                            "Next",
+                            static_cast<std::int64_t>(points[(i + 1) % 3]));
         editor.SetField(points[1], ComponentNames::Waypoint, "WaitSeconds", 1.0);
-        Entity walker = editor.Place(ObjectKind::Polygon, {-12, 0, -8}, Brush(0.8f, 0.8f, BLUE, BodyType::None));
+        Entity walker = editor.Place(
+                ObjectKind::Polygon, {-12, 0, -8}, Brush(0.8f, 0.8f, BLUE, BodyType::None));
         editor.Rename(walker, "Walker");
         editor.SetScript(walker, ScriptNames::WaypointFollower);
         editor.AddComponent(walker, ComponentNames::Waypoint);
-        editor.SetField(walker, ComponentNames::Waypoint, "Next", static_cast<std::int64_t>(points[0]));
+        editor.SetField(
+                walker, ComponentNames::Waypoint, "Next", static_cast<std::int64_t>(points[0]));
         editor.AddComponent(walker, ComponentNames::Faction);
-        editor.SetField(walker, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Neutral));
+        editor.SetField(
+                walker, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Neutral));
         editor.SetField(walker, ComponentNames::Faction, "Title", std::string("Patrol"));
         editor.SetField(walker, ComponentNames::Faction, "Banner", Reflection::FieldValue(BLUE));
 
-        Entity zone = editor.Place(ObjectKind::Rectangle, {6, 0, -6}, Brush(2.0f, 2.0f, RED, BodyType::Trigger));
+        Entity zone = editor.Place(
+                ObjectKind::Rectangle, {6, 0, -6}, Brush(2.0f, 2.0f, RED, BodyType::Trigger));
         editor.Rename(zone, "DamageZone");
         editor.SetThickness(zone, 0.05f);
         editor.SetScript(zone, ScriptNames::DamageZone);
         editor.AddComponent(player, ComponentNames::Health);
         editor.SetField(player, ComponentNames::Health, "DestroyAtZero", false);
         editor.AddComponent(player, ComponentNames::Faction);
-        editor.SetField(player, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Player));
+        editor.SetField(
+                player, ComponentNames::Faction, "Side", static_cast<std::int64_t>(Team::Player));
         editor.SetField(player, ComponentNames::Faction, "Title", std::string("Hero"));
 
         // Hierarchy: an empty spun by a Rotator carries its two children
@@ -213,7 +242,9 @@ namespace
         editor.SetScriptParam(orbit, "Speed", 60.0f);
         for (int i = 0; i < 2; ++i)
         {
-            Entity moon = editor.Place(ObjectKind::Circle, {5.0f + 4.0f * i, 0, 1}, Brush(0.8f, 0.8f, YELLOW, BodyType::None));
+            Entity moon = editor.Place(ObjectKind::Circle,
+                                       {5.0f + 4.0f * i, 0, 1},
+                                       Brush(0.8f, 0.8f, YELLOW, BodyType::None));
             editor.Rename(moon, "Moon_" + std::to_string(i + 1));
             editor.SetParent(moon, orbit);
         }
@@ -245,6 +276,7 @@ namespace
         editor.SetVertexShader(column, SwayVertShaderID);
         AimCamera(editor, {0, 0, -1}, 30.0f);
     }
+
     // Metal Invasion: the field, the player's base and the game's scene
     // script. Everything else (crystals, units, enemies) is spawned by the
     // scripts while playing
@@ -272,18 +304,15 @@ namespace SampleScenes
     const std::vector<SampleScene>& All()
     {
         static const std::vector<SampleScene> scenes = {
-                {"empty", "Just the field", Empty},
-                {"level_1", "CollectGame level 1: pickups and walls", Level1},
-                {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
-                {"sandbox", "Every shape type, crates, a chaser, 3D models, components and a hierarchy", Sandbox},
-                {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel, true},
+                {"empty", Empty},
+                {"level_1", Level1},
+                {"level_2", Level2},
+                {"sandbox", Sandbox},
+                {"metal_invasion", MetalInvasionLevel, true},
         };
         return scenes;
     }
-} // namespace SampleScenes
 
-namespace SampleScenes
-{
     const std::vector<SamplePrefab>& Prefabs()
     {
         static const std::vector<SamplePrefab> prefabs = {{"turret", TurretPrefab}};
@@ -292,6 +321,7 @@ namespace SampleScenes
 
     Serialization::SaveFormat FormatOf(const SampleScene& scene)
     {
-        return scene.PlainText ? Serialization::SaveFormat::Text : Serialization::SaveFormat::Binary;
+        return scene.PlainText ? Serialization::SaveFormat::Text
+                               : Serialization::SaveFormat::Binary;
     }
 } // namespace SampleScenes

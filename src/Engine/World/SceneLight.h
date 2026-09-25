@@ -62,7 +62,9 @@ struct SceneLight
 
 REFLECT(SceneLight)
 {
-    Field("Type", &SceneLight::Type).Options({"Directional", "Spot"}).Tooltip("Directional: a sun. Spot: a cone");
+    Field("Type", &SceneLight::Type)
+            .Options({"Directional", "Spot"})
+            .Tooltip("Directional: a sun. Spot: a cone");
     Field("Color", &SceneLight::Color).AsColor();
     Field("Intensity", &SceneLight::Intensity)
             .Range(0.0f, 3.0f)
@@ -73,9 +75,17 @@ REFLECT(SceneLight)
             .Range(0.0f, 1.0f)
             .Step(0.05f)
             .Tooltip("Light every surface gets, also in shadow");
-    Field("Pitch", &SceneLight::Pitch).Range(5.0f, 89.0f).Step(5.0f).Tooltip("Degrees shining down");
-    Field("Spread", &SceneLight::Spread).Range(30.0f, 150.0f).Step(10.0f).Tooltip("Spot: cone angle (degrees)");
-    Field("Shadows", &SceneLight::Shadows).Label("Shadow").Tooltip("Cast shadows (software renderer, Tab)");
+    Field("Pitch", &SceneLight::Pitch)
+            .Range(5.0f, 89.0f)
+            .Step(5.0f)
+            .Tooltip("Degrees shining down");
+    Field("Spread", &SceneLight::Spread)
+            .Range(30.0f, 150.0f)
+            .Step(10.0f)
+            .Tooltip("Spot: cone angle (degrees)");
+    Field("Shadows", &SceneLight::Shadows)
+            .Label("Shadow")
+            .Tooltip("Cast shadows (software renderer, Tab)");
 }
 
 namespace SceneLighting
@@ -124,21 +134,10 @@ namespace SceneLighting
     Settings Current();
 
     /**
-     * \brief Axis aligned box around the scene's geometry (the renderer's
-     *        vertex buffer), false when there is none
-     */
-    bool SceneBounds(Vec3& min, Vec3& max);
-
-    /**
-     * \brief Place and colour the renderer's light. A directional light's
-     *        shadow box is fitted around sceneMin .. sceneMax
-     */
-    void Apply(Lighting& lighting, const Settings& settings, const Vec3& sceneMin, const Vec3& sceneMax);
-    void Apply(Lighting& lighting, const Settings& settings);
-
-    /**
-     * \brief Apply the current light, and tell the renderer whether it casts
-     *        shadows (GameOptions::LightShadows). Called every frame
+     * \brief Place and colour the renderer's light with the current light (a
+     *        directional light's shadow box is fitted around the scene), and
+     *        tell the renderer whether it casts shadows
+     *        (GameOptions::LightShadows). Called every frame
      */
     void Update(Lighting& lighting, GameOptions& options);
 
