@@ -49,6 +49,13 @@ namespace Prefab
         ar(object.Position, object.Rotation, object.Scale);
         ar(object.Type, object.Shape, object.Model, object.Body);
         ar(object.Script, object.ScriptParams, object.Components);
+        if (ar.Version() >= 2)
+            ar(object.FragShader, object.VertShader);
+        else if constexpr (Archive::IsLoading)
+        {
+            object.FragShader = object.Type == ObjectType::Model ? BlinnPhongID : ShapeShaderID;
+            object.VertShader = DefaultVertShaderID;
+        }
     }
 
     namespace
@@ -158,6 +165,7 @@ namespace Prefab
             if (Serialization::Crc32(payload, size) != crc)
                 throw SerializationError("checksum mismatch (the file is damaged)");
             Serialization::InputArchive ar(payload, size);
+            ar.SetVersion(version);
             ar(prefab.Name, prefab.Objects);
             if (!ar.AtEnd())
                 throw SerializationError("trailing data after the prefab");
@@ -183,9 +191,9 @@ namespace Prefab
             };
             if (!next() || line.rfind(TEXT_MAGIC, 0) != 0)
                 throw SerializationError("not a prefab file");
+            std::uint32_t version = 0;
             {
                 TextInputArchive header(line.substr(std::string(TEXT_MAGIC).size()), number);
-                std::uint32_t version = 0;
                 header(version);
                 if (version == 0 || version > FORMAT_VERSION)
                     header.Fail("prefab format version " + std::to_string(version) + " is newer than this program");
@@ -207,6 +215,7 @@ namespace Prefab
                 if (!next() || line.rfind("object ", 0) != 0)
                     throw SerializationError("line " + std::to_string(number) + ": expected an object record");
                 TextInputArchive object(line.substr(7), number);
+                object.SetVersion(version);
                 Object o;
                 object(o);
                 if (!object.AtEnd())
@@ -288,6 +297,10 @@ namespace Prefab
                 o.Type = ObjectType::Model;
                 o.Model = ECS.GetComponent<Mesh>(e).Model;
             }
+            if (ECS.HasComponent<FragShaderTag>(e))
+                o.FragShader = ECS.GetComponent<FragShaderTag>(e).FragAssetId;
+            if (ECS.HasComponent<VertShaderTag>(e))
+                o.VertShader = ECS.GetComponent<VertShaderTag>(e).VertAssetId;
             o.Body = SceneObjects::GetBodyType(e);
             if (ECS.HasComponent<ScriptComponent>(e))
             {
@@ -339,6 +352,8 @@ namespace Prefab
             else
                 e = SceneObjects::CreateEmpty(name, {0, 0, 0});
             ECS.GetComponent<SceneObject>(e).Tag = o.Tag;
+            if (o.Type != ObjectType::Empty)
+                SceneObjects::SetShaders(e, o.FragShader, o.VertShader);
 
             Transform& t = ECS.GetComponent<Transform>(e);
             if (i == 0)
@@ -394,11 +409,13 @@ namespace Prefab
         if (format == Serialization::SaveFormat::Text)
         {
             Serialization::TextOutputArchive ar;
+            ar.SetVersion(FORMAT_VERSION);
             ar.Raw(std::string(TEXT_MAGIC) + " " + std::to_string(FORMAT_VERSION));
             ar.NewLine();
             ar.Raw("# Prefab: one line per object, the root first. Object fields: name, tag, parent\n"
                    "# (-1 = root), position, rotation, scale, type (0 empty 1 shape 2 model), shape,\n"
-                   "# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, components\n");
+                   "# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, components,\n"
+                   "# fragment shader, vertex shader (see Assets.h)\n");
             ar.Raw("prefab");
             auto count = static_cast<std::uint32_t>(copy.Objects.size());
             ar(copy.Name, count);
@@ -414,6 +431,7 @@ namespace Prefab
             return std::vector<std::uint8_t>(ar.Text().begin(), ar.Text().end());
         }
         Serialization::OutputArchive payload;
+        payload.SetVersion(FORMAT_VERSION);
         payload(copy.Name, copy.Objects);
         Serialization::OutputArchive ar;
         ar.WriteBytes(MAGIC, sizeof(MAGIC));

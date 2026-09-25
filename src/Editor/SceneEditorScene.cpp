@@ -36,6 +36,15 @@ namespace
     constexpr float ZOOM_SPEED = 25.0f;
     constexpr float MIN_DISTANCE = 6.0f;
     constexpr float MAX_DISTANCE = 90.0f;
+    // Degrees per second of the arrow keys, units per second of E / V
+    constexpr float ORBIT_SPEED = 90.0f;
+    constexpr float TILT_SPEED = 45.0f;
+    constexpr float MIN_PITCH = 10.0f;
+    constexpr float MAX_PITCH = 89.0f;
+    constexpr float RISE_SPEED = 8.0f;
+    constexpr float MAX_VIEW_HEIGHT = 50.0f;
+    // I / K raise / lower the selection by this much
+    constexpr float HEIGHT_STEP = 0.5f;
     // Camera of the prefab stage
     constexpr float PREFAB_DISTANCE = 14.0f;
 
@@ -46,6 +55,12 @@ namespace
     const Vec3 CHILD_OFFSET = {1.0f, 0.0f, 0.0f};
     // Smallest scrollbar thumb
     constexpr float MIN_THUMB = 20.0f;
+    // The Controls panel, over the scene view
+    constexpr float CONTROLS_X = LEFT_W + 12.0f;
+    constexpr float CONTROLS_W = SCREEN_W - LEFT_W - INSPECTOR_W - 24.0f;
+    constexpr float CONTROLS_TOP = PANEL_TOP - 12.0f;
+    constexpr float CONTROLS_BOTTOM = PANEL_BOTTOM + 12.0f;
+    constexpr float CONTROLS_ROW = 19.0f;
 
     // Text fields that edit the selected object or the scene settings
     bool InObjectFields(int id)
@@ -80,8 +95,7 @@ void SceneEditorScene::Setup()
     m_Light->SetPositionAndTarget(Vec3(0.0f, 25.0f, -5.0f), Vec3(0.0f, 0.0f, 0.0f));
     m_Cam->SetProjectionPerspective();
 
-    m_CamTarget = Vec3(0, 0, 0);
-    m_CamDistance = 30.0f;
+    m_View = DefaultView();
     m_Dragging = false;
     m_AssetDrag = false;
     m_PlaceKind = AssetKind::None;
@@ -119,7 +133,11 @@ void SceneEditorScene::Update(float deltaTime)
     if (Input::WasPressed(App::KEY_P) && !m_PrefabMode)
         TogglePlay();
     if (m_Editor.IsPlaying())
+    {
+        // The game camera (scripts may move it, or drive the camera themselves)
+        m_PlayCamera.Update(*m_Cam);
         return;
+    }
 
     UpdateCamera(deltaSeconds);
     UpdateShortcuts();
@@ -156,6 +174,8 @@ void SceneEditorScene::Render()
     }
 
     RenderOverlay();
+    if (m_ShowControls)
+        RenderControlsPanel();
     RenderLeftPanel();
     RenderInspector();
     RenderStatusBar();
@@ -183,24 +203,69 @@ void SceneEditorScene::Render()
 // Input
 //-----------------------------------------------------------------------------
 
+SceneCamera::View SceneEditorScene::DefaultView()
+{
+    // Where the scenes' camera used to be: looking at the field's centre
+    SceneCamera::View view;
+    view.Distance = 30.0f;
+    return view;
+}
+
+void SceneEditorScene::SetEditorView(const SceneCamera::View& view)
+{
+    m_View = view;
+    m_View.Distance = std::clamp(m_View.Distance, MIN_DISTANCE, MAX_DISTANCE);
+    m_View.Pitch = std::clamp(m_View.Pitch, MIN_PITCH, MAX_PITCH);
+    m_View.Target.Y = std::clamp(m_View.Target.Y, -MAX_VIEW_HEIGHT, MAX_VIEW_HEIGHT);
+    m_View.Yaw = std::fmod(m_View.Yaw, 360.0f);
+    if (m_View.Yaw < 0.0f)
+        m_View.Yaw += 360.0f;
+    // The editor always looks with the default lens
+    m_View.FieldOfView = 90.0f;
+    SceneCamera::Apply(*m_Cam, m_View);
+}
+
 void SceneEditorScene::UpdateCamera(float deltaSeconds)
 {
-    float pan = PAN_SPEED * deltaSeconds * (m_CamDistance / 30.0f);
+    SceneCamera::View view = m_View;
+    // Pan along the ground, relative to where the view looks
+    float pan = PAN_SPEED * deltaSeconds * (view.Distance / 30.0f);
+    Vec3 forward = SceneCamera::Forward(view.Yaw) * pan;
+    Vec3 right = SceneCamera::Right(view.Yaw) * pan;
     if (Input::IsDown(App::KEY_W))
-        m_CamTarget.Z += pan;
+        view.Target = view.Target + forward;
     if (Input::IsDown(App::KEY_S))
-        m_CamTarget.Z -= pan;
+        view.Target = view.Target - forward;
     if (Input::IsDown(App::KEY_A))
-        m_CamTarget.X -= pan;
+        view.Target = view.Target - right;
     if (Input::IsDown(App::KEY_D))
-        m_CamTarget.X += pan;
+        view.Target = view.Target + right;
+    // Orbit around the target and tilt
+    if (Input::IsDown(App::KEY_LEFT))
+        view.Yaw -= ORBIT_SPEED * deltaSeconds;
+    if (Input::IsDown(App::KEY_RIGHT))
+        view.Yaw += ORBIT_SPEED * deltaSeconds;
+    if (Input::IsDown(App::KEY_UP))
+        view.Pitch += TILT_SPEED * deltaSeconds;
+    if (Input::IsDown(App::KEY_DOWN))
+        view.Pitch -= TILT_SPEED * deltaSeconds;
+    // Up / down (Q is the framework's quit key)
+    if (Input::IsDown(App::KEY_E))
+        view.Target.Y += RISE_SPEED * deltaSeconds;
+    if (Input::IsDown(App::KEY_V))
+        view.Target.Y -= RISE_SPEED * deltaSeconds;
     if (Input::IsDown(App::KEY_Z))
-        m_CamDistance -= ZOOM_SPEED * deltaSeconds;
+        view.Distance -= ZOOM_SPEED * deltaSeconds;
     if (Input::IsDown(App::KEY_C))
-        m_CamDistance += ZOOM_SPEED * deltaSeconds;
-    m_CamDistance = std::clamp(m_CamDistance, MIN_DISTANCE, MAX_DISTANCE);
-
-    SceneObjects::ApplyCamera(*m_Cam, m_CamTarget, m_CamDistance);
+        view.Distance += ZOOM_SPEED * deltaSeconds;
+    if (Input::WasPressed(App::KEY_HOME))
+    {
+        view = DefaultView();
+        if (m_PrefabMode)
+            view.Distance = PREFAB_DISTANCE;
+        SetStatus("View reset (Home)");
+    }
+    SetEditorView(view);
 }
 
 void SceneEditorScene::UpdateShortcuts()
@@ -210,6 +275,11 @@ void SceneEditorScene::UpdateShortcuts()
     // Esc stops placing an asset
     for (char c : Input::TypedText())
     {
+        if (c == 27 && m_ShowControls)
+        {
+            m_ShowControls = false;
+            continue;
+        }
         if (c == 27 && m_PlaceKind != AssetKind::None)
         {
             m_PlaceKind = AssetKind::None;
@@ -217,8 +287,16 @@ void SceneEditorScene::UpdateShortcuts()
             SetStatus("Stopped placing");
         }
     }
-    if (Input::WasPressed(App::KEY_R))
+    if (Input::WasPressed(App::KEY_R) || Input::WasPressed(App::KEY_L))
         RotateSelected(ROTATE_STEP);
+    if (Input::WasPressed(App::KEY_J))
+        RotateSelected(-ROTATE_STEP);
+    if (Input::WasPressed(App::KEY_I))
+        RaiseSelected(HEIGHT_STEP);
+    if (Input::WasPressed(App::KEY_K))
+        RaiseSelected(-HEIGHT_STEP);
+    if (Input::WasPressed(App::KEY_H))
+        ToggleControls();
     if (Input::WasPressed(App::KEY_X))
         DeleteSelected();
     if (Input::WasPressed(App::KEY_F))
@@ -239,7 +317,8 @@ bool SceneEditorScene::MouseOverUI() const
     float x = m_UI->mouseX;
     float y = m_UI->mouseY;
     return m_UI->openDropDownId != 0 || m_Menu.Contains(x, y) || x < LEFT_W || x > SCREEN_W - INSPECTOR_W ||
-           y > SCREEN_H - TOOLBAR_H || y < STATUS_H;
+           y > SCREEN_H - TOOLBAR_H || y < STATUS_H ||
+           (m_ShowControls && Inside(x, y, CONTROLS_X, CONTROLS_BOTTOM, CONTROLS_W, CONTROLS_TOP - CONTROLS_BOTTOM));
 }
 
 bool SceneEditorScene::MouseAtHeight(float height, Vec3& point) const
@@ -270,7 +349,7 @@ Vec3 SceneEditorScene::SnapPoint(const Vec3& point) const
 
 Vec3 SceneEditorScene::ViewCenter() const
 {
-    Vec3 center = m_Editor.ClampToField(SnapPoint(m_CamTarget));
+    Vec3 center = m_Editor.ClampToField(SnapPoint(m_View.Target));
     center.Y = 0.0f;
     return center;
 }
@@ -433,6 +512,16 @@ std::vector<MenuItem> SceneEditorScene::CreateItems(const Vec3& position, Entity
     }
     prefabs.Enabled = !prefabs.Children.empty();
     items.push_back(prefabs);
+    // A scene's game camera (top level only; prefabs have none)
+    if (parent == NULL_ENTITY && !m_PrefabMode)
+    {
+        items.push_back({"Create Camera", [this, position] {
+                             Entity e = m_Editor.AddCamera(position);
+                             SetStatus("Created " + m_Editor.NameOf(e) +
+                                       (m_Editor.GameCameraObject() == e ? " (the game camera)"
+                                                                         : " (the game uses the first camera)"));
+                         }});
+    }
     return items;
 }
 
@@ -474,9 +563,24 @@ std::vector<MenuItem> SceneEditorScene::ObjectItems(Entity e)
                          }});
     }
     items.push_back({"Focus", [this, e] {
-                         Vec3 p = SceneObjects::GetPosition(e);
-                         m_CamTarget = Vec3(p.X, 0.0f, p.Z);
+                         SceneCamera::View view = m_View;
+                         view.Target = SceneObjects::GetPosition(e);
+                         SetEditorView(view);
                      }});
+    if (m_Editor.IsCamera(e))
+    {
+        // Game camera <-> the editor's view
+        items.push_back({"Align with View", [this, e] {
+                             SceneCamera::View view = m_View;
+                             view.FieldOfView = ECS.GetComponent<GameCamera>(e).FieldOfView;
+                             m_Editor.SetCameraView(e, view);
+                             SetStatus(m_Editor.NameOf(e) + " now shows the current view");
+                         }});
+        items.push_back({"View Through Camera", [this, e] {
+                             SetEditorView(SceneCamera::ViewOf(e));
+                             SetStatus("The view shows what " + m_Editor.NameOf(e) + " sees");
+                         }});
+    }
     items.push_back({"Save as Prefab", [this, e] { SaveAsPrefab(e); }});
     std::string prefab = m_Editor.PrefabOf(e);
     if (!prefab.empty())
@@ -529,6 +633,16 @@ void SceneEditorScene::RotateSelected(float degrees)
     Entity selected = m_Editor.Selected();
     if (selected != NULL_ENTITY)
         m_Editor.SetYaw(selected, SceneObjects::GetYaw(selected) + degrees);
+}
+
+void SceneEditorScene::RaiseSelected(float amount)
+{
+    Entity selected = m_Editor.Selected();
+    if (selected == NULL_ENTITY)
+        return;
+    float y = SceneObjects::GetPosition(selected).Y + amount;
+    if (m_Editor.SetHeight(selected, y))
+        SetStatus(m_Editor.NameOf(selected) + " height " + Fmt("%.2f", SceneObjects::GetPosition(selected).Y));
 }
 
 void SceneEditorScene::CreateObject(ObjectKind kind, const Vec3& position, Entity parent, const std::string& model)
@@ -599,6 +713,7 @@ void SceneEditorScene::TogglePlay()
         // Stop: drop the running scripts, then restore the authored world
         GameSceneManager.Scripts().Reset();
         m_Editor.EndPlay();
+        SetEditorView(m_View);
         SetStatus("Stopped, the scene is back to how it was before Play");
         return;
     }
@@ -617,6 +732,9 @@ void SceneEditorScene::TogglePlay()
     m_UI->focusedItem = 0;
     m_Editor.BeginPlay();
     GameSceneManager.Scripts().Reset();
+    // Play shows the scene's game camera; Stop goes back to the editor's view
+    m_PlayCamera.Reset();
+    m_PlayCamera.Update(*m_Cam);
     SetStatus("Playing. Press P or Stop to go back to editing");
 }
 
@@ -852,10 +970,9 @@ bool SceneEditorScene::EditPrefab(const std::string& name)
     m_PlaceKind = AssetKind::None;
     m_UI->focusedItem = 0;
     m_Editor.OpenPrefabStage(&data, name);
-    m_SceneCamTarget = m_CamTarget;
-    m_SceneCamDistance = m_CamDistance;
-    m_CamTarget = Vec3(0, 0, 0);
-    m_CamDistance = PREFAB_DISTANCE;
+    m_SceneView = m_View;
+    m_View = DefaultView();
+    m_View.Distance = PREFAB_DISTANCE;
     SetStatus("Editing prefab " + name + ": Save Prefab, then Back to Scene" +
               (warnings.empty() ? std::string() : " (" + warnings.front() + ")"));
     return true;
@@ -876,10 +993,9 @@ bool SceneEditorScene::NewPrefab()
     m_PlaceKind = AssetKind::None;
     m_UI->focusedItem = 0;
     m_Editor.OpenPrefabStage(nullptr, name);
-    m_SceneCamTarget = m_CamTarget;
-    m_SceneCamDistance = m_CamDistance;
-    m_CamTarget = Vec3(0, 0, 0);
-    m_CamDistance = PREFAB_DISTANCE;
+    m_SceneView = m_View;
+    m_View = DefaultView();
+    m_View.Distance = PREFAB_DISTANCE;
     SetStatus("New prefab " + name + ": right click " + name + " to add objects, then Save Prefab");
     return true;
 }
@@ -918,8 +1034,7 @@ bool SceneEditorScene::BackToScene()
     m_PlaceKind = AssetKind::None;
     m_Editor.Resume(m_Session);
     m_Session = Editor::SceneEditor::Session{};
-    m_CamTarget = m_SceneCamTarget;
-    m_CamDistance = m_SceneCamDistance;
+    m_View = m_SceneView;
     m_PrefabMode = false;
     std::string name = m_PrefabName;
     if (!m_PrefabSaved)
@@ -1113,6 +1228,7 @@ bool SceneEditorScene::RenderToolbar()
             SetStatus("Nothing to redo");
         if (toolbarButton("Back to Scene", 110))
             BackToScene();
+
         if (m_Editor.IsDirty())
             Text(x + 4.0f, RowY(by), "*", ACCENT);
         return true;
@@ -1189,17 +1305,23 @@ void SceneEditorScene::RenderSceneList()
 void SceneEditorScene::RenderStatusBar()
 {
     DrawPanel(0, 0, SCREEN_W, STATUS_H, PANEL_FILL, PANEL_BORDER);
+    // Right end: the Controls panel (also H)
+    float buttonW = std::max(80.0f, UIText::Width("Controls") + 16.0f);
+    float buttonX = SCREEN_W - buttonW - 10.0f;
+    if (Button(NextId(), buttonX, (STATUS_H - BUTTON_H) * 0.5f, *m_UI, buttonW, BUTTON_H, "Controls"))
+        ToggleControls();
+    float room = buttonX - 20.0f;
     if (m_StatusTimer > 0.0f)
-        Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT);
+        Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT, room);
     const char* hints =
             m_Editor.IsPlaying()
                     ? "P stop  (the keyboard goes to the scene's scripts)"
-                    : "Right click: menus  WASD pan  Z/C zoom  R rotate  F duplicate  X delete  U/Y undo/redo  G snap  P play";
+                    : "H: all controls  Right click: menus  WASD pan  arrows orbit/tilt  E/V up/down  Z/C zoom  I/K raise/lower  P play";
     // The tooltip of the field under the mouse replaces the hints
     if (!m_Hint.empty())
-        Text(10.0f, 8.0f, m_Hint, ACCENT);
+        Text(10.0f, 8.0f, m_Hint, ACCENT, room);
     else
-        Text(10.0f, 8.0f, hints, TEXT_DIM);
+        Text(10.0f, 8.0f, hints, TEXT_DIM, room);
 }
 
 void SceneEditorScene::DrawOutline(Entity entity, float r, float g, float b)
@@ -1231,11 +1353,123 @@ void SceneEditorScene::DrawCross(Entity entity, const Color& color, float size)
     line(c, c + Vec3(0.0f, size, 0.0f));
 }
 
+const std::vector<SceneEditorScene::ControlGroup>& SceneEditorScene::Controls()
+{
+    static const std::vector<ControlGroup> groups = {
+            {"SCENE VIEW (the editor's camera)",
+             {{"W A S D", "Pan along the ground"},
+              {"Left / Right", "Orbit around the view's centre"},
+              {"Up / Down", "Tilt: look more down / more across"},
+              {"E / V", "Move the view up / down"},
+              {"Z / C", "Zoom in / out"},
+              {"Home", "Reset the view"}}},
+            {"OBJECTS",
+             {{"Click / drag", "Select / move on the ground"},
+              {"R or L / J", "Rotate +15 / -15 degrees"},
+              {"I / K", "Raise / lower (Pos Y)"},
+              {"F / X", "Duplicate / delete"},
+              {"Right click", "Create here, or the object's menu"},
+              {"Hierarchy drag", "Parent to another object"}}},
+            {"GAME CAMERA (Main Camera object)",
+             {{"Select it", "Its row, its cross or its eye marker"},
+              {"Move / rotate", "Like any object: its target and heading"},
+              {"Inspector", "GameCamera: Distance, Pitch, FOV"},
+              {"Right click it", "Align with View / View Through Camera"},
+              {"P (Play)", "Plays through the game camera"}}},
+            {"EDITING",
+             {{"U / Y", "Undo / redo"},
+              {"G", "Snap to the grid on / off"},
+              {"P", "Play / stop"},
+              {"H", "Show / hide this panel"},
+              {"Esc", "Close a menu or this panel, stop placing"}}},
+    };
+    return groups;
+}
+
+void SceneEditorScene::RenderControlsPanel()
+{
+    DrawPanel(CONTROLS_X, CONTROLS_BOTTOM, CONTROLS_W, CONTROLS_TOP - CONTROLS_BOTTOM, PANEL_FILL, ACCENT);
+    float x = CONTROLS_X + 12.0f;
+    float width = CONTROLS_W - 24.0f;
+    float y = CONTROLS_TOP - 28.0f;
+    Text(x, y, "CONTROLS", ACCENT, width - 80.0f);
+    float closeW = std::max(60.0f, UIText::Width("Close") + 16.0f);
+    if (Button(NextId(), CONTROLS_X + CONTROLS_W - closeW - 8.0f, CONTROLS_TOP - 30.0f, *m_UI, closeW, WIDGET_H,
+               "Close"))
+        m_ShowControls = false;
+    float keysW = std::min(150.0f, width * 0.36f);
+    for (const ControlGroup& group : Controls())
+    {
+        y -= CONTROLS_ROW + 8.0f;
+        if (y < CONTROLS_BOTTOM + 8.0f)
+            break;
+        Text(x, y, group.Title, TEXT_DIM, width);
+        for (const Control& control : group.Controls)
+        {
+            y -= CONTROLS_ROW;
+            if (y < CONTROLS_BOTTOM + 8.0f)
+                break;
+            Text(x + 8.0f, y, control.Keys, TEXT, keysW - 12.0f);
+            Text(x + keysW, y, control.Action, TEXT_DIM, width - keysW);
+        }
+    }
+}
+
+void SceneEditorScene::DrawCameraGizmo(Entity entity, bool selected)
+{
+    // A game camera: a line from its target up to the eye, and a small
+    // pyramid at the eye pointing where it looks (what the game will show)
+    SceneCamera::View view = SceneCamera::ViewOf(entity);
+    Vec3 eye = SceneCamera::EyeOf(view);
+    Vec3 look = view.Target - eye;
+    look.Normalize();
+    Vec3 right = SceneCamera::Right(view.Yaw);
+    Vec3 up = right.Cross(look);
+    up.Normalize();
+    const Color& color = selected ? ACCENT : CAMERA_COLOR;
+    Vec3 forward = m_Cam->Backward * -1.0f;
+    // Points behind the editor's view can not be drawn
+    auto visible = [&](const Vec3& p) { return (p - m_Cam->Position).Dot(forward) > 0.5f; };
+    auto line = [&](const Vec3& a, const Vec3& b) {
+        if (!visible(a) || !visible(b))
+            return;
+        Vec2 sa = m_Cam->WorldPointToScreenSpace(a);
+        Vec2 sb = m_Cam->WorldPointToScreenSpace(b);
+        App::DrawLine(sa.X, sa.Y, sb.X, sb.Y, color.R, color.G, color.B);
+    };
+    line(view.Target, eye);
+    // The pyramid: its size follows the field of view
+    float depth = CAMERA_GIZMO_SIZE;
+    float half = depth * std::tan(std::clamp(view.FieldOfView, 20.0f, 150.0f) * 0.5f * 3.14159265f / 180.0f);
+    Vec3 center = eye + look * depth;
+    Vec3 corners[4] = {center + right * (half * 1.3f) + up * half, center - right * (half * 1.3f) + up * half,
+                       center - right * (half * 1.3f) - up * half, center + right * (half * 1.3f) - up * half};
+    for (int i = 0; i < 4; ++i)
+    {
+        line(eye, corners[i]);
+        line(corners[i], corners[(i + 1) % 4]);
+    }
+    // "Up" marker on the top edge
+    line(corners[0], center + up * (half * 1.8f));
+    line(corners[1], center + up * (half * 1.8f));
+    if (visible(eye))
+    {
+        Vec2 label = m_Cam->WorldPointToScreenSpace(eye);
+        Text(label.X + 8.0f, label.Y + 8.0f, m_Editor.NameOf(entity), color, 120.0f);
+    }
+}
+
 void SceneEditorScene::RenderOverlay()
 {
     if (m_Editor.IsPlaying())
         return;
     Entity selected = m_Editor.Selected();
+    // Game cameras: where they are and what they see
+    for (Entity e : m_Editor.Objects())
+    {
+        if (m_Editor.IsCamera(e))
+            DrawCameraGizmo(e, e == selected);
+    }
     // Empty objects: a cross where they are (they have nothing else to show)
     for (Entity e : m_Editor.Objects())
     {

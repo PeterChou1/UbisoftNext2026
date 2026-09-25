@@ -71,6 +71,9 @@ namespace EditorStyle
     const Color ROW_HOVER = {0.22f, 0.24f, 0.30f};
     // Empties (crosses) and the selection's hierarchy links in the viewport
     const Color EMPTY_COLOR = {0.55f, 0.85f, 1.0f};
+    // Game camera objects: gizmo in the viewport, name in the hierarchy
+    const Color CAMERA_COLOR = {1.0f, 0.85f, 0.35f};
+    constexpr float CAMERA_GIZMO_SIZE = 1.2f;
     const Color PARENT_LINK = {1.0f, 0.55f, 0.25f};
     const Color CHILD_LINK = {0.45f, 0.75f, 1.0f};
 
@@ -84,7 +87,7 @@ namespace EditorStyle
                            {0.85f, 0.85f, 0.85f}};
     constexpr int COLOR_COUNT = sizeof(COLORS) / sizeof(COLORS[0]);
 
-    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner"};
+    const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner", "Camera"};
     constexpr int TAG_COUNT = sizeof(TAGS) / sizeof(TAGS[0]);
 
     // -- Editing steps ----------------------------------------------------------------
@@ -111,6 +114,7 @@ namespace EditorStyle
     constexpr int ID_FIELD_THICK = 17;
     constexpr int ID_FIELD_SCALE = 18;
     constexpr int ID_FIELD_PARENT = 19;
+    constexpr int ID_FIELD_POS_Y = 30;
     constexpr int ID_FIELD_PARAM = 20;
     constexpr int ID_FIELD_LAST_OBJECT = 39;
     // Scene settings fields

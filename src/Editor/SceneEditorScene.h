@@ -25,10 +25,16 @@
 // Prefab writes data/prefabs/<name>.ubprefab; Back to Scene brings the scene
 // back and updates its instances of the prefab.
 //
-// Play runs the scene's C++ scripts inside the editor. Stop restores the
-// scene exactly as it was before Play.
+// Play runs the scene's C++ scripts inside the editor, seen through the
+// scene's game camera object. Stop restores the scene exactly as it was
+// before Play, and the editor's own view.
 //
-// Tutorials: docs/EditorTutorial.md (the editor), docs/ComponentsTutorial.md
+// Cameras: the scene view has its own camera (m_View: WASD, arrows, E / V,
+// Z / C, Home). The game camera is an object of the scene (SceneCamera.h),
+// drawn as a gizmo and edited like any object.
+//
+// Tutorials: docs/EditorTutorial.md (the editor), docs/Controls.md (every
+// control, also the in-editor Controls panel: H), docs/ComponentsTutorial.md
 // (writing components).
 //
 #pragma once
@@ -144,6 +150,32 @@ class SceneEditorScene : public Scene
      */
     std::vector<MenuItem> ObjectItems(Entity entity);
 
+    // -- Editor view (also used by the tests) ---------------------------------------------
+    //
+    // The scene view has its own camera: WASD pans, the arrow keys orbit (left
+    // / right) and tilt (up / down), E / V move it up / down, Z / C zoom and
+    // Home resets it. It never changes the scene's game camera, which is an
+    // object of the scene (see SceneCamera.h).
+    const SceneCamera::View& EditorView() const { return m_View; }
+    void SetEditorView(const SceneCamera::View& view);
+    static SceneCamera::View DefaultView();
+    /**
+     * \brief The Controls panel (toolbar "Controls" or H) lists every control
+     */
+    bool ControlsOpen() const { return m_ShowControls; }
+    void ToggleControls() { m_ShowControls = !m_ShowControls; }
+    struct Control
+    {
+        const char* Keys;
+        const char* Action;
+    };
+    struct ControlGroup
+    {
+        const char* Title;
+        std::vector<Control> Controls;
+    };
+    static const std::vector<ControlGroup>& Controls();
+
     // -- Hierarchy ----------------------------------------------------------------------
     /**
      * \brief Rows of the hierarchy tree as drawn: object and depth (collapsed
@@ -176,6 +208,7 @@ class SceneEditorScene : public Scene
     void DeleteSelected();
     void DuplicateSelected();
     void RotateSelected(float degrees);
+    void RaiseSelected(float amount);
     void CreateObject(Editor::ObjectKind kind, const Vec3& position, Entity parent, const std::string& model = "");
     void PlaceAsset(const Vec3& position);
     void RefreshSceneList();
@@ -196,6 +229,8 @@ class SceneEditorScene : public Scene
     void RenderOverlay();
     void DrawOutline(Entity entity, float r, float g, float b);
     void DrawCross(Entity entity, const Color& color, float size);
+    void DrawCameraGizmo(Entity entity, bool selected);
+    void RenderControlsPanel();
 
     // Left panel (EditorLeftPanel.cpp)
     void RenderLeftPanel();
@@ -315,9 +350,12 @@ class SceneEditorScene : public Scene
     std::string m_ImportPath;
     float m_AssetScroll = 0.0f;
 
-    // -- Camera ---------------------------------------------------------------------------
-    Vec3 m_CamTarget = {0, 0, 0};
-    float m_CamDistance = 30.0f;
+    // -- Cameras --------------------------------------------------------------------------
+    // The editor's own view, separate from the scene's game camera object
+    SceneCamera::View m_View = DefaultView();
+    // While playing, the renderer shows the game camera
+    SceneCamera::Follower m_PlayCamera;
+    bool m_ShowControls = false;
 
     // -- Documents ------------------------------------------------------------------------
     std::string m_SceneDirectory;
@@ -334,9 +372,8 @@ class SceneEditorScene : public Scene
     Editor::SceneEditor::Session m_Session;
     bool m_PrefabSaved = false;
     bool m_ExitPending = false;
-    // The scene's camera while the prefab stage is shown
-    Vec3 m_SceneCamTarget = {0, 0, 0};
-    float m_SceneCamDistance = 30.0f;
+    // The scene's view while the prefab stage is shown
+    SceneCamera::View m_SceneView = DefaultView();
 
     std::string m_Status;
     bool m_StatusIsError = false;

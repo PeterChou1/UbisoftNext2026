@@ -209,8 +209,9 @@ namespace
 
     Entity OnlyObject()
     {
+        // After the field and the Main Camera of a new scene
         std::vector<Entity> objects = Core().Objects();
-        return objects.size() == 2 ? objects[1] : NULL_ENTITY;
+        return objects.size() == 3 ? objects[2] : NULL_ENTITY;
     }
 
     bool Near(float a, float b, float eps = 1e-3f) { return std::fabs(a - b) <= eps; }
@@ -312,14 +313,14 @@ namespace
 TEST_CASE("Editor GUI: right click the ground to create objects there")
 {
     OpenEditor();
-    REQUIRE(Core().Objects().size() == 1);
+    REQUIRE(Core().Objects().size() == 2);
     RightClickGround({2, 0, 3});
     REQUIRE(Gui().Menu().IsOpen());
     CHECK(FindText("Create Empty") != nullptr);
     CHECK(FindText("Create Model") != nullptr);
     REQUIRE(ClickMenu({"Create Triangle"}));
     CHECK(!Gui().Menu().IsOpen());
-    REQUIRE(Core().Objects().size() == 2);
+    REQUIRE(Core().Objects().size() == 3);
     Entity e = OnlyObject();
     CHECK(Core().KindOf(e) == Editor::ObjectKind::Triangle);
     CHECK_EQ(Core().Selected(), e);
@@ -333,8 +334,8 @@ TEST_CASE("Editor GUI: right click the ground to create objects there")
     // Submenus: Create Model > Box
     RightClickGround({-4, 0, -2});
     REQUIRE(ClickMenu({"Create Model", "Box"}));
-    REQUIRE(Core().Objects().size() == 3);
-    CHECK(Core().KindOf(Core().Objects()[2]) == Editor::ObjectKind::Model);
+    REQUIRE(Core().Objects().size() == 4);
+    CHECK(Core().KindOf(Core().Objects()[3]) == Editor::ObjectKind::Model);
 
     // A click elsewhere, a right click or Esc closes the menu without creating
     RightClickGround({5, 0, 5});
@@ -345,10 +346,10 @@ TEST_CASE("Editor GUI: right click the ground to create objects there")
     AppStub::Type("\x1b");
     TestEnvironment::RunFrame(FRAME_MS);
     CHECK(!Gui().Menu().IsOpen());
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     // Each creation is one undo step
     CHECK(Core().Undo());
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
 }
 
 TEST_CASE("Editor GUI: an object's context menu creates children, renames, duplicates and deletes")
@@ -388,13 +389,13 @@ TEST_CASE("Editor GUI: an object's context menu creates children, renames, dupli
     // Duplicate and Delete
     RightClickGround({0, 0, 0});
     REQUIRE(ClickMenu({"Duplicate"}));
-    CHECK_EQ(Core().Objects().size(), size_t(4));
+    CHECK_EQ(Core().Objects().size(), size_t(5));
     Entity copy = Core().Selected();
     CHECK(copy != parent);
     Vec2 s = ScreenOf(SceneObjects::GetPosition(copy));
     RightClick(s.X, s.Y);
     REQUIRE(ClickMenu({"Delete"}));
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     CHECK(AppStub::WasPrinted("Deleted"));
 }
 
@@ -415,13 +416,13 @@ TEST_CASE("Editor GUI: the hierarchy's + button and a right click on its empty p
     Click(plus->X + 2.0f, plus->Y + 4.0f);
     REQUIRE(Gui().Menu().IsOpen());
     REQUIRE(ClickMenu({"Create Empty"}));
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
     CHECK(SceneObjects::IsEmpty(OnlyObject()));
 
     // Empty part of the tree
     RightClick(60.0f, 400.0f);
     REQUIRE(ClickMenu({"Create Polygon"}));
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     CHECK(Core().KindOf(Core().Selected()) == Editor::ObjectKind::Polygon);
 }
 
@@ -440,13 +441,13 @@ TEST_CASE("Editor GUI: place models and prefabs from the Assets list")
     // Every click on the scene places one, until a right click
     ClickGround({3, 0, 3});
     ClickGround({-3, 0, 3});
-    REQUIRE(Core().Objects().size() == 3);
-    CHECK(Core().KindOf(Core().Objects()[1]) == Editor::ObjectKind::Model);
+    REQUIRE(Core().Objects().size() == 4);
+    CHECK(Core().KindOf(Core().Objects()[2]) == Editor::ObjectKind::Model);
     RightClickGround({0, 0, -5});
     CHECK_EQ(Gui().PlacingAsset(), std::string());
     CHECK(!Gui().Menu().IsOpen());
     ClickGround({0, 0, -5});
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
 
     // Drag a prefab onto the scene: dropped where it is released
     const auto* turret = AssetRow("turret");
@@ -455,12 +456,12 @@ TEST_CASE("Editor GUI: place models and prefabs from the Assets list")
     Vec2 target = ScreenOf({-4, 0, -4});
     for (int i = 1; i <= 4; ++i)
         MoveMouse(turret->X + (target.X - turret->X) * i / 4.0f, turret->Y + (target.Y - turret->Y) * i / 4.0f);
-    CHECK_EQ(Core().Objects().size(), size_t(3)); // nothing until released
+    CHECK_EQ(Core().Objects().size(), size_t(4)); // nothing until released
     Release();
     Entity root = Core().Selected();
     CHECK_EQ(Core().PrefabOf(root), std::string("turret"));
     CHECK(std::fabs(SceneObjects::GetPosition(root).X + 4.0f) < 0.3f);
-    CHECK_EQ(Core().Objects().size(), size_t(3 + 4));
+    CHECK_EQ(Core().Objects().size(), size_t(4 + 4));
     // Instances are listed in blue in the hierarchy
     TestEnvironment::RunFrame(FRAME_MS);
     CHECK(TreeRow(Core().NameOf(root)) != nullptr);
@@ -528,13 +529,13 @@ TEST_CASE("Editor GUI: keyboard shortcuts")
     PressKey(App::KEY_R);
     CHECK_EQ(SceneObjects::GetYaw(e), 15.0f);
     PressKey(App::KEY_F);
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     PressKey(App::KEY_X);
-    CHECK_EQ(Core().Objects().size(), size_t(2));
-    PressKey(App::KEY_U);
     CHECK_EQ(Core().Objects().size(), size_t(3));
+    PressKey(App::KEY_U);
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     PressKey(App::KEY_Y);
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
 
     // Holding W pans the camera forward
     Vec2 before = ScreenOf({0, 0, 0});
@@ -586,7 +587,7 @@ TEST_CASE("Editor GUI: the inspector shows the object's components as sections")
     REQUIRE(ClickStepper("Sides", +1, INSPECTOR_X));
     CHECK_EQ(ECS.GetComponent<Shape2D>(e).Sides, 7);
     REQUIRE(ClickStepper("Tag ", -1, INSPECTOR_X));
-    CHECK_EQ(ECS.GetComponent<SceneObject>(e).Tag, std::string("Spawner"));
+    CHECK_EQ(ECS.GetComponent<SceneObject>(e).Tag, std::string("Camera"));
 
     // Add Component opens a menu of what can be added
     REQUIRE(ClickButton("Add Component", INSPECTOR_X));
@@ -629,17 +630,17 @@ TEST_CASE("Editor GUI: the inspector shows the object's components as sections")
 
     // Duplicate / Delete buttons, toolbar Undo / Redo
     REQUIRE(ClickButton("Duplicate", INSPECTOR_X));
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     Entity copy = Core().Selected();
     CHECK(ECS.GetResource<RenderConstants>()->EntityToVertexRange.count(copy) == 1);
     REQUIRE(ClickButton("Delete", INSPECTOR_X));
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
     // Deleted during Render: its geometry still left the renderer
     CHECK(ECS.GetResource<RenderConstants>()->EntityToVertexRange.count(copy) == 0);
     REQUIRE(ClickButton("Undo"));
-    CHECK_EQ(Core().Objects().size(), size_t(3));
+    CHECK_EQ(Core().Objects().size(), size_t(4));
     REQUIRE(ClickButton("Redo"));
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
 }
 
 TEST_CASE("Editor GUI: type positions, rotation and sizes in the inspector")
@@ -706,7 +707,7 @@ TEST_CASE("Editor GUI: typing goes to the field, not to the editor's shortcuts")
     AppStub::Get().Keys[App::KEY_F] = false;
     AppStub::Type("\r");
     TestEnvironment::RunFrame(FRAME_MS);
-    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().Objects().size(), size_t(3));
     CHECK_EQ(Core().NameOf(e), std::string("fox 1 wasd"));
 
     // Names must stay unique
@@ -746,7 +747,8 @@ TEST_CASE("Editor GUI: a long inspector scrolls with its scrollbar")
     // Every shown row is inside the panel
     for (const auto& printed : AppStub::Get().Printed)
     {
-        if (printed.X >= INSPECTOR_X && printed.Y < EditorStyle::PANEL_TOP)
+        // (the status bar's Controls button is below the inspector)
+        if (printed.X >= INSPECTOR_X && printed.Y < EditorStyle::PANEL_TOP && printed.Text != "Controls")
             CHECK(printed.Y >= EditorStyle::PANEL_BOTTOM);
     }
     // Fields scrolled to still work
@@ -788,6 +790,13 @@ TEST_CASE("Editor GUI: add components, edit their generated fields, fold and rem
     // Faction: enum stepper, text, colour swatches, read only value
     REQUIRE(Core().AddComponent(e, "Faction"));
     TestEnvironment::RunFrame(FRAME_MS);
+    // Fold the shape's sections so Faction is in view
+    for (const char* title : {"- Shader", "- Shape2D"})
+    {
+        if (const auto* t = FindText(title, INSPECTOR_X))
+            Click(t->X + 4.0f, t->Y + 4.0f);
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
     REQUIRE(ClickStepper("Side Neutral", 1, INSPECTOR_X));
     CHECK(ECS.GetComponent<Faction>(e).Side == Team::Player);
     REQUIRE(TypeInto("Title", "Blue team\r", INSPECTOR_X));
@@ -969,7 +978,8 @@ TEST_CASE("Editor GUI: New adds a saved scene to the list, rename it, switch sce
     Click(list->X + 20.0f, list->Y + 5.0f);
     REQUIRE(ClickButton("scene_1"));
     CHECK_EQ(Gui().SceneName(), std::string("scene_1"));
-    CHECK_EQ(Core().Objects().size(), size_t(1));
+    // The field and the camera
+    CHECK_EQ(Core().Objects().size(), size_t(2));
 
     // Unsaved changes: the first pick only warns, the second one discards
     Core().Place(Editor::ObjectKind::Circle, {0, 0, 0});
@@ -1180,10 +1190,11 @@ TEST_CASE("Editor GUI: save a group as a prefab, edit it, the scene's instances 
     CHECK_EQ(Core().Objects().size(), objects);
 
     // Unpack from the inspector's Prefab section
-    Core().Select(Core().RootObjects()[1]);
+    // (the field and the camera come first)
+    Core().Select(Core().RootObjects()[2]);
     TestEnvironment::RunFrame(FRAME_MS);
     REQUIRE(ClickButton("Unpack", INSPECTOR_X));
-    CHECK_EQ(Core().PrefabOf(Core().RootObjects()[1]), std::string());
+    CHECK_EQ(Core().PrefabOf(Core().RootObjects()[2]), std::string());
 }
 
 TEST_CASE("Editor GUI: New Prefab starts an empty prefab stage")
@@ -1267,7 +1278,15 @@ TEST_CASE("Editor GUI: text stays centered and inside its widgets at any window 
         REQUIRE(Gui().Menu().IsOpen());
         for (const std::string& item : Gui().Menu().Labels())
         {
-            const auto* printed = FindText(item);
+            // Labels wider than a third of the screen are cut ("Long..")
+            const AppStub::State::PrintedText* printed = nullptr;
+            for (const auto& p : AppStub::Get().Printed)
+            {
+                bool cut = p.Text.size() > 2 && p.Text.compare(p.Text.size() - 2, 2, "..") == 0 &&
+                           item.rfind(p.Text.substr(0, p.Text.size() - 2), 0) == 0;
+                if (p.Text == item || cut)
+                    printed = &p;
+            }
             REQUIRE(printed != nullptr);
             CHECK(printed->X >= 0.0f);
             CHECK(printed->X + UIText::Width(printed->Text) <= APP_VIRTUAL_WIDTH);
@@ -1277,4 +1296,264 @@ TEST_CASE("Editor GUI: text stays centered and inside its widgets at any window 
     }
     UIText::SetWindowSize(APP_VIRTUAL_WIDTH, APP_VIRTUAL_HEIGHT);
     TestEnvironment::RunFrame(FRAME_MS);
+}
+
+//-----------------------------------------------------------------------------
+// The editor's view (its own camera) and the game camera object
+//-----------------------------------------------------------------------------
+
+namespace
+{
+    void HoldKey(App::Key key, int frames)
+    {
+        AppStub::Get().Keys[key] = true;
+        TestEnvironment::RunFrames(frames, FRAME_MS);
+        AppStub::Get().Keys[key] = false;
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
+
+    bool NearVec(const Vec3& a, const Vec3& b, float eps = 1e-3f)
+    {
+        return Near(a.X, b.X, eps) && Near(a.Y, b.Y, eps) && Near(a.Z, b.Z, eps);
+    }
+} // namespace
+
+TEST_CASE("Editor GUI: the view orbits, tilts, rises and resets without touching the game camera")
+{
+    OpenEditor();
+    Gui().SetEditorView(SceneEditorScene::DefaultView());
+    Entity camera = Core().GameCameraObject();
+    REQUIRE(camera != NULL_ENTITY);
+    SceneCamera::View game = SceneCamera::ViewOf(camera);
+    auto renderer = ECS.GetResource<Camera>();
+
+    // Right arrow orbits (yaw), Up tilts (pitch), E / V rise / sink
+    HoldKey(App::KEY_RIGHT, 10);
+    float yaw = Gui().EditorView().Yaw;
+    CHECK(yaw > 5.0f);
+    HoldKey(App::KEY_LEFT, 20);
+    CHECK(Gui().EditorView().Yaw > 180.0f); // wrapped below 0
+    float pitch = Gui().EditorView().Pitch;
+    HoldKey(App::KEY_DOWN, 10);
+    CHECK(Gui().EditorView().Pitch < pitch);
+    HoldKey(App::KEY_UP, 400);
+    CHECK_EQ(Gui().EditorView().Pitch, 89.0f); // clamped
+    HoldKey(App::KEY_E, 10);
+    CHECK(Gui().EditorView().Target.Y > 0.5f);
+    float height = Gui().EditorView().Target.Y;
+    HoldKey(App::KEY_V, 5);
+    CHECK(Gui().EditorView().Target.Y < height);
+    // The renderer shows the editor's view
+    CHECK(NearVec(renderer->Position, SceneCamera::EyeOf(Gui().EditorView()), 0.01f));
+    // ... and the game camera did not move
+    CHECK(SceneCamera::ViewOf(camera) == game);
+
+    // WASD pans relative to where the view looks: looking along +X, W goes +X
+    SceneCamera::View side = SceneEditorScene::DefaultView();
+    side.Yaw = 90.0f;
+    Gui().SetEditorView(side);
+    HoldKey(App::KEY_W, 10);
+    CHECK(Gui().EditorView().Target.X > 1.0f);
+    CHECK(Near(Gui().EditorView().Target.Z, 0.0f, 0.01f));
+
+    // Home resets the view
+    PressKey(App::KEY_HOME);
+    CHECK(Gui().EditorView() == SceneEditorScene::DefaultView());
+}
+
+TEST_CASE("Editor GUI: Play looks through the game camera, Stop brings the editor's view back")
+{
+    OpenEditor();
+    SceneCamera::View editorView = SceneEditorScene::DefaultView();
+    editorView.Yaw = 200.0f;
+    editorView.Distance = 12.0f;
+    Gui().SetEditorView(editorView);
+    SceneCamera::View game;
+    game.Target = {3, 0, 3};
+    game.Distance = 20.0f;
+    Core().SetGameCamera(game);
+    auto renderer = ECS.GetResource<Camera>();
+
+    PressKey(App::KEY_P);
+    REQUIRE(Core().IsPlaying());
+    CHECK(NearVec(renderer->Position, SceneCamera::EyeOf(SceneCamera::Current()), 0.01f));
+    // The editor's camera keys do nothing while playing
+    HoldKey(App::KEY_RIGHT, 5);
+    CHECK_EQ(Gui().EditorView().Yaw, 200.0f);
+    PressKey(App::KEY_P);
+    REQUIRE(!Core().IsPlaying());
+    CHECK(NearVec(renderer->Position, SceneCamera::EyeOf(Gui().EditorView()), 0.01f));
+    CHECK_EQ(Gui().EditorView().Yaw, 200.0f);
+}
+
+TEST_CASE("Editor GUI: the game camera is in the hierarchy, drawn in the view and edited like an object")
+{
+    OpenEditor();
+    Gui().SetEditorView(SceneEditorScene::DefaultView());
+    // Zoomed out and turned so the camera's eye is in front of the view
+    SceneCamera::View away = SceneEditorScene::DefaultView();
+    away.Yaw = 180.0f;
+    away.Distance = 60.0f;
+    Gui().SetEditorView(away);
+    TestEnvironment::RunFrame(FRAME_MS);
+    Entity camera = Core().GameCameraObject();
+    REQUIRE(TreeRow("Main Camera") != nullptr);
+    // Its gizmo: lines and its name near the eye
+    CHECK(!AppStub::Get().Lines.empty());
+    Vec2 eye = ScreenOf(SceneCamera::EyeOf(SceneCamera::ViewOf(camera)));
+    const auto* label = FindText("Main Camera", LEFT_W);
+    REQUIRE(label != nullptr);
+    CHECK(Near(label->X, eye.X + 8.0f, 1.0f));
+
+    // Select it by its hierarchy row: the inspector shows its GameCamera
+    const auto* row = TreeRow("Main Camera");
+    Click(row->X + 4.0f, row->Y + 4.0f);
+    CHECK_EQ(Core().Selected(), camera);
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(FindText("Game camera", INSPECTOR_X, true) != nullptr);
+    if (const auto* folded = FindText("+ GameCamera", INSPECTOR_X))
+        Click(folded->X + 4.0f, folded->Y + 4.0f);
+    REQUIRE(FindText("- GameCamera", INSPECTOR_X) != nullptr);
+    REQUIRE(TypeInto("Dist.", "45\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<GameCamera>(camera).Distance, 45.0f);
+    REQUIRE(ClickStepper("FOV", +1, INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<GameCamera>(camera).FieldOfView, 95.0f);
+    // Moved and turned like any object
+    PressKey(App::KEY_R);
+    CHECK(Near(SceneObjects::GetYaw(camera), 15.0f));
+    REQUIRE(TypeInto("Pos X", "4\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(camera).X, 4.0f);
+
+    // Its menu: View Through Camera, then Align with View
+    Gui().Menu().Open(300.0f, 400.0f, Gui().ObjectItems(camera));
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(ClickMenu({"View Through Camera"}));
+    CHECK(NearVec(Gui().EditorView().Target, SceneObjects::GetPosition(camera)));
+    CHECK(Near(Gui().EditorView().Yaw, 15.0f, 0.01f));
+    SceneCamera::View moved = Gui().EditorView();
+    moved.Target = {-2, 0, -2};
+    Gui().SetEditorView(moved);
+    Gui().Menu().Open(300.0f, 400.0f, Gui().ObjectItems(camera));
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(ClickMenu({"Align with View"}));
+    CHECK(NearVec(SceneObjects::GetPosition(camera), Vec3(-2, 0, -2)));
+    // Keeps its own lens
+    CHECK_EQ(ECS.GetComponent<GameCamera>(camera).FieldOfView, 95.0f);
+
+    // Create Camera from the ground menu
+    RightClickGround({5, 0, 5});
+    REQUIRE(ClickMenu({"Create Camera"}));
+    CHECK(Core().IsCamera(Core().Selected()));
+    CHECK_EQ(Core().GameCameraObject(), camera);
+    Gui().SetEditorView(SceneEditorScene::DefaultView());
+}
+
+TEST_CASE("Editor GUI: raise, lower and turn the selection from the keyboard and the inspector")
+{
+    OpenEditor();
+    Gui().SetEditorView(SceneEditorScene::DefaultView());
+    Entity e = Core().Place(Editor::ObjectKind::Rectangle, {2, 0, 2});
+    Core().Select(e);
+    TestEnvironment::RunFrame(FRAME_MS);
+    PressKey(App::KEY_I);
+    PressKey(App::KEY_I);
+    CHECK_EQ(SceneObjects::GetPosition(e).Y, 1.0f);
+    PressKey(App::KEY_K);
+    CHECK_EQ(SceneObjects::GetPosition(e).Y, 0.5f);
+    CHECK(AppStub::WasPrinted("height 0.50"));
+    PressKey(App::KEY_L);
+    CHECK_EQ(SceneObjects::GetYaw(e), 15.0f);
+    PressKey(App::KEY_J);
+    PressKey(App::KEY_J);
+    CHECK_EQ(SceneObjects::GetYaw(e), 345.0f);
+    // Pos Y in the Transform section
+    REQUIRE(TypeInto("Pos Y", "3\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Y, 3.0f);
+    REQUIRE(ClickStepper("Pos Y", -1, INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Y, 2.5f);
+    // Moving keeps the height, undo takes it back
+    Core().Move(e, {0, 0, 0});
+    CHECK_EQ(SceneObjects::GetPosition(e).Y, 2.5f);
+    REQUIRE(Core().Undo());
+    REQUIRE(Core().Undo());
+    CHECK_EQ(SceneObjects::GetPosition(Core().Objects().back()).Y, 3.0f);
+}
+
+TEST_CASE("Editor GUI: the Shader section picks the fragment and vertex shaders")
+{
+    OpenEditor();
+    Entity e = Core().Place(Editor::ObjectKind::Circle, {0, 0, 0});
+    Core().Select(e);
+    TestEnvironment::RunFrame(FRAME_MS);
+    if (const auto* folded = FindText("+ Shader", INSPECTOR_X))
+        Click(folded->X + 4.0f, folded->Y + 4.0f);
+    // Fold the sections above it so it is in view
+    for (const char* title : {"- Transform", "- Shape2D"})
+    {
+        if (const auto* t = FindText(title, INSPECTOR_X))
+            Click(t->X + 4.0f, t->Y + 4.0f);
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
+    CHECK(FindText("Shape", INSPECTOR_X) != nullptr);
+    REQUIRE(ClickStepper("Frag Shape", +1, INSPECTOR_X));
+    CHECK(SceneObjects::FragmentShaderOf(e) == BlinnPhongID);
+    REQUIRE(ClickStepper("Frag Lit", -1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Frag Shape", -1, INSPECTOR_X));
+    CHECK(SceneObjects::FragmentShaderOf(e) == RedShaderID); // wraps to the last listed one
+    REQUIRE(ClickStepper("Vert Default", +1, INSPECTOR_X));
+    CHECK(SceneObjects::VertexShaderOf(e) == WaveVertShaderID);
+    CHECK(AppStub::WasPrinted("Vertex shader Wave"));
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(FindText("Red + Wave", INSPECTOR_X) != nullptr);
+    // Unfold for the next tests
+    for (const char* title : {"+ Transform", "+ Shape2D"})
+    {
+        TestEnvironment::RunFrame(FRAME_MS);
+        if (const auto* t = FindText(title, INSPECTOR_X))
+            Click(t->X + 4.0f, t->Y + 4.0f);
+    }
+}
+
+TEST_CASE("Editor GUI: the Controls panel lists every control")
+{
+    OpenEditor();
+    CHECK(!Gui().ControlsOpen());
+    // H opens it
+    PressKey(App::KEY_H);
+    REQUIRE(Gui().ControlsOpen());
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(FindText("CONTROLS") != nullptr);
+    for (const auto& group : SceneEditorScene::Controls())
+    {
+        CHECK(FindText(group.Title) != nullptr);
+        for (const auto& control : group.Controls)
+        {
+            ++TestFramework::TotalChecks();
+            if (FindText(control.Keys) == nullptr || FindText(control.Action) == nullptr)
+                TestFramework::ReportFailure(__FILE__, __LINE__,
+                                             std::string("control cut or missing: ") + control.Keys + " / " + control.Action);
+        }
+    }
+    // Every text stays inside the panel
+    for (const auto& printed : AppStub::Get().Printed)
+    {
+        if (printed.X > LEFT_W && printed.X < INSPECTOR_X && printed.Y > EditorStyle::STATUS_H &&
+            printed.Y < EditorStyle::PANEL_TOP)
+            CHECK(printed.X + UIText::Width(printed.Text) <= INSPECTOR_X);
+    }
+    // Clicks on the panel do not reach the scene
+    Entity selected = Core().Selected();
+    ClickGround({0, 0, 0});
+    CHECK_EQ(Core().Selected(), selected);
+    // Close button
+    REQUIRE(ClickButton("Close"));
+    CHECK(!Gui().ControlsOpen());
+    // The status bar's Controls button, then Esc
+    REQUIRE(ClickButton("Controls"));
+    CHECK(Gui().ControlsOpen());
+    AppStub::Type("\x1b");
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK(!Gui().ControlsOpen());
+    // The status bar points to it
+    CHECK(AppStub::WasPrinted("H: all controls"));
 }

@@ -6,7 +6,9 @@
 #include "Reflection/ComponentCatalog.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Serialization/SceneSerialization.h"
+#include "FragShaderTag.h"
 #include "Transform.h"
+#include "VertShaderTag.h"
 #include "World/SceneComponents.h"
 #include "World/ShapeGeometry.h"
 
@@ -79,7 +81,7 @@ namespace Editor
     // Scene lifetime
     //-----------------------------------------------------------------------------
 
-    void SceneEditor::NewScene()
+    void SceneEditor::NewScene(bool withCamera)
     {
         ECS.ClearWorld();
         auto settings = ECS.GetResource<SceneSettings>();
@@ -96,6 +98,9 @@ namespace Editor
         // Top of the field at y = 0, objects stand on it
         field.Position = Vec3(0.0f, -FIELD_THICKNESS, 0.0f);
         SceneObjects::CreateShape(field);
+        // The game camera, where the old fixed camera was
+        if (withCamera)
+            SceneCamera::Create(SceneCamera::FromSettings(*settings));
 
         m_UndoStack.clear();
         m_RedoStack.clear();
@@ -303,7 +308,8 @@ namespace Editor
         std::vector<Entity> roots;
         for (Entity e : RootObjects())
         {
-            if (!IsField(e))
+            // The field and the game camera belong to the scene, not to a prefab
+            if (!IsField(e) && !IsCamera(e))
                 roots.push_back(e);
         }
         if (roots.size() == 1)
@@ -342,7 +348,8 @@ namespace Editor
 
     Entity SceneEditor::OpenPrefabStage(const Prefab::Data* prefab, const std::string& name)
     {
-        NewScene();
+        // A prefab is a group of objects, not a scene: no camera
+        NewScene(false);
         Entity root = NULL_ENTITY;
         if (prefab != nullptr && !prefab->Objects.empty())
         {
@@ -438,6 +445,8 @@ namespace Editor
         }
         if (ECS.HasComponent<ScriptComponent>(source))
             ECS.AddComponent<ScriptComponent>(copy, ECS.GetComponent<ScriptComponent>(source));
+        if (HasShaders(source))
+            SceneObjects::SetShaders(copy, SceneObjects::FragmentShaderOf(source), SceneObjects::VertexShaderOf(source));
         for (const ComponentEntry& entry : ComponentCatalog::Get().Entries())
         {
             if (entry.Has(ECS, source))
@@ -492,6 +501,7 @@ namespace Editor
         Entity best = NULL_ENTITY;
         float bestArea = 1e30f;
         Entity field = NULL_ENTITY;
+        Entity camera = NULL_ENTITY;
         for (Entity e : Objects())
         {
             if (!SceneObjects::Contains(e, groundPoint, PICK_MARGIN))
@@ -501,6 +511,12 @@ namespace Editor
                 field = e;
                 continue;
             }
+            // A camera's target never hides the objects it looks at
+            if (IsCamera(e))
+            {
+                camera = e;
+                continue;
+            }
             float area = FootprintArea(e);
             if (area < bestArea)
             {
@@ -508,6 +524,8 @@ namespace Editor
                 bestArea = area;
             }
         }
+        if (best == NULL_ENTITY)
+            best = camera;
         return best != NULL_ENTITY ? best : field;
     }
 
@@ -518,8 +536,36 @@ namespace Editor
         float bestArea = 1e30f;
         float bestHeight = 0.0f;
         Entity field = NULL_ENTITY;
+        Entity camera = NULL_ENTITY;
+        float cameraHeight = 0.0f;
         for (Entity e : Objects())
         {
+            if (IsCamera(e))
+            {
+                // The eye marker (drawn in the air) picks the camera first;
+                // its target only when nothing else is there
+                Vec3 eye = SceneCamera::EyeOf(SceneCamera::ViewOf(e));
+                Vec3 atEye = pointAtHeight(eye.Y);
+                float dx = atEye.X - eye.X;
+                float dz = atEye.Z - eye.Z;
+                if (atEye.IsValid() && dx * dx + dz * dz <= CAMERA_PICK_RADIUS * CAMERA_PICK_RADIUS)
+                {
+                    best = e;
+                    bestArea = -1.0f;
+                    bestHeight = eye.Y;
+                }
+                else if (camera == NULL_ENTITY)
+                {
+                    float base = SceneObjects::GetPosition(e).Y;
+                    Vec3 point = pointAtHeight(base);
+                    if (point.IsValid() && SceneObjects::Contains(e, point, PICK_MARGIN))
+                    {
+                        camera = e;
+                        cameraHeight = base;
+                    }
+                }
+                continue;
+            }
             // Where does the ray go through the object's body? Sampled from
             // the top down: the first hit is the surface the user sees
             float base = SceneObjects::GetPosition(e).Y;
@@ -550,6 +596,11 @@ namespace Editor
                 bestHeight = at;
             }
         }
+        if (best == NULL_ENTITY && camera != NULL_ENTITY)
+        {
+            best = camera;
+            bestHeight = cameraHeight;
+        }
         if (hitHeight != nullptr)
             *hitHeight = best != NULL_ENTITY ? bestHeight : 0.0f;
         return best != NULL_ENTITY ? best : field;
@@ -576,6 +627,102 @@ namespace Editor
         SceneObjects::SetYaw(entity, degrees);
         m_Dirty = true;
         return true;
+    }
+
+    bool SceneEditor::SetHeight(Entity entity, float y, bool recordUndo)
+    {
+        if (!CanEdit(entity) || !std::isfinite(y))
+            return false;
+        if (recordUndo)
+            RecordUndo();
+        Vec3 p = SceneObjects::GetPosition(entity);
+        p.Y = std::clamp(y, -MAX_HEIGHT, MAX_HEIGHT);
+        SceneObjects::SetPosition(entity, p);
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::HasShaders(Entity entity) const
+    {
+        return IsObject(entity) && (ECS.HasComponent<Shape2D>(entity) || ECS.HasComponent<Mesh>(entity));
+    }
+
+    bool SceneEditor::SetFragmentShader(Entity entity, FragShaderTypeID shader)
+    {
+        if (!HasShaders(entity) || shader < DefaultFragShaderID || shader > StripesShaderID)
+            return false;
+        if (SceneObjects::FragmentShaderOf(entity) == shader && ECS.HasComponent<FragShaderTag>(entity))
+            return true;
+        RecordUndo();
+        SceneObjects::SetFragmentShader(entity, shader);
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::SetVertexShader(Entity entity, VertShaderTypeID shader)
+    {
+        if (!HasShaders(entity) || shader < DefaultVertShaderID || shader > SwayVertShaderID)
+            return false;
+        if (SceneObjects::VertexShaderOf(entity) == shader)
+            return true;
+        RecordUndo();
+        SceneObjects::SetVertexShader(entity, shader);
+        m_Dirty = true;
+        return true;
+    }
+
+    Entity SceneEditor::GameCameraObject() const
+    {
+        Entity camera = SceneCamera::Find();
+        return IsObject(camera) ? camera : NULL_ENTITY;
+    }
+
+    bool SceneEditor::IsCamera(Entity entity) const
+    {
+        return IsObject(entity) && ECS.HasComponent<GameCamera>(entity);
+    }
+
+    Entity SceneEditor::AddCamera(const Vec3& target)
+    {
+        RecordUndo();
+        SceneCamera::View view;
+        view.Target = ClampToField(target);
+        view.Target.Y = 0.0f;
+        bool first = GameCameraObject() == NULL_ENTITY;
+        Entity e = SceneCamera::Create(view, SceneObjects::UniqueName(first ? SceneCamera::DEFAULT_NAME : "Camera"));
+        m_Selected = e;
+        m_Dirty = true;
+        return e;
+    }
+
+    bool SceneEditor::SetCameraView(Entity camera, const SceneCamera::View& view)
+    {
+        if (!IsCamera(camera))
+            return false;
+        RecordUndo();
+        SceneCamera::View placed = view;
+        placed.Target = ClampToField(view.Target);
+        SceneCamera::SetView(camera, placed);
+        m_Dirty = true;
+        return true;
+    }
+
+    Entity SceneEditor::SetGameCamera(const SceneCamera::View& view)
+    {
+        RecordUndo();
+        SceneCamera::View placed = view;
+        placed.Target = ClampToField(view.Target);
+        Entity camera = GameCameraObject();
+        if (camera == NULL_ENTITY)
+            camera = SceneCamera::Create(placed, SceneObjects::UniqueName(SceneCamera::DEFAULT_NAME));
+        else
+            SceneCamera::SetView(camera, placed);
+        // Kept in step for programs that still read the settings' camera
+        auto settings = ECS.GetResource<SceneSettings>();
+        settings->CameraTarget = placed.Target;
+        settings->CameraDistance = ECS.GetComponent<GameCamera>(camera).Distance;
+        m_Dirty = true;
+        return camera;
     }
 
     bool SceneEditor::Remove(Entity entity)
@@ -1077,15 +1224,6 @@ namespace Editor
                     SceneObjects::SetPosition(e, clamped);
             }
         }
-        m_Dirty = true;
-    }
-
-    void SceneEditor::SetGameCamera(const Vec3& target, float distance)
-    {
-        RecordUndo();
-        auto settings = ECS.GetResource<SceneSettings>();
-        settings->CameraTarget = target;
-        settings->CameraDistance = distance;
         m_Dirty = true;
     }
 

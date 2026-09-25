@@ -21,10 +21,18 @@ enum FragShaderTypeID
     RedShaderID,
     NormalShaderID,
     // Lit shader using the vertex colour (procedural 2D shapes)
-    ShapeShaderID
+    ShapeShaderID,
+    // Effect shaders for shapes and models (EffectShadersSIMD.h); new values
+    // go at the end: scene files store the number
+    PulseShaderID,
+    RimShaderID,
+    StripesShaderID
 };
 
 enum VertShaderTypeID
 {
-    DefaultVertShaderID
+    DefaultVertShaderID,
+    // Animated vertex shaders (EffectVertexShaders.h)
+    WaveVertShaderID,
+    SwayVertShaderID
 };

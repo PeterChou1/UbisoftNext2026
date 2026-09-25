@@ -12,12 +12,14 @@
 //   Shape2D         a basic 2D shape, extruded and rendered by the 3D renderer
 //   Mesh            (alternative to Shape2D) a 3D model from data/models
 //   RigidBody       optional physics body (static or dynamic)
-//   FragShaderTag   which shader draws it (shapes use ShapeShaderID)
+//   FragShaderTag   which fragment shader draws it (shapes use ShapeShaderID)
+//   VertShaderTag   optional animated vertex shader (Wave, Sway)
+//   GameCamera      on the scene's camera object (SceneCamera.h)
 //   ScriptComponent optional C++ behaviour script and its parameters
 //   PrefabLink      on the root of a prefab instance: which prefab it came from
 //
 // SceneSettings is an ECS resource holding per scene data (scene script,
-// camera, field size).
+// field size, and the camera of scenes saved before the camera was an object).
 //
 #pragma once
 

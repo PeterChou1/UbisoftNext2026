@@ -1,6 +1,7 @@
 #include "SceneSerialization.h"
 
 #include "../Log.h"
+#include "../World/SceneCamera.h"
 #include "../World/SceneObjects.h"
 
 extern ECSManager ECS;
@@ -28,6 +29,8 @@ namespace Serialization
         registry.RegisterComponent<Shape2D>("Shape2D");
         registry.RegisterComponent<ScriptComponent>("ScriptComponent");
         registry.RegisterComponent<PrefabLink>("PrefabLink");
+        // Reflected: also offered by the editor's Add Component (ComponentCatalog)
+        registry.RegisterComponent<GameCamera>("GameCamera");
         registry.RegisterResource<SceneSettings>("SceneSettings");
     }
 

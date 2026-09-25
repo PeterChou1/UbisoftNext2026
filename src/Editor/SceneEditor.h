@@ -23,6 +23,7 @@
 #include "Serialization/WorldSerializer.h"
 #include "Vec3.h"
 #include "World/Prefab.h"
+#include "World/SceneCamera.h"
 #include "World/SceneObjects.h"
 #include "World/ScenePlayer.h"
 
@@ -96,9 +97,10 @@ namespace Editor
         static constexpr size_t MAX_UNDO = 64;
 
         /**
-         * \brief Replace the world with an empty scene (just the field)
+         * \brief Replace the world with an empty scene: the field and a
+         *        "Main Camera" (without it: a prefab stage)
          */
-        void NewScene();
+        void NewScene(bool withCamera = true);
 
         // -- Objects -----------------------------------------------------------
 
@@ -127,7 +129,8 @@ namespace Editor
 
         /**
          * \brief Object under a point on the ground. Smaller objects win over
-         *        larger ones, the field is only picked when nothing else is hit
+         *        larger ones; a camera's target and then the field are only
+         *        picked when nothing else is hit
          */
         Entity Pick(const Vec3& groundPoint) const;
 
@@ -136,7 +139,8 @@ namespace Editor
          *        crosses the horizontal plane y = h. Each object is tested from
          *        its top down to its base, so the visible top or side of a thick
          *        shape or a tall model is what gets clicked (not the ground
-         *        behind it). `hitHeight` receives the height of the hit
+         *        behind it). A camera's eye marker is picked before anything
+         *        else. `hitHeight` receives the height of the hit
          */
         Entity PickRay(const std::function<Vec3(float)>& pointAtHeight, float* hitHeight = nullptr) const;
 
@@ -160,6 +164,23 @@ namespace Editor
         // its children along, moving a child moves it alone
         bool Move(Entity entity, const Vec3& position, bool recordUndo = true);
         bool SetYaw(Entity entity, float degrees);
+
+        /**
+         * \brief Raise / lower an object: its world height (Y), kept within
+         *        +-MAX_HEIGHT. Move keeps the height
+         */
+        bool SetHeight(Entity entity, float y, bool recordUndo = true);
+        static constexpr float MAX_HEIGHT = 100.0f;
+
+        // -- Shaders (shapes and models) ---------------------------------------------
+
+        /**
+         * \brief Fragment (pixel) / vertex shader drawing the object, see
+         *        ShaderLibrary for the choices. One undo step
+         */
+        bool SetFragmentShader(Entity entity, FragShaderTypeID shader);
+        bool SetVertexShader(Entity entity, VertShaderTypeID shader);
+        bool HasShaders(Entity entity) const;
 
         /**
          * \brief Delete an object and all of its children
@@ -380,10 +401,36 @@ namespace Editor
          */
         void SetFieldSize(float width, float height);
 
+        // -- Game camera ---------------------------------------------------------------
+        //
+        // The camera used when the scene plays is an object (SceneCamera.h):
+        // new scenes have a "Main Camera". The editor's own view is separate.
+
         /**
-         * \brief Camera used when the scene is played
+         * \brief The scene's camera object, NULL_ENTITY when it has none
          */
-        void SetGameCamera(const Vec3& target, float distance);
+        Entity GameCameraObject() const;
+        bool IsCamera(Entity entity) const;
+        // Clicks this close (world units) to a camera's eye marker pick it
+        static constexpr float CAMERA_PICK_RADIUS = 0.8f;
+
+        /**
+         * \brief New camera object looking at `target` (default view). One undo
+         *        step; it is selected
+         */
+        Entity AddCamera(const Vec3& target);
+
+        /**
+         * \brief Make the game camera show `view` (e.g. the editor's view): the
+         *        camera object is moved (created when missing). One undo step
+         */
+        Entity SetGameCamera(const SceneCamera::View& view);
+
+        /**
+         * \brief Move / rotate a camera object to show `view` (its target kept
+         *        on the field). One undo step
+         */
+        bool SetCameraView(Entity camera, const SceneCamera::View& view);
 
         // -- Validation / files --------------------------------------------------
 

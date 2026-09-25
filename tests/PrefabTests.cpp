@@ -152,7 +152,7 @@ TEST_CASE("Prefabs: binary and text files give back the same prefab")
     std::vector<std::uint8_t> binary = Prefab::Save(prefab, Serialization::SaveFormat::Binary);
     std::vector<std::uint8_t> text = Prefab::Save(prefab, Serialization::SaveFormat::Text);
     std::string asText(text.begin(), text.end());
-    CHECK(asText.rfind("UBPF-TEXT 1\n", 0) == 0);
+    CHECK(asText.rfind("UBPF-TEXT 2\n", 0) == 0);
     CHECK(asText.find("prefab \"tower\" 4") != std::string::npos);
     CHECK(asText.find("object \"Turret\"") != std::string::npos);
 

@@ -3,6 +3,7 @@
 #include "../Camera.h"
 #include "../ECSManager.h"
 #include "../FragShaderTag.h"
+#include "../VertShaderTag.h"
 #include "../Mesh.h"
 #include "../RigidBody.h"
 #include "../Transform.h"
@@ -442,6 +443,40 @@ namespace SceneObjects
         for (const Vec2& p : local)
             outline.push_back(t.Affine * Vec3(p.X, 0.0f, p.Y));
         return outline;
+    }
+
+    void SetFragmentShader(Entity entity, FragShaderTypeID fragment)
+    {
+        if (ECS.HasComponent<FragShaderTag>(entity))
+            ECS.GetComponent<FragShaderTag>(entity).FragAssetId = fragment;
+        else
+            ECS.AddComponent<FragShaderTag>(entity, FragShaderTag(fragment));
+    }
+
+    void SetVertexShader(Entity entity, VertShaderTypeID vertex)
+    {
+        if (ECS.HasComponent<VertShaderTag>(entity))
+            ECS.GetComponent<VertShaderTag>(entity).VertAssetId = vertex;
+        else if (vertex != DefaultVertShaderID)
+            ECS.AddComponent<VertShaderTag>(entity, VertShaderTag(vertex));
+    }
+
+    void SetShaders(Entity entity, FragShaderTypeID fragment, VertShaderTypeID vertex)
+    {
+        SetFragmentShader(entity, fragment);
+        SetVertexShader(entity, vertex);
+    }
+
+    FragShaderTypeID FragmentShaderOf(Entity entity)
+    {
+        return ECS.HasComponent<FragShaderTag>(entity) ? ECS.GetComponent<FragShaderTag>(entity).FragAssetId
+                                                       : DefaultFragShaderID;
+    }
+
+    VertShaderTypeID VertexShaderOf(Entity entity)
+    {
+        return ECS.HasComponent<VertShaderTag>(entity) ? ECS.GetComponent<VertShaderTag>(entity).VertAssetId
+                                                       : DefaultVertShaderID;
     }
 
     void ApplyCamera(Camera& camera, const Vec3& target, float distance)

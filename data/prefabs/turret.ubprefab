@@ -1,10 +1,11 @@
-UBPF-TEXT 1
+UBPF-TEXT 2
 # Prefab: one line per object, the root first. Object fields: name, tag, parent
 # (-1 = root), position, rotation, scale, type (0 empty 1 shape 2 model), shape,
-# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, components
+# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, components,
+# fragment shader, vertex shader (see Assets.h)
 prefab "turret" 4
-object "Turret" "" -1 0 0 0 1 0 0 0 1 1 1 0 0 1 1 6 0.25 0.8 0.8 0.8 "" 0 "" [0] [0]
-object "Base" "" 0 0 0 0 1 0 0 0 1 1 1 1 0 1.2 1.2 6 0.25 0.85 0.85 0.85 "" 1 "" [0] [0]
-object "Head" "" 1 0 0 0 1 0 0 0 1 1 1 1 1 0.8 0.8 6 0.5 0.9 0.3 0.25 "" 0 "Rotator" [1] "Speed" 90 [0]
-object "Barrel" "" 2 0 0 0.7 1 0 0 0 1 1 1 1 0 0.25 0.9 6 0.4 0.85 0.85 0.85 "" 0 "" [0] [0]
+object "Turret" "" -1 0 0 0 1 0 0 0 1 1 1 0 0 1 1 6 0.25 0.8 0.8 0.8 "" 0 "" [0] [0] 8 0
+object "Base" "" 0 0 0 0 1 0 0 0 1 1 1 1 0 1.2 1.2 6 0.25 0.85 0.85 0.85 "" 1 "" [0] [0] 8 0
+object "Head" "" 1 0 0 0 1 0 0 0 1 1 1 1 1 0.8 0.8 6 0.5 0.9 0.3 0.25 "" 0 "Rotator" [1] "Speed" 90 [0] 8 0
+object "Barrel" "" 2 0 0 0.7 1 0 0 0 1 1 1 1 0 0.25 0.9 6 0.4 0.85 0.85 0.85 "" 0 "" [0] [0] 8 0
 end

@@ -31,6 +31,15 @@ namespace
         return s;
     }
 
+    // Point the scene's camera object at `target`, `distance` away
+    void AimCamera(SceneEditor& editor, const Vec3& target, float distance)
+    {
+        SceneCamera::View view;
+        view.Target = target;
+        view.Distance = distance;
+        editor.SetGameCamera(view);
+    }
+
     Entity PlacePlayer(SceneEditor& editor, const Vec3& at)
     {
         Entity player = editor.Place(ObjectKind::Circle, at, Brush(1.0f, 1.0f, BLUE, BodyType::Dynamic, "Player"));
@@ -80,7 +89,7 @@ namespace
         editor.SetSceneScript(ScriptNames::CollectGame);
         editor.SetSceneParam("Level", 1.0f);
         editor.SetSceneParam("Lives", 3.0f);
-        editor.SetGameCamera({0, 0, -1}, 24.0f);
+        AimCamera(editor, {0, 0, -1}, 24.0f);
     }
 
     void Level2(SceneEditor& editor)
@@ -111,13 +120,13 @@ namespace
         editor.SetSceneScript(ScriptNames::CollectGame);
         editor.SetSceneParam("Level", 2.0f);
         editor.SetSceneParam("Lives", 3.0f);
-        editor.SetGameCamera({0, 0, -1}, 27.0f);
+        AimCamera(editor, {0, 0, -1}, 27.0f);
     }
 
     // A turret: an empty root, a static base, a spinning head and its barrel
     Prefab::Data TurretPrefab(SceneEditor& editor)
     {
-        editor.NewScene();
+        editor.NewScene(false);
         Entity root = editor.AddEmpty({0, 0, 0});
         editor.Rename(root, "Turret");
         Entity base = editor.Create(ObjectKind::Rectangle, {0, 0, 0}, root, Brush(1.2f, 1.2f, GREY, BodyType::Static));
@@ -217,12 +226,24 @@ namespace
         PlaceSettings model;
         model.Model = "Box";
         model.Width = 1.5f;
-        editor.Place(ObjectKind::Model, {12, 0, 0}, model);
+        Entity box = editor.Place(ObjectKind::Model, {12, 0, 0}, model);
+        // Shaders: a glowing rim on the box, the ball bobs on a wave
+        editor.SetFragmentShader(box, RimShaderID);
         model.Model = "GolfBall";
         model.Width = 1.0f;
         Entity ball = editor.Place(ObjectKind::Model, {-12, 0, 0}, model);
         editor.SetScript(ball, ScriptNames::Rotator);
-        editor.SetGameCamera({0, 0, -1}, 30.0f);
+        editor.SetVertexShader(ball, WaveVertShaderID);
+        editor.SetHeight(ball, 1.0f);
+        // A beacon: a tall, swaying, scanning column
+        PlaceSettings beacon = Brush(0.8f, 0.8f, TEAL, BodyType::None);
+        beacon.Thickness = 3.0f;
+        beacon.Sides = 6;
+        Entity column = editor.Place(ObjectKind::Polygon, {12, 0, -6}, beacon);
+        editor.Rename(column, "Beacon");
+        editor.SetFragmentShader(column, StripesShaderID);
+        editor.SetVertexShader(column, SwayVertShaderID);
+        AimCamera(editor, {0, 0, -1}, 30.0f);
     }
     // Metal Invasion: the field, the player's base and the game's scene
     // script. Everything else (crystals, units, enemies) is spawned by the
@@ -242,7 +263,7 @@ namespace
         editor.SetScript(b, MI::Scripts::Base);
 
         editor.SetSceneScript(MI::Scripts::Game);
-        editor.SetGameCamera({0, 0, -2}, 16.0f);
+        AimCamera(editor, {0, 0, -2}, 16.0f);
     }
 } // namespace
 

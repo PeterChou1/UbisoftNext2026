@@ -28,6 +28,7 @@
 //
 #pragma once
 
+#include "../Assets.h"
 #include "../Entity.h"
 #include "../Quat.h"
 #include "../Serialization/WorldSerializer.h"
@@ -44,7 +45,8 @@ namespace Prefab
 {
     constexpr const char* DIRECTORY = "data/prefabs";
     constexpr const char* EXTENSION = ".ubprefab";
-    constexpr std::uint32_t FORMAT_VERSION = 1;
+    // 2: objects store their fragment / vertex shaders
+    constexpr std::uint32_t FORMAT_VERSION = 2;
 
     enum class ObjectType
     {
@@ -83,6 +85,9 @@ namespace Prefab
         std::string Script;
         std::map<std::string, float> ScriptParams;
         std::vector<Component> Components;
+        // Shapes and models only (version 1 files: the type's default)
+        FragShaderTypeID FragShader = ShapeShaderID;
+        VertShaderTypeID VertShader = DefaultVertShaderID;
     };
 
     struct Data

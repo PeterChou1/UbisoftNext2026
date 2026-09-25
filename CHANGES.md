@@ -5,6 +5,45 @@ explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md), and
 the components tutorial in [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 
+## 12. Shaders on meshes, editor camera controls, the game camera as an object
+
+- **New shaders** for shapes and models, chosen per object in the
+  inspector's new **Shader** section (**Frag < >**, **Vert < >**):
+  - fragment shaders **Pulse** (brightness pulses), **Rim** (glowing edges)
+    and **Stripes** (bands scrolling up), besides Shape, Lit, Unlit,
+    Normals and Red (`EffectShadersSIMD.*`);
+  - vertex shaders **Wave** (bobs in a travelling wave) and **Sway**
+    (sways, more at the top) (`EffectVertexShaders.*`);
+  - `ShaderLibrary` names them for the editor and scripts.
+  - An object's shaders are its `FragShaderTag` / `VertShaderTag`; editor
+    changes are undoable, and duplicates, scene files and prefabs (prefab
+    format version 2) keep them.
+  - Fix: changing a model's vertex shader wrote the id into the fragment
+    shader id, and shapes ignored vertex shader changes.
+- **The editor's view is its own camera**, separate from the game's:
+  - **W A S D** pan relative to where it looks, the **arrow keys** orbit and
+    tilt, **E / V** move it up / down, **Z / C** zoom, **Home** resets it;
+  - **I / K** raise / lower the selection, **J / L** turn it; **Pos Y** in
+    the Transform section.
+- **The game camera is a scene object**: **Main Camera** (Transform +
+  `GameCamera` component: Distance, Pitch, FOV) in every new scene.
+  - It is listed in the hierarchy (yellow), drawn in the view (target cross,
+    line to the eye, pyramid), selected by its row, cross or eye, moved and
+    turned like any object, and edited in its **GameCamera** section.
+  - Its menu: **Align with View** / **View Through Camera**; the scene menu
+    has **Create Camera**.
+  - **Play** in the editor looks through it, **Stop** restores the view; the
+    Game (`ScenePlayer`) follows it, also when scripts move it. Metal
+    Invasion starts from it.
+  - Older scenes without one use their settings' camera.
+- **Controls panel:** **H** or the status bar's **Controls** button lists
+  every control; also written in [docs/Controls.md](docs/Controls.md).
+- Sample scenes regenerated with a Main Camera; the sandbox shows the new
+  shaders (a Rim box, a golf ball on a Wave, a swaying Stripes beacon).
+- Tests: `ShaderTests.cpp`, `CameraTests.cpp` and new GUI tests (view keys,
+  Play camera, camera object, height / turn keys, Shader section, Controls
+  panel).
+
 ## 11. Unity-style editor: context menus, one inspector, prefabs, responsive GUI
 
 - **The palette and brush are gone.** Objects are created with **right

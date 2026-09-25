@@ -67,7 +67,7 @@ void MeshHandler::Update()
         if (EntityToVertShaderID.count(e) != 0 && EntityToVertShaderID[e] != VertShaderID)
         {
             EntityToVertShaderID[e] = VertShaderID;
-            UpdateMeshFragShader(e, VertShaderID);
+            UpdateMeshVertShader(e, VertShaderID);
         }
     }
 
@@ -101,6 +101,11 @@ void MeshHandler::Update()
         {
             EntityToFragShaderID[e] = FragShaderID;
             UpdateMeshFragShader(e, FragShaderID);
+        }
+        if (EntityToVertShaderID.count(e) != 0 && EntityToVertShaderID[e] != VertShaderID)
+        {
+            EntityToVertShaderID[e] = VertShaderID;
+            UpdateMeshVertShader(e, VertShaderID);
         }
     }
 

@@ -10,6 +10,8 @@
 #include "Assets.h"
 #include "BlingPhong.h"
 #include "DefaultVertexShader.h"
+#include "EffectShadersSIMD.h"
+#include "EffectVertexShaders.h"
 #include "FragShaderTag.h"
 #include "Log.h"
 #include "Material.h"
@@ -198,6 +200,18 @@ class AssetServer
             FragShaders[shaderID] = std::make_shared<ShapeShaderSIMD>();
             return;
         }
+        case PulseShaderID: {
+            FragShaders[shaderID] = std::make_shared<PulseShaderSIMD>();
+            return;
+        }
+        case RimShaderID: {
+            FragShaders[shaderID] = std::make_shared<RimShaderSIMD>();
+            return;
+        }
+        case StripesShaderID: {
+            FragShaders[shaderID] = std::make_shared<StripesShaderSIMD>();
+            return;
+        }
         case DefaultFragShaderID: {
             FragShaders[shaderID] = std::make_shared<BlinnPhongSIMD>();
         }
@@ -219,6 +233,14 @@ class AssetServer
         {
         case DefaultVertShaderID: {
             VertShaders[shaderID] = std::make_shared<DefaultVertexShader>();
+            break;
+        }
+        case WaveVertShaderID: {
+            VertShaders[shaderID] = std::make_shared<WaveVertexShader>();
+            break;
+        }
+        case SwayVertShaderID: {
+            VertShaders[shaderID] = std::make_shared<SwayVertexShader>();
             break;
         }
         default:

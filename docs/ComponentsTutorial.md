@@ -23,7 +23,10 @@ An object in a scene is an ECS entity, and components are the data attached
 to it:
 
 - **Built-in components:** `Transform`, `SceneObject` (name and tag),
-  `Shape2D` or `Mesh`, `RigidBody`, and `ScriptComponent`.
+  `Shape2D` or `Mesh`, `FragShaderTag` / `VertShaderTag` (its shaders),
+  `RigidBody`, and `ScriptComponent`. `GameCamera` (on the scene's camera
+  object, `src/Engine/World/SceneCamera.h`) is itself a reflected component
+  written the way this tutorial describes.
 - **Your components:** any plain struct, such as `Health { Current, Max }`.
 
 Scripts hold behaviour; components hold data. A script reads and writes

@@ -52,8 +52,7 @@ void MetalInvasion::OnStart()
     m_Random.seed(static_cast<unsigned>(Param("Seed")));
 
     auto settings = Resource<SceneSettings>();
-    m_CamTarget = settings->CameraTarget;
-    m_CamDistance = settings->CameraDistance;
+    m_View = SceneCamera::Current();
 
     // The authored scene holds the base; it blocks the path finding grid
     std::vector<Entity> bases = FindByTag(MI::Tags::Base);
@@ -236,19 +235,23 @@ void MetalInvasion::OnObstacleRemoved(Entity entity)
 
 void MetalInvasion::UpdateCamera(float deltaSeconds)
 {
+    // Pan along the ground, relative to where the camera looks
+    Vec3 forward = SceneCamera::Forward(m_View.Yaw);
+    Vec3 right = SceneCamera::Right(m_View.Yaw);
     Vec3 pan(0, 0, 0);
     if (KeyDown(App::KEY_W))
-        pan.Z += 1.0f;
+        pan = pan + forward;
     if (KeyDown(App::KEY_S))
-        pan.Z -= 1.0f;
+        pan = pan - forward;
     if (KeyDown(App::KEY_A))
-        pan.X += 1.0f;
+        pan = pan - right;
     if (KeyDown(App::KEY_D))
-        pan.X -= 1.0f;
-    m_CamTarget = m_CamTarget + pan * (CAMERA_PAN_SPEED * deltaSeconds);
-    m_CamTarget.X = std::clamp(m_CamTarget.X, -CAMERA_LIMIT, CAMERA_LIMIT);
-    m_CamTarget.Z = std::clamp(m_CamTarget.Z, -CAMERA_LIMIT, CAMERA_LIMIT);
-    SceneObjects::ApplyCamera(*Resource<Camera>(), m_CamTarget, m_CamDistance);
+        pan = pan + right;
+    Vec3& target = m_View.Target;
+    target = target + pan * (CAMERA_PAN_SPEED * deltaSeconds);
+    target.X = std::clamp(target.X, -CAMERA_LIMIT, CAMERA_LIMIT);
+    target.Z = std::clamp(target.Z, -CAMERA_LIMIT, CAMERA_LIMIT);
+    SceneCamera::Apply(*Resource<Camera>(), m_View);
 }
 
 //-----------------------------------------------------------------------------

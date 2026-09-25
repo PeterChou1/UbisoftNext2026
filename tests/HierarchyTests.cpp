@@ -289,11 +289,12 @@ TEST_CASE("Editor hierarchy: parent objects, with undo, never the field")
 {
     SceneEditor& editor = NewEditor();
     Entity field = editor.Objects()[0];
+    Entity camera = editor.GameCameraObject();
     Entity a = editor.Place(ObjectKind::Rectangle, {0, 0, 0});
     Entity b = editor.Place(ObjectKind::Circle, {3, 0, 0});
     Entity c = editor.Place(ObjectKind::Empty, {-3, 0, 2});
     CHECK(editor.KindOf(c) == ObjectKind::Empty);
-    CHECK(editor.RootObjects() == (std::vector<Entity>{field, a, b, c}));
+    CHECK(editor.RootObjects() == (std::vector<Entity>{field, camera, a, b, c}));
 
     std::size_t undo = editor.UndoCount();
     REQUIRE(editor.SetParent(b, a));
@@ -301,7 +302,7 @@ TEST_CASE("Editor hierarchy: parent objects, with undo, never the field")
     CHECK_EQ(editor.UndoCount(), undo + 2);
     CHECK_EQ(editor.ParentOf(c), b);
     CHECK(editor.ChildrenOf(a) == std::vector<Entity>{b});
-    CHECK(editor.RootObjects() == (std::vector<Entity>{field, a}));
+    CHECK(editor.RootObjects() == (std::vector<Entity>{field, camera, a}));
     // Same parent again: no change, no undo step
     REQUIRE(editor.SetParent(b, a));
     CHECK_EQ(editor.UndoCount(), undo + 2);

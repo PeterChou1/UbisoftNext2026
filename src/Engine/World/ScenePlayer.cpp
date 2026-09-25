@@ -21,13 +21,15 @@ void ScenePlayer::Setup()
 
 void ScenePlayer::OnWorldRestored()
 {
-    // Camera configured in the editor's scene settings
-    auto settings = ECS.GetResource<SceneSettings>();
-    SceneObjects::ApplyCamera(*ECS.GetResource<Camera>(), settings->CameraTarget, settings->CameraDistance);
+    // The scene's camera object (or, in older scenes, the settings' camera)
+    m_Camera.Reset();
+    m_Camera.Update(*ECS.GetResource<Camera>());
 }
 
 void ScenePlayer::Update(float deltaTime)
 {
+    // Scripts may move the camera object
+    m_Camera.Update(*ECS.GetResource<Camera>());
     if (Input::WasPressed(App::KEY_ESC) && OnExit)
         OnExit();
 }

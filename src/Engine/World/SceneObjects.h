@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include "../Assets.h"
 #include "../Entity.h"
 #include "../Vec3.h"
 #include "SceneComponents.h"
@@ -173,6 +174,21 @@ namespace SceneObjects
      * \brief Footprint of the object in world space (x, z), for overlays
      */
     std::vector<Vec3> WorldOutline(Entity entity);
+
+    /**
+     * \brief Shaders that draw a shape or a model: its FragShaderTag and
+     *        VertShaderTag (added when missing). The renderer picks the change
+     *        up on the next frame
+     */
+    void SetShaders(Entity entity, FragShaderTypeID fragment, VertShaderTypeID vertex);
+    void SetFragmentShader(Entity entity, FragShaderTypeID fragment);
+    void SetVertexShader(Entity entity, VertShaderTypeID vertex);
+
+    /**
+     * \brief The object's shaders (the defaults when it has no tag)
+     */
+    FragShaderTypeID FragmentShaderOf(Entity entity);
+    VertShaderTypeID VertexShaderOf(Entity entity);
 
     /**
      * \brief Place the camera like the scene settings ask (fixed tilt)

@@ -7,11 +7,13 @@
 // GameManager::LoadGame(file) switches to it and restores the file's world.
 //
 // While active, the world simulates: physics, particles and the C++ scripts
-// (object scripts + the scene script) run every frame.
+// (object scripts + the scene script) run every frame. The view is the scene's
+// game camera object (SceneCamera.h).
 //
 #pragma once
 
 #include "../Scene.h"
+#include "SceneCamera.h"
 
 #include <functional>
 
@@ -30,4 +32,8 @@ class ScenePlayer : public Scene
      * \brief Called when the player presses Esc (e.g. go back to a menu)
      */
     std::function<void()> OnExit;
+
+  private:
+    // The renderer's camera follows the scene's camera object
+    SceneCamera::Follower m_Camera;
 };

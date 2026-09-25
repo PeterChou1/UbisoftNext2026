@@ -10,7 +10,12 @@ The editor works like Unity's:
 - a **Hierarchy** of the scene's objects;
 - an **Inspector** of the selected object's components;
 - right-click **context menus** to create things;
-- **prefabs** you edit on their own stage.
+- **prefabs** you edit on their own stage;
+- a **scene view** with its own camera, separate from the game's camera,
+  which is an object of the scene.
+
+Every key and mouse action is listed in [Controls.md](Controls.md), and in
+the editor itself: press **H** or click **Controls** at the bottom right.
 
 **Start the editor**
 
@@ -40,7 +45,7 @@ The editor works like Unity's:
 |   Box      |                                            |                ||
 | [import  ][Import]                                      |                ||
 +------------+--------------------------------------------+-----------------+
-| status messages / tooltips / key hints                                    |
+| status messages / tooltips / key hints                        [Controls]  |
 +---------------------------------------------------------------------------+
 ```
 
@@ -53,12 +58,16 @@ The editor works like Unity's:
   are indented under their parent.
 - **Assets** (left, bottom): prefabs and 3D models to place, and the box to
   import `.obj` files.
-- **Scene view** (middle): your level, drawn by the game's 3D renderer.
-  - Move the camera with **W A S D**, zoom with **Z / C**.
+- **Scene view** (middle): your level, drawn by the game's 3D renderer,
+  seen through the editor's own camera (section 8):
+  - **W A S D** pan, **Z / C** zoom;
+  - the **arrow keys** orbit (left / right) and tilt (up / down);
+  - **E / V** move the view up / down, **Home** resets it.
 - **Inspector** (right): the selected object's components, one section each.
   A scrollbar appears when they don't fit.
 - **Status bar** (bottom): what just happened, the tooltip of the value
-  under the mouse, and the key hints.
+  under the mouse, and the key hints. **Controls** (or **H**) opens the
+  panel listing every control; **Close**, **H** or **Esc** closes it.
 
 The layout adapts to the window: labels stay centered in their buttons, and
 text that doesn't fit is shortened with `..` instead of spilling out of its
@@ -71,8 +80,9 @@ panel.
 1. Click **New**.
 
    A scene called `scene_1` (or `scene_2`, ...) is created, saved to
-   `data/scenes/`, added to the scene list, and opened. It contains only the
-   field.
+   `data/scenes/`, added to the scene list, and opened. It contains the
+   field and the **Main Camera**, the camera the game plays with
+   (section 8).
 2. Give it a real name: click the **Name** box at the top right, type
    `my_level`, and press **Enter**.
 
@@ -93,6 +103,7 @@ Create Triangle
 Create Polygon
 Create Model   >   Box, GolfBall, ...
 Create Prefab  >   turret, ...
+Create Camera
 ```
 
 - **Submenus:** hover an item with a `>` to open it.
@@ -169,7 +180,7 @@ deletes them too.
 - **Parent box:** the **Parent** box of the inspector's Transform section
   does the same by name. Type the parent's name, or `-` for the top level.
 - **World values:** a child keeps its place in the world when it gets a new
-  parent. **Pos X / Pos Z** and **Rot** are world values, so dragging a child
+  parent. **Pos X / Y / Z** and **Rot** are world values, so dragging a child
   in the scene moves only that child.
 - **Links in the scene:** the selected object shows lines to its parent
   (orange) and its children (blue).
@@ -194,8 +205,13 @@ Right click an object, in the scene or on its hierarchy row:
 | Edit / Reset to / Unpack Prefab | For prefab instances (section 7) |
 
 - **Move:** drag the object with the mouse. One drag is one undo step.
-- **Rotate:** **R** turns it 15°.
+- **Rotate:** **R** (or **L**) turns it 15°, **J** turns it back 15°.
+- **Up / down:** **I** raises it 0.5, **K** lowers it (its **Pos Y**).
+  Dragging keeps its height.
 - **Deselect:** click the field.
+
+A camera object's menu also has **Align with View** and **View Through
+Camera** (section 8).
 
 The field can't be moved or deleted. Click it to change its colour, or its
 size in the **Scene** settings.
@@ -211,9 +227,11 @@ Unity. Each component is a section:
 |---|---|
 | (top) | **Name**, kind and id, **Tag** (the object's role: `Player`, `Pickup`, `Wall`...) |
 | Prefab | For instances: **Edit**, **Reset**, **Unpack** |
-| Transform | **Parent**, **Pos X / Pos Z**, **Rot**; **Scale** for models and empties |
+| Transform | **Parent**, **Pos X / Pos Y / Pos Z**, **Rot**; **Scale** for models and empties |
 | Shape2D | **Width / Height** (or **Size**), **Sides** (polygons), **Thick**, colour |
 | Mesh | The **Model** |
+| Shader | The **Frag**ment and **Vert**ex shaders that draw a shape or a model |
+| GameCamera | On cameras: **Dist.**, **Pitch**, **FOV** (section 8) |
 | RigidBody | **Body**: Static, Dynamic or Trigger |
 | Script | The **Script** and its parameters |
 | Health, Faction, ... | The fields of the project's components ([ComponentsTutorial.md](ComponentsTutorial.md)) |
@@ -240,7 +258,7 @@ Unity. Each component is a section:
 
 ### Type exact values
 
-Every number is an input box: Name, Parent, Pos X / Pos Z, Rot, Width /
+Every number is an input box: Name, Parent, Pos X / Y / Z, Rot, Width /
 Height / Size / Sides / Thick / Scale, script parameters, component fields,
 and the field size.
 
@@ -257,6 +275,40 @@ doesn't delete the object. Positions are kept on the field, and a text that
 isn't a number is refused, with a message in the status bar. Each change is
 one undo step.
 
+### Look: shaders
+
+Every shape and model is drawn by two shaders, set in its **Shader**
+section. The section's title shows them, e.g. `Rim + Wave`.
+
+- **Frag < >** picks the fragment (pixel) shader, which colours the surface:
+
+  | Shader | Look |
+  |---|---|
+  | Shape | Lit, in the shape's colour (the default for shapes) |
+  | Lit | Blinn-Phong with the model's material (the default for models) |
+  | Unlit | The flat material colour |
+  | Pulse | Lit, its brightness pulses |
+  | Rim | Lit, the edges facing away from the camera glow |
+  | Stripes | Lit, bright and dim bands scroll upwards (hologram, scanner) |
+  | Normals | Coloured by the direction of the surface |
+  | Red | Solid red (highlights) |
+
+- **Vert < >** picks the vertex shader, which can move the surface:
+
+  | Shader | Motion |
+  |---|---|
+  | Default | None |
+  | Wave | Bobs up and down in a wave travelling across the field |
+  | Sway | Sways sideways, more at the top (grass, flags, beacons) |
+
+The shaders animate in the scene view as well as in the game. Each change is
+one undo step. Duplicates, prefabs and scene files keep them. The `sandbox`
+scene has examples: a box with **Rim**, a golf ball on a **Wave**, and a
+**Beacon** that sways with **Stripes**.
+
+Scripts change them through the object's `FragShaderTag` / `VertShaderTag`,
+or with `SceneObjects::SetFragmentShader(entity, RimShaderID)`.
+
 ### Behaviour: scripts
 
 1. Select an object, click **Add Component**, and choose **Script**.
@@ -272,7 +324,7 @@ For a script that runs the whole scene (rules, score, HUD):
 In the same place you can:
 
 - set the field size (**Field W / Field H**);
-- press **Game camera = view** so the game starts with your current view;
+- press **Game camera = view** to move the Main Camera to your current view;
 - choose **Plain text files**;
 - see whether the scene is **Playable**, or its first problem (duplicate
   names, objects outside the field, unknown scripts).
@@ -353,16 +405,68 @@ Scripts can spawn prefabs too: `SpawnPrefab("turret", position)`.
 
 ---
 
-## 8. Test it
+## 8. Cameras: your view and the game's
 
-- Press **Play** (or **P**). Physics and scripts run inside the editor and
-  the keyboard goes to the scripts, so WASD moves your player.
-- Press **Stop** (or **P**) to end the test. The scene returns exactly to
-  how it was before Play.
+There are two cameras.
+
+**The scene view's camera** is the editor's own. Moving it never changes the
+scene.
+
+| Key | Moves the view |
+|---|---|
+| W A S D | Pan along the ground, relative to where the view looks |
+| Left / Right | Orbit around the point the view looks at |
+| Up / Down | Tilt: look more straight down / more across |
+| E / V | Up / down |
+| Z / C | Zoom in / out |
+| Home | Back to the default view |
+
+(**Q** quits the program, so it is not used for "down".)
+
+**The game camera** is an object of the scene: **Main Camera**, drawn in yellow
+in the hierarchy. It is what the game shows when the scene plays. In the
+scene view it is a cross at the point it looks at, a line up to its eye, and
+a small pyramid at the eye pointing where it looks, with its name.
+
+- **Select it:** its hierarchy row, its cross, or its eye marker (clicking
+  the eye picks the camera before anything else; its cross never hides an
+  object on the same spot).
+- **Move / turn it** like any object: drag it, type **Pos X / Y / Z**, turn it
+  with **R / J** or **Rot**. The position is the point it looks at, and
+  **Rot** the direction it looks along the ground.
+- **Its GameCamera section:**
+
+  | Value | Meaning |
+  |---|---|
+  | Dist. | How far the eye is from the point it looks at |
+  | Pitch | How steeply it looks down: 90 is straight down |
+  | FOV | Field of view, in degrees |
+
+- **Right click it:**
+  - **Align with View** moves it to show exactly the scene view;
+  - **View Through Camera** moves the scene view to what it sees.
+- **More cameras:** right click the scene → **Create Camera**. The game uses
+  first camera created (the lowest id).
+- It can be a child of another object, and scripts can move it: the game
+  follows it.
+
+Scenes made before cameras were objects have none. They play with the camera
+in their scene settings, and **Game camera = view** adds a Main Camera.
 
 ---
 
-## 9. Save, open, revert
+## 9. Test it
+
+- Press **Play** (or **P**). Physics and scripts run inside the editor and
+  the keyboard goes to the scripts, so WASD moves your player.
+- The view switches to the **game camera**, so you see what the player
+  will see.
+- Press **Stop** (or **P**) to end the test. The scene returns exactly to
+  how it was before Play, and the view to where it was.
+
+---
+
+## 10. Save, open, revert
 
 | Action | How |
 |---|---|
@@ -379,7 +483,7 @@ same way: the editor and the Game recognise the format by themselves.
 
 ---
 
-## 10. Play it in the Game
+## 11. Play it in the Game
 
 Run the **Game**. Its menu lists every scene in `data/scenes`, including
 yours. Click it to play, and press **Esc** to go back to the menu.
@@ -388,18 +492,26 @@ yours. Click it to play, and press **Esc** to go back to the menu.
 
 ## Shortcuts
 
+The full list, grouped, is in [Controls.md](Controls.md) and in the editor's
+**Controls** panel (**H**). The most used:
+
 | Key / mouse | Action |
 |---|---|
 | Right click | Context menu: create here, or the object's actions. While placing an asset: stop |
-| W A S D | Pan the camera |
+| W A S D | Pan the view |
+| Arrow keys | Orbit (left / right), tilt (up / down) |
+| E / V | View up / down |
 | Z / C | Zoom in / out |
-| R | Rotate the selection 15° |
+| Home | Reset the view |
+| R or L / J | Rotate the selection +15° / -15° |
+| I / K | Raise / lower the selection |
 | F | Duplicate the selection (with its children) |
 | X | Delete the selection (with its children) |
 | U / Y | Undo / redo |
 | G | Snap to grid on / off |
 | P | Play / stop |
-| Esc | Close a menu, stop placing, cancel a typed value |
+| H | Controls panel |
+| Esc | Close a menu or the Controls panel, stop placing, cancel a typed value |
 | Enter | Apply a typed value |
 | Tab | Switch between the hardware and the software renderer |
 

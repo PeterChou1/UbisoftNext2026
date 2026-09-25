@@ -24,6 +24,7 @@
 #include "MINavigation.h"
 #include "MIPrefabs.h"
 #include "Scripting/Script.h"
+#include "World/SceneCamera.h"
 
 #include <random>
 #include <vector>
@@ -141,7 +142,7 @@ class MetalInvasion : public SceneScript
     MI::FlowField m_UnitField;
     MI::FlowField m_EnemyField;
 
-    Vec3 m_CamTarget = {0, 0, 0};
-    float m_CamDistance = 16.0f;
+    // Starts as the scene's camera object, then panned with WASD
+    SceneCamera::View m_View;
     std::mt19937 m_Random;
 };

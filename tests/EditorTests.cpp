@@ -46,12 +46,22 @@ namespace
     }
 } // namespace
 
-TEST_CASE("Editor: a new scene is just the field")
+TEST_CASE("Editor: a new scene is the field and the game camera")
 {
     SceneEditor& editor = NewEditor();
     std::vector<Entity> objects = editor.Objects();
-    REQUIRE(objects.size() == 1);
+    REQUIRE(objects.size() == 2);
     Entity field = objects[0];
+    // The camera the scene plays with, where the old fixed camera was
+    Entity camera = objects[1];
+    CHECK_EQ(editor.GameCameraObject(), camera);
+    CHECK(editor.IsCamera(camera));
+    CHECK_EQ(editor.NameOf(camera), std::string("Main Camera"));
+    CHECK_EQ(ECS.GetComponent<SceneObject>(camera).Tag, std::string("Camera"));
+    CHECK(SceneObjects::IsEmpty(camera));
+    SceneCamera::View view = SceneCamera::Current();
+    CHECK_EQ(view.Distance, 30.0f);
+    CHECK_EQ(view.Yaw, 0.0f);
     CHECK(editor.IsField(field));
     CHECK_EQ(editor.NameOf(field), std::string("Field"));
     const Shape2D& shape = ECS.GetComponent<Shape2D>(field);
@@ -114,7 +124,8 @@ TEST_CASE("Editor: place every kind of object")
             CHECK_EQ(editor.NameOf(e), std::string(Editor::ObjectKindName(kind)));
         }
     }
-    CHECK_EQ(editor.Objects().size(), size_t(7));
+    // + the field and the camera
+    CHECK_EQ(editor.Objects().size(), size_t(8));
     CHECK(editor.IsDirty());
     CHECK(editor.Validate().empty());
 
@@ -296,7 +307,11 @@ TEST_CASE("Editor: save and load a scene file")
     Entity e = editor.Place(ObjectKind::Polygon, {3, 0, -2}, Brush(2.0f, 1.0f, BodyType::Static));
     editor.SetScript(e, "Rotator");
     editor.SetSceneScript("CollectGame");
-    editor.SetGameCamera({1, 0, 1}, 25.0f);
+    SceneCamera::View view;
+    view.Target = {1, 0, 1};
+    view.Distance = 25.0f;
+    view.Yaw = 30.0f;
+    editor.SetGameCamera(view);
     Fixture::WorldImage saved = Capture();
 
     std::string path = TempPath("scene.ubsave");
@@ -308,7 +323,8 @@ TEST_CASE("Editor: save and load a scene file")
     int replaced = 0;
     editor.OnWorldReplaced = [&] { ++replaced; };
     editor.NewScene();
-    CHECK_EQ(editor.Objects().size(), size_t(1));
+    // The field and the Main Camera
+    CHECK_EQ(editor.Objects().size(), size_t(2));
 
     Serialization::LoadResult loaded = editor.LoadScene(path);
     REQUIRE(loaded.Success);

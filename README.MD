@@ -95,8 +95,15 @@ Both programs must run from the repository root (the build does this) to find `d
   fit. Click any value and type it, **Enter** applies. See [docs/ComponentsTutorial.md](docs/ComponentsTutorial.md).
 * **Prefabs:** Save as Prefab, or New Prefab, then edit it on its own stage (**Save Prefab**, **Back to Scene**): every
   instance in the scene is updated. Files in `data/prefabs/`; scripts spawn them with `SpawnPrefab("name", position)`.
-* The **Scene** button shows the scene settings: scene script (e.g. `CollectGame`), field size, game camera.
-* Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Esc, Tab renderer.
+* The **Scene** button shows the scene settings: scene script (e.g. `CollectGame`), field size, **Game camera = view**.
+* **Two cameras:** the scene view has the editor's own camera (WASD pan, arrows orbit / tilt, E/V up / down, Z/C zoom,
+  Home reset). The **game camera** is a scene object, **Main Camera**: select it in the hierarchy or the view, move and
+  turn it like any object, edit its Distance / Pitch / FOV in its **GameCamera** section. Play looks through it.
+* **Shaders:** each shape and model picks a fragment shader (Shape, Lit, Unlit, **Pulse**, **Rim**, **Stripes**, ...)
+  and a vertex shader (Default, **Wave**, **Sway**) in its **Shader** section.
+* Keys: WASD / arrows / E / V / Z / C / Home move the view, R L J rotate, I/K raise / lower, F duplicate, X delete,
+  U/Y undo/redo, G snap, **P** play / stop, **H** controls panel, Esc, Tab renderer. All of them:
+  [docs/Controls.md](docs/Controls.md) or the **Controls** button of the status bar.
 * The GUI adapts to the window size: labels stay centered in their widgets and long text is shortened instead of
   spilling out of its panel.
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.

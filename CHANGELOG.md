@@ -2,6 +2,131 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
+## Shaders on meshes, editor camera controls, the game camera as an object
+
+### Shaders tied to meshes
+
+- **How an object is drawn:** every shape and model has a `FragShaderTag`
+  and, optionally, a `VertShaderTag`. The `ShaderHandler` creates one shader
+  instance per object in the `AssetServer`, and the `MeshHandler` writes
+  the instance ids into the object's vertices. The renderer runs, for each
+  vertex, `GetVertShader(v.VertexShaderID)` and, for each pixel,
+  `GetFragShader(triangle id)`.
+- **Fragment shaders** (`src/Engine/EffectShadersSIMD.h/.cpp`), 8 pixels at
+  a time with the SIMD wrappers:
+  - `EffectShading::BaseColor` takes the vertex colour (shapes) or, where it
+    is black, the material's diffuse colour (models), so every effect works
+    on both;
+  - `EffectShading::Lighting` is the shape shader's ambient + Lambert term;
+  - **Pulse** scales and whitens the lit colour with `sin(time)` (one value
+    per draw, so the object pulses as a whole);
+  - **Rim** adds a light tint where the surface turns away from the camera:
+    `(1 - |N.V|)^3`;
+  - **Stripes** brightens / dims bands of world height that scroll up:
+    `fract(y * density - time * speed) < 0.5`.
+  - `SIMD::Select` takes non-const references in the AVX2 build, so the
+    shaders pass it copies.
+- **Vertex shaders** (`src/Engine/EffectVertexShaders.h/.cpp`):
+  - **Wave:** `y += A sin(t speed + (x + z) f)`.
+  - **Sway:** x / z move by `strength * LocalPosition.Y * sin(...)`, so the
+    base stays put and the top moves most.
+  - Both compute the moved position in a local and project it like
+    `DefaultVertexShader` (camera space, projection, light space for
+    shadows). `v.Position` is **not** written: the vertex buffer keeps the
+    world position, which the MeshHandler only rewrites when the object
+    moves, so writing it would accumulate the offset every frame.
+  - `DeltaTime` is the time the shader instance has run, advanced by the
+    `ShaderHandler`.
+- **Ids:** `PulseShaderID`, `RimShaderID`, `StripesShaderID`,
+  `WaveVertShaderID` and `SwayVertShaderID` are appended to the enums in
+  `Assets.h`. Scene files store the number, so existing values don't
+  change. The `SERIALIZATION_ENUM_RANGE`s and `AssetServer::SetFragShader` /
+  `SetVertShader` know the new ones.
+- **MeshHandler fixes:** a changed vertex shader on a model called
+  `UpdateMeshFragShader` (the vertex shader id ended up as the fragment
+  shader id), and shapes never looked at vertex shader changes. Both now
+  call `UpdateMeshVertShader`.
+- **`ShaderLibrary`** (`src/Engine/ShaderLibrary.h`) lists the shaders the
+  editor offers, with names and descriptions, plus `Name` / `Find`.
+  `SceneObjects::SetFragmentShader` / `SetVertexShader` / `SetShaders` /
+  `FragmentShaderOf` / `VertexShaderOf` add or change the tags.
+- **Editor:** `SceneEditor::SetFragmentShader` / `SetVertexShader` (one
+  undo step, shapes and models only), the inspector's **Shader** section,
+  and `CopyObject` copies the shaders.
+- **Prefabs:** `Prefab::Object` gained `FragShader` / `VertShader`.
+  `FORMAT_VERSION` is 2: archives carry the file's version (`SetVersion`)
+  and `Serialize(Object)` reads the two fields only when
+  `ar.Version() >= 2`. Version 1 files give shapes the shape shader and
+  models the lit one.
+
+### The game camera is a scene object (`src/Engine/World/SceneCamera.h/.cpp`)
+
+- **`GameCamera`** is a reflected component `{ Distance, Pitch, FieldOfView }`
+  with ranges. It is registered in the scene file registry
+  (`RegisterSceneSerializers`) and in the `ComponentCatalog` (by the
+  catalog itself, so **Add Component** offers it and the inspector
+  generates its fields).
+- **The view** is the object's world position (the point looked at) and yaw
+  (the direction along the ground, 0 = +Z), plus the component:
+
+  ```
+  eye = target + (back(yaw) * cos(pitch) + up * sin(pitch)) * distance
+  back(yaw) = (-sin(yaw), 0, -cos(yaw))
+  ```
+
+  With yaw 0 and pitch 61.19° this is exactly the old fixed
+  `VIEW_DIRECTION`, so existing scenes look the same.
+- **`SceneCamera::`**
+  - `Find` returns the first (lowest id) object with `GameCamera` +
+    `Transform`;
+  - `ViewOf`, `FromSettings` (the settings' camera), and `Current` (the
+    camera object, else the settings);
+  - `Apply` places the renderer's `Camera` and changes its field of view
+    only when it differs;
+  - `Create` and `SetView` (clamped to the component's ranges);
+  - `Follower::Update` applies the current view only when it changed, so a
+    script that drives the renderer's camera itself is not overridden
+    every frame.
+- **`ScenePlayer`** resets its follower when a world is restored and
+  updates it every frame, so scripts can move the camera object.
+  `MetalInvasion` starts its WASD camera from `SceneCamera::Current()` and
+  pans relative to the camera's yaw.
+- **Editor:**
+  - `NewScene(withCamera = true)` creates a **Main Camera** (tag `Camera`)
+    where the old camera was; prefab stages have none, and `CaptureStage`
+    skips cameras.
+  - `GameCameraObject`, `IsCamera`, `AddCamera`, `SetGameCamera(view)`
+    (creates one when missing; also updates the settings for older
+    readers) and `SetCameraView` are all one undo step.
+  - **Picking:** a ray through a camera's eye marker picks it before
+    anything else (at the eye's height, so dragging it works). A camera's
+    target cross is only picked when no other object is there, so a camera
+    at the field's centre never steals clicks.
+
+### The editor's view and controls (`SceneEditorScene`)
+
+- The view is a `SceneCamera::View` (`m_View`) applied with
+  `SceneCamera::Apply` every frame. WASD pans along `Forward` / `Right` of
+  its yaw, the arrow keys orbit and tilt (10..89°), E / V move the target up
+  and down, Z / C zoom, and Home resets. **Q** stays ContestAPI's quit key.
+- **Play** resets a `SceneCamera::Follower` and updates it each frame (the
+  game camera, as scripts move it). **Stop** re-applies the editor view,
+  which was never changed. The prefab stage saves and restores the scene's
+  view.
+- **Selection keys:** I / K call `SceneEditor::SetHeight` (±0.5, one undo
+  step; `Move` keeps the height), J / L turn by ∓/±15°. The Transform
+  section has a **Pos Y** row (`ID_FIELD_POS_Y`).
+- **Camera gizmo** (`DrawCameraGizmo`): the target cross, a line to the eye,
+  a pyramid sized by the field of view, and the name. Points behind the
+  view are skipped. Camera rows are yellow in the hierarchy, and the
+  inspector labels them "Game camera".
+- **Menus:** **Create Camera** on the scene; **Align with View** and **View
+  Through Camera** on a camera.
+- **Controls panel** (`RenderControlsPanel`, data in `Controls()`): drawn
+  over the scene view, where it also blocks clicks to the view. **H**, the
+  status bar's **Controls** button, **Close** and **Esc** toggle it. The
+  status bar's hints and message are fitted to the room left of the button.
+
 ## Unity-style editor, context menus, prefabs, responsive GUI
 
 ### Responsive text (`src/Engine/UIText.h/.cpp`)

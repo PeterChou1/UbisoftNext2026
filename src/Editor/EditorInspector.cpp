@@ -9,8 +9,9 @@
 //   Name   [Crate        ]
 //   Rectangle  #7           2 children
 //   Tag < Wall >
-//   - Transform       in Tank          Parent, Pos X / Z, Rot (Scale)
+//   - Transform       in Tank          Parent, Pos X / Y / Z, Rot (Scale)
 //   - Shape2D         Rectangle        Width, Height, Sides, Thick, colour
+//   - Shader          Rim + Wave       fragment and vertex shaders
 //   - RigidBody       Static  [Remove] Body
 //   - Script          Rotator [Remove] script + its parameters
 //   - Health                  [Remove] fields generated from REFLECT
@@ -27,6 +28,9 @@
 #include "Mesh.h"
 #include "Reflection/ComponentCatalog.h"
 #include "SceneEditorScene.h"
+#include "ShaderLibrary.h"
+
+#include "ShaderLibrary.h"
 #include "Scripting/ScriptRegistry.h"
 #include "Scripting/ScriptSystem.h"
 #include "Transform.h"
@@ -180,7 +184,7 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
         }
         if (Row(WIDGET_H, y))
         {
-            std::string kind = Editor::ObjectKindName(m_Editor.KindOf(e));
+            std::string kind = m_Editor.IsCamera(e) ? "Game camera" : Editor::ObjectKindName(m_Editor.KindOf(e));
             Text(x, RowY(y), kind + "  #" + std::to_string(e), TEXT_DIM, width * 0.55f);
             std::size_t children = m_Editor.ChildrenOf(e).size();
             if (children > 0)
@@ -248,9 +252,12 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
                 }
             }
             Vec3 p = SceneObjects::GetPosition(e);
-            float px = p.X, pz = p.Z, yaw = SceneObjects::GetYaw(e);
+            float px = p.X, py = p.Y, pz = p.Z, yaw = SceneObjects::GetYaw(e);
             if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Pos X", ID_FIELD_POS_X, px, SNAP_STEP))
                 m_Editor.Move(e, Vec3(px, p.Y, p.Z));
+            // Height (I / K in the scene view)
+            if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Pos Y", ID_FIELD_POS_Y, py, SNAP_STEP))
+                m_Editor.SetHeight(e, py);
             if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Pos Z", ID_FIELD_POS_Z, pz, SNAP_STEP))
                 m_Editor.Move(e, Vec3(p.X, p.Y, pz));
             if (Row(WIDGET_H, y) && NumberRow(ix, y, iw, "Rot", ID_FIELD_ROT, yaw, ROTATE_STEP, "%.0f"))
@@ -308,6 +315,40 @@ void SceneEditorScene::RenderObjectInspector(Entity e, float x, float width)
     }
     if (isField)
         return;
+
+    // -- Shader (FragShaderTag / VertShaderTag) ---------------------------------------------
+    if (isShape || isModel)
+    {
+        FragShaderTypeID fragment = SceneObjects::FragmentShaderOf(e);
+        VertShaderTypeID vertex = SceneObjects::VertexShaderOf(e);
+        std::string summary = ShaderLibrary::Name(fragment);
+        if (vertex != DefaultVertShaderID)
+            summary += " + " + ShaderLibrary::Name(vertex);
+        if (Section("Shader", summary, false, x, width, removed))
+        {
+            const auto& fragments = ShaderLibrary::FragmentShaders();
+            const auto& vertices = ShaderLibrary::VertexShaders();
+            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Frag " + ShaderLibrary::Name(fragment), "<", ">")) != 0)
+            {
+                int count = static_cast<int>(fragments.size());
+                int index = 0;
+                for (int i = 0; i < count; ++i)
+                    if (fragments[static_cast<std::size_t>(i)].Value == fragment)
+                        index = i;
+                const auto& next = fragments[static_cast<std::size_t>(Cycle(index, d, count))];
+                m_Editor.SetFragmentShader(e, next.Value);
+                SetStatus(std::string("Fragment shader ") + next.Name + ": " + next.Description);
+            }
+            if (Row(WIDGET_H, y) && (d = Stepper(ix, y, iw, "Vert " + ShaderLibrary::Name(vertex), "<", ">")) != 0)
+            {
+                int count = static_cast<int>(vertices.size());
+                const auto& next =
+                        vertices[static_cast<std::size_t>(Cycle(static_cast<int>(vertex), d, count))];
+                m_Editor.SetVertexShader(e, next.Value);
+                SetStatus(std::string("Vertex shader ") + next.Name + ": " + next.Description);
+            }
+        }
+    }
 
     // -- RigidBody -------------------------------------------------------------------------------
     BodyType body = SceneObjects::GetBodyType(e);
@@ -616,8 +657,13 @@ void SceneEditorScene::RenderSceneInspector(float x, float width)
     m_RowCursor -= 6.0f;
     if (Row(BUTTON_H, y) && Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Game camera = view"))
     {
-        m_Editor.SetGameCamera(m_CamTarget, m_CamDistance);
-        SetStatus("The game will start with the current view");
+        // The camera object keeps its own field of view
+        SceneCamera::View view = m_View;
+        Entity existing = m_Editor.GameCameraObject();
+        if (existing != NULL_ENTITY)
+            view.FieldOfView = ECS.GetComponent<GameCamera>(existing).FieldOfView;
+        Entity camera = m_Editor.SetGameCamera(view);
+        SetStatus(m_Editor.NameOf(camera) + " now shows the current view");
     }
 
     // Scene files in plain text (readable / diffable) or binary

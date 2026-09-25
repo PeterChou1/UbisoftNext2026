@@ -351,7 +351,7 @@ TEST_CASE("Text saves: the editor's Plain text files option")
     REQUIRE(WorldSerializer::ReadFile(gui.ScenePath(gui.SceneName()), bytes, error));
     CHECK(WorldSerializer::IsTextSave(bytes));
     REQUIRE(gui.OpenScene(gui.SceneName()));
-    CHECK_EQ(gui.GetEditor().Objects().size(), size_t(2));
+    CHECK_EQ(gui.GetEditor().Objects().size(), size_t(3));
     TestEnvironment::RunFrame(16);
     CHECK(AppStub::WasPrinted("(plain text file)"));
 
