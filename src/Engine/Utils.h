@@ -5,101 +5,60 @@
 // Implements a couple of useful utility functions
 //
 #pragma once
-#include "Camera.h"
-#include "Entity.h"
 #include "Mat2.h"
 #include "Material.h"
 #include "MeshInstance.h"
 
+#include <algorithm>
 #include <string>
-#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace Utils
 {
-
-    /**
-     * \brief Returns closest point between point and line segment ab
-     */
+    /// Closest point to `point` on the line segment ab
     Vec2 PointToLineSegment(Vec2 point, Vec2 a, Vec2 b);
 
-    /**
-     * \brief Translates all points in a vector to a specific position
-     *        and angle
-     */
-    std::vector<Vec2>
-    TranslatePoints(const std::vector<Vec2>& points, float angle, const Vec2& position);
-
-    /**
-     * \brief TranslatePoints into an existing vector (no allocation once it
-     *        is big enough; the same arithmetic)
-     */
-    void TranslatePointsInto(const std::vector<Vec2>& points, float angle, const Vec2& position, std::vector<Vec2>& out);
-
-    /**
-     * \brief The same with the rotation matrix already built
-     *        (RotationMatrix(angle))
-     */
-    void TranslatePointsInto(const std::vector<Vec2>& points, Mat2 matrix, const Vec2& position, std::vector<Vec2>& out);
-
-    /**
-     * \brief The rotation TranslatePoints uses
-     */
+    /// Rotation by angle (radians) used for 2d physics shapes
     Mat2 RotationMatrix(float angle);
 
-    /**
-     * \brief Clamp n between upper and lower floats
-     */
+    /// Rotates every point by matrix, then moves it by position, into out
+    /// (no allocation once out is big enough)
+    void TranslatePointsInto(const std::vector<Vec2>& points,
+                             Mat2 matrix,
+                             const Vec2& position,
+                             std::vector<Vec2>& out);
+
+    inline void TranslatePointsInto(const std::vector<Vec2>& points,
+                                    float angle,
+                                    const Vec2& position,
+                                    std::vector<Vec2>& out)
+    {
+        TranslatePointsInto(points, RotationMatrix(angle), position, out);
+    }
+
     inline float Clamp(float n, float lower, float upper)
     {
         return std::max(lower, std::min(n, upper));
     }
 
-    /**
-     * \brief  Code adapted from
-     * https://stackoverflow.com/questions/33571609/having-trouble-with-vector-erase-and-remove-if
-     *         Modify to remove ranges instead of individual index
-     * \tparam Type
-     * \param ranges_to_erase integer ranges of ranges you want to erase
-     * \param vec vector to erase ranges from
-     */
+    /// Erase the index ranges [first, second) from vec in one pass. Adapted from
+    /// https://stackoverflow.com/questions/33571609/having-trouble-with-vector-erase-and-remove-if
     template <typename Type>
-    void EraseRanges(const std::vector<std::pair<int, int>>& ranges_to_erase,
-                     std::vector<Type>& vec)
+    void EraseRanges(const std::vector<std::pair<int, int>>& rangesToErase, std::vector<Type>& vec)
     {
-        std::vector<bool> erase_index(vec.size(), false);
+        std::vector<bool> erase(vec.size(), false);
+        for (const std::pair<int, int>& range : rangesToErase)
+            std::fill(erase.begin() + range.first, erase.begin() + range.second, true);
 
-        for (const std::pair<int, int> pair : ranges_to_erase)
-        {
-            std::fill(erase_index.begin() + pair.first, erase_index.begin() + pair.second, true);
-        }
-        auto it_to_erase = erase_index.cbegin();
-
-        typename std::vector<Type>::iterator it_erase_from =
-                std::remove_if(vec.begin(), vec.end(), [&it_to_erase](const Type&) -> bool {
-                    return *it_to_erase++ == true;
-                });
-
-        vec.erase(it_erase_from, vec.end());
+        // remove_if visits the elements in order
+        auto next = erase.cbegin();
+        vec.erase(std::remove_if(vec.begin(), vec.end(), [&next](const Type&) { return *next++; }),
+                  vec.end());
     }
 
-    /**
-     * \brief Loads an .obj file only supports triangles, normals, texture
-     * coordinates \param filename \param mesh the object the function will populate
-     * the vertices with \param textureList populates the list with textures
-     * reference in .obj file each vertex will contain a index pointing to a texture
-     * on this list \return
-     */
+    /// Loads an .obj file into mesh (see Utils.cpp for what is supported).
+    /// The materials of its .mtl file are appended to textureList and each
+    /// vertex's TextureID indexes them (-1: default material)
     bool LoadInstance(std::string filename, MeshInstance& mesh, std::vector<Material>& textureList);
-
-    /**
-     * \brief Loads an .mtl material file support Ambient, Diffuse, Specular in the
-     * Bling-Phong Model meant for use by LoadInstance but can be called
-     * independently \param filename \param textureList loaded list from texture
-     * \param textureIDs map of texture names to index of texture in textureList
-     * \return
-     */
-    bool LoadMTLFile(const std::string& directory,
-                     const std::string& filename,
-                     std::vector<Material>& textureList,
-                     std::unordered_map<std::string, size_t>& textureIDs);
 } // namespace Utils

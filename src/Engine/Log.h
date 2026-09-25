@@ -29,17 +29,17 @@
 #include <string>
 
 #ifndef ENGINE_LOGGING
-#ifdef NDEBUG
-#define ENGINE_LOGGING 0
-#else
-#define ENGINE_LOGGING 1
-#endif
+#    ifdef NDEBUG
+#        define ENGINE_LOGGING 0
+#    else
+#        define ENGINE_LOGGING 1
+#    endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-#define ENGINE_PRINTF_FORMAT(fmt, args) __attribute__((format(printf, fmt, args)))
+#    define ENGINE_PRINTF_FORMAT(fmt, args) __attribute__((format(printf, fmt, args)))
 #else
-#define ENGINE_PRINTF_FORMAT(fmt, args)
+#    define ENGINE_PRINTF_FORMAT(fmt, args)
 #endif
 
 namespace Log
@@ -52,8 +52,6 @@ namespace Log
         Error,
         Off
     };
-
-    const char* LevelName(Level level);
 
     /**
      * \brief Messages below this level are dropped (default Trace: everything)
@@ -72,17 +70,18 @@ namespace Log
      * \brief Format and write one message (use the LOG_* macros instead, they
      *        disappear from release builds)
      */
-    void Write(Level level, const char* category, const char* format, ...) ENGINE_PRINTF_FORMAT(3, 4);
+    void Write(Level level, const char* category, const char* format, ...)
+            ENGINE_PRINTF_FORMAT(3, 4);
 } // namespace Log
 
 #if ENGINE_LOGGING
-#define LOG_TRACE(category, ...) ::Log::Write(::Log::Level::Trace, category, __VA_ARGS__)
-#define LOG_INFO(category, ...) ::Log::Write(::Log::Level::Info, category, __VA_ARGS__)
-#define LOG_WARN(category, ...) ::Log::Write(::Log::Level::Warning, category, __VA_ARGS__)
-#define LOG_ERROR(category, ...) ::Log::Write(::Log::Level::Error, category, __VA_ARGS__)
+#    define LOG_TRACE(category, ...) ::Log::Write(::Log::Level::Trace, category, __VA_ARGS__)
+#    define LOG_INFO(category, ...) ::Log::Write(::Log::Level::Info, category, __VA_ARGS__)
+#    define LOG_WARN(category, ...) ::Log::Write(::Log::Level::Warning, category, __VA_ARGS__)
+#    define LOG_ERROR(category, ...) ::Log::Write(::Log::Level::Error, category, __VA_ARGS__)
 #else
-#define LOG_TRACE(category, ...) ((void)0)
-#define LOG_INFO(category, ...) ((void)0)
-#define LOG_WARN(category, ...) ((void)0)
-#define LOG_ERROR(category, ...) ((void)0)
+#    define LOG_TRACE(category, ...) ((void)0)
+#    define LOG_INFO(category, ...) ((void)0)
+#    define LOG_WARN(category, ...) ((void)0)
+#    define LOG_ERROR(category, ...) ((void)0)
 #endif

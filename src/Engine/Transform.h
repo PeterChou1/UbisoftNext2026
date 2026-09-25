@@ -2,9 +2,10 @@
 // Transform.h
 //---------------------------------------------------------------------------------
 //
-// Transform are a way to represent location and orientation within the engine
-// any objects located in the world space will have a transform attach to them
-// in the Entity Component System
+// Position, rotation and scale of an entity, relative to its parent entity
+// (or the world for a root). Affine / Inverse cache the local matrix and its
+// inverse; functions that change the local pose rebuild them, set IsDirty and
+// mark every descendant dirty.
 //
 #pragma once
 
@@ -15,11 +16,7 @@
 
 #include <vector>
 
-/**
- * \brief Since the transform class is 3d we have three ways
- *        to slice the 3d coordinates to sync up with our 2d
- *        physics system
- */
+/// The plane of the 3d transform that the 2d physics system works in
 enum SlicePlane
 {
     XY,
@@ -29,7 +26,6 @@ enum SlicePlane
 
 struct Transform
 {
-    // Parent Entity used for keeping track of the Transform Hierarchy
     Entity Parent = NULL_ENTITY;
     std::vector<Entity> Children;
     Vec3 LocalPosition;
@@ -40,159 +36,77 @@ struct Transform
     SlicePlane Plane = XY;
     bool IsDirty{};
 
-    /**
-     * \brief Default Constructor Transform will be initialized at (0,0,0)
-     */
-    Transform();
-
-    /**
-     * \brief Construct a transform given only a position
-     *        The object will be rotated in its default position
-     * \param pos
-     */
-    Transform(const Vec3& pos);
-
-    /**
-     * \brief Construct a transform based on position and quaternion
-     *        Rotation
-     * \param pos
-     * \param rot
-     */
-    Transform(const Vec3& pos, const Quat& rot);
-
-    /**
-     * \brief Construct a transform based on
-     */
-    Transform(const Vec3& pos, const Quat& rot, const Vec3& scale);
-
-    /**
-     * \brief Scale transform uniformly in all direction
-     * \param scale
-     */
-    void Scale(float scale);
-
-    /**
-     * \brief Constructor a transform based on a Camera oriented approach
-     *        where we specify a target vector to point the transform to
-     * \param pos
-     * \param target vector of where the transform is pointing to
-     * \param up vector indicating the up direction of the transform
-     */
-    Transform(const Vec3& pos, const Vec3& target, const Vec3& up);
-
-    /**
-     * \brief Set slice plane to sync with the physics system
-     */
-
-    /**
-     * \brief Position / rotation / scale of the parents combined (identity
-     *        for a root transform)
-     */
+    /// Position / rotation / scale of all parents combined
     struct Pose
     {
         Vec3 Position;
         Quat Rotation;
         Vec3 Scale;
     };
+
+    /// At the origin, not rotated, scale 1
+    Transform();
+    Transform(const Vec3& pos);
+    Transform(const Vec3& pos, const Quat& rot);
+    Transform(const Vec3& pos, const Quat& rot, const Vec3& scale);
+
+    /// At pos with its -Z axis pointing at target (camera convention)
+    Transform(const Vec3& pos, const Vec3& target, const Vec3& up);
+
+    /// Scale uniformly (multiplies the current scale)
+    void Scale(float scale);
+
+    /// The parents' pose (identity for a root transform)
     Pose ParentPose() const;
 
-    /**
-     * \brief Get world position with every parent transformation applied
-     */
+    /// Position with every parent applied
     Vec3 GetWorldPosition();
 
-    /**
-     * \brief Move to a world position (converted into the parent's space)
-     */
+    /// Move to a world position (converted into the parent's space)
     void SetWorldPosition(const Vec3& position);
 
-    /**
-     * \brief Replace the local position, rotation and scale at once
-     */
+    /// Replace the local position, rotation and scale at once
     void SetLocalPose(const Vec3& position, const Quat& rotation, const Vec3& scale);
 
-    /**
-     * \brief Rotation with every parent rotation applied
-     */
+    /// Rotation with every parent applied
     Quat GetWorldRotation();
 
-    /**
-     * \brief The transform in world space (its Affine maps local points to
-     *        the world). A root transform is returned unchanged
-     */
+    /// The transform in world space (its Affine maps local points to the
+    /// world). A root transform is returned unchanged
     Transform GetWorldTransform();
 
-    /**
-     * \brief Set Parent Entity
-     */
-    void SetParentEntity(Entity parent, Entity children);
+    /// Make `parent` the parent of this transform, which belongs to `child`
+    void SetParentEntity(Entity parent, Entity child);
 
-    /**
-     * \brief Get Left pointing direction for a transform
-     */
+    /// Local X / Y axes (scaled) in the parent's space
     Vec3 GetRight();
-
-    /**
-     * \brief Get Up pointing direction for a transform
-     */
     Vec3 GetUp();
 
-    /**
-     * \brief Set position of the transform while retaining rotation
-     * \param pos
-     */
     void SetLocalPosition(const Vec3& pos);
 
-    /**
-     *
-     */
+    /// Set the local rotation so the world rotation becomes rot
     void SetGlobalRotation(Quat rot);
 
-    /**
-     * \brief Update Rotation around the X-Axis
-     * \param row
-     */
-    /**
-     * \brief Rebuild Affine / Inverse from LocalPosition, LocalRotation and
-     *        LocalScale (after changing them directly), mark it dirty
-     */
+    /// Rebuild Affine / Inverse after changing LocalPosition, LocalRotation or
+    /// LocalScale directly, and mark it dirty
     void RebuildAffine();
 
-    void UpdateLocalRow(float row);
-
-    /**
-     * \brief Update rotation around the Y-Axis
-     * \param pitch
-     */
+    /// Rotate around the local X / Y / Z axis
+    void UpdateLocalRow(float roll);
     void UpdateLocalPitch(float pitch);
-
-    /**
-     * \brief Update rotation around the Z-Axis
-     * \param yaw
-     */
     void UpdateLocalYaw(float yaw);
 
-    /**
-     * \brief Update position by delta and rotation by rot
-     * \param delta
-     * \param rot
-     */
+    /// Move by delta and rotate by rot (in local space)
     void Update(const Vec3& delta, const Quat& rot);
 
-    /**
-     * \brief Add current position and rotation to a point
-     * \param point
-     * \return The Transform Vec3
-     */
+    /// Local point to the parent's space
     Vec3 TransformVec3(const Vec3& point) const;
 
-    /**
-     * \brief Transform a normal vector by rotation it to the current
-     *        rotation
-     * NOTE: The current implementation does not support non-uniform scaling
-     *       the return normal will NOT be correct if there is scaling applied to
-     * the transform (FIXME) \param normal \return
-     */
+    /// Rotates a normal by the local rotation. Scale is ignored, so the
+    /// result is wrong for non-uniform scaling
     Vec3 TransformNormal(const Vec3& normal) const;
 
+  private:
+    /// Affine / Inverse from the local position, rotation and scale
+    void BuildAffine();
 };

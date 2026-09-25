@@ -1,34 +1,7 @@
 #include "Quat.h"
 
-#include "stdafx.h"
-
 #include <cassert>
 #include <cmath>
-#include <math.h>
-
-Quat::Quat()
-    : X(0)
-    , Y(0)
-    , Z(0)
-    , W(1)
-{
-}
-
-Quat::Quat(const Quat& rhs)
-    : X(rhs.X)
-    , Y(rhs.Y)
-    , Z(rhs.Z)
-    , W(rhs.W)
-{
-}
-
-Quat::Quat(float X, float Y, float Z, float W)
-    : X(X)
-    , Y(Y)
-    , Z(Z)
-    , W(W)
-{
-}
 
 Quat::Quat(Vec3 n, const float angleRadians)
 {
@@ -39,15 +12,6 @@ Quat::Quat(Vec3 n, const float angleRadians)
     X = n.X * halfSine;
     Y = n.Y * halfSine;
     Z = n.Z * halfSine;
-}
-
-const Quat& Quat::operator=(const Quat& rhs)
-{
-    X = rhs.X;
-    Y = rhs.Y;
-    Z = rhs.Z;
-    W = rhs.W;
-    return *this;
 }
 
 Quat& Quat::operator*=(const float& rhs)
@@ -61,83 +25,62 @@ Quat& Quat::operator*=(const float& rhs)
 
 Quat& Quat::operator*=(const Quat& rhs)
 {
-    Quat temp = *this * rhs;
-    W = temp.W;
-    X = temp.X;
-    Y = temp.Y;
-    Z = temp.Z;
+    *this = *this * rhs;
     return *this;
 }
 
 Quat Quat::operator*(const Quat& rhs) const
 {
-    Quat temp;
-    temp.W = W * rhs.W - X * rhs.X - Y * rhs.Y - Z * rhs.Z;
-    temp.X = X * rhs.W + W * rhs.X + Y * rhs.Z - Z * rhs.Y;
-    temp.Y = Y * rhs.W + W * rhs.Y + Z * rhs.X - X * rhs.Z;
-    temp.Z = Z * rhs.W + W * rhs.Z + X * rhs.Y - Y * rhs.X;
-    return temp;
+    Quat product;
+    product.W = W * rhs.W - X * rhs.X - Y * rhs.Y - Z * rhs.Z;
+    product.X = X * rhs.W + W * rhs.X + Y * rhs.Z - Z * rhs.Y;
+    product.Y = Y * rhs.W + W * rhs.Y + Z * rhs.X - X * rhs.Z;
+    product.Z = Z * rhs.W + W * rhs.Z + X * rhs.Y - Y * rhs.X;
+    return product;
 }
 
 void Quat::Normalize()
 {
     float magnitude = GetMagnitude();
     assert(magnitude != 0.0);
-    float invMag = 1.0f / magnitude;
-    X = X * invMag;
-    Y = Y * invMag;
-    Z = Z * invMag;
-    W = W * invMag;
-}
-
-void Quat::Invert()
-{
-    *this *= 1.0f / MagnitudeSquared();
-    X = -X;
-    Y = -Y;
-    Z = -Z;
+    *this *= 1.0f / magnitude;
 }
 
 Quat Quat::Inverse() const
 {
-    Quat val(*this);
-    val.Invert();
-    return val;
-}
-
-float Quat::MagnitudeSquared() const
-{
-    return X * X + Y * Y + Z * Z + W * W;
+    // Conjugate divided by the squared magnitude
+    Quat inverse = *this;
+    inverse *= 1.0f / MagnitudeSquared();
+    inverse.X = -inverse.X;
+    inverse.Y = -inverse.Y;
+    inverse.Z = -inverse.Z;
+    return inverse;
 }
 
 float Quat::GetMagnitude() const
 {
-    return sqrtf(MagnitudeSquared());
+    return std::sqrt(MagnitudeSquared());
 }
 
 Vec3 Quat::RotatePoint(const Vec3& rhs) const
 {
-    Quat vector(rhs.X, rhs.Y, rhs.Z, 0.0f);
-    Quat finalQuat = *this * vector * Inverse();
-    return Vec3(finalQuat.X, finalQuat.Y, finalQuat.Z);
+    Quat rotated = *this * Quat(rhs.X, rhs.Y, rhs.Z, 0.0f) * Inverse();
+    return Vec3(rotated.X, rotated.Y, rotated.Z);
 }
 
 float Quat::GetRoll2D() const
 {
-    float angle = 2.0f * std::atan2(X, W);
-    return angle;
+    return 2.0f * std::atan2(X, W);
 }
 
 float Quat::GetYaw2D() const
 {
-    float angle = 2.0f * std::atan2(Z, W);
-    return angle;
+    return 2.0f * std::atan2(Z, W);
 }
 
 float Quat::GetPitch2D() const
 {
-    float angle = 2.0f * std::atan2(Y, W);
-    return angle;
+    return 2.0f * std::atan2(Y, W);
 }
 
 Quat Quat::FromRotationMatrix(Mat3& m)
@@ -147,7 +90,7 @@ Quat Quat::FromRotationMatrix(Mat3& m)
 
     if (trace > 0)
     {
-        float S = std::sqrtf(trace + 1.0f) * 2.0f; // S=4*qw
+        float S = std::sqrt(trace + 1.0f) * 2.0f; // S=4*qw
         q.W = 0.25f * S;
         q.X = (m[2][1] - m[1][2]) / S;
         q.Y = (m[0][2] - m[2][0]) / S;
@@ -155,7 +98,7 @@ Quat Quat::FromRotationMatrix(Mat3& m)
     }
     else if ((m[0][0] > m[1][1]) & (m[0][0] > m[2][2]))
     {
-        float S = std::sqrtf(1.0f + m[0][0] - m[1][1] - m[2][2]) * 2.0f; // S=4*qx
+        float S = std::sqrt(1.0f + m[0][0] - m[1][1] - m[2][2]) * 2.0f; // S=4*qx
         q.W = (m[2][1] - m[1][2]) / S;
         q.X = 0.25f * S;
         q.Y = (m[0][1] + m[1][0]) / S;
@@ -163,7 +106,7 @@ Quat Quat::FromRotationMatrix(Mat3& m)
     }
     else if (m[1][1] > m[2][2])
     {
-        float S = std::sqrtf(1.0f + m[1][1] - m[0][0] - m[2][2]) * 2.0f; // S=4*qy
+        float S = std::sqrt(1.0f + m[1][1] - m[0][0] - m[2][2]) * 2.0f; // S=4*qy
         q.W = (m[0][2] - m[2][0]) / S;
         q.X = (m[0][1] + m[1][0]) / S;
         q.Y = 0.25f * S;
@@ -171,7 +114,7 @@ Quat Quat::FromRotationMatrix(Mat3& m)
     }
     else
     {
-        float S = std::sqrtf(1.0f + m[2][2] - m[0][0] - m[1][1]) * 2.0f; // S=4*qz
+        float S = std::sqrt(1.0f + m[2][2] - m[0][0] - m[1][1]) * 2.0f; // S=4*qz
         q.W = (m[1][0] - m[0][1]) / S;
         q.X = (m[0][2] + m[2][0]) / S;
         q.Y = (m[1][2] + m[2][1]) / S;

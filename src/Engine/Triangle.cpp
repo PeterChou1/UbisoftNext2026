@@ -1,6 +1,27 @@
 #include "Triangle.h"
 
-#include "stdafx.h"
+#include <algorithm>
+
+namespace
+{
+    /// Which tile corner (0..3) to test to trivially reject / accept a tile
+    /// against the edge with normal (-b, c)
+    void TileCorners(int b, int c, int& reject, int& accept)
+    {
+        const bool normalX = -b > 0;
+        const bool normalY = c > 0;
+        if (normalX)
+        {
+            reject = normalY ? 3 : 1;
+            accept = normalY ? 0 : 2;
+        }
+        else
+        {
+            reject = normalY ? 2 : 0;
+            accept = normalY ? 1 : 3;
+        }
+    }
+} // namespace
 
 void Triangle::PerspectiveDivision()
 {
@@ -11,23 +32,15 @@ void Triangle::PerspectiveDivision()
 
 bool Triangle::Setup(int id, int index)
 {
-    // All of this might seem confusing but
-    // all this function is doing is determining which corners
-    // of the tile to trivially reject and accept a triangle
-    // in a tile
-    // more on this here:
+    // Edge function coefficients, bounding box and the tile corners used to
+    // trivially reject / accept tiles, see
     // https://www.cs.cmu.edu/afs/cs/academic/class/15869-f11/www/readings/abrash09_lrbrast.pdf
     BinIndex = index;
     BinID = id;
 
-    float Y0, Y1, Y2;
-    float X0, X1, X2;
-    Y0 = verts[0].Projection.Y;
-    Y1 = verts[1].Projection.Y;
-    Y2 = verts[2].Projection.Y;
-    X0 = verts[0].Projection.X;
-    X1 = verts[1].Projection.X;
-    X2 = verts[2].Projection.X;
+    const float X0 = verts[0].Projection.X, Y0 = verts[0].Projection.Y;
+    const float X1 = verts[1].Projection.X, Y1 = verts[1].Projection.Y;
+    const float X2 = verts[2].Projection.X, Y2 = verts[2].Projection.Y;
 
     B0 = static_cast<int>(Y1 - Y0);
     C0 = static_cast<int>(X1 - X0);
@@ -48,17 +61,11 @@ bool Triangle::Setup(int id, int index)
         C2 *= -1;
     }
 
-    // triangle has no face early reject
+    // Degenerate (no area)
     if (det == 0)
-    {
         return false;
-    }
 
     invDet = 1.0f / static_cast<float>(det);
-
-    Vec2 edgeNormal1 = Vec2(static_cast<float>(-B0), static_cast<float>(C0));
-    Vec2 edgeNormal2 = Vec2(static_cast<float>(-B1), static_cast<float>(C1));
-    Vec2 edgeNoraml3 = Vec2(static_cast<float>(-B2), static_cast<float>(C2));
 
     // set up bounding box
     maxX = static_cast<int>(std::max<float>(std::max<float>(X0, X1), X2));
@@ -66,86 +73,9 @@ bool Triangle::Setup(int id, int index)
     minX = static_cast<int>(std::min<float>(std::min<float>(X0, X1), X2));
     minY = static_cast<int>(std::min<float>(std::min<float>(Y0, Y1), Y2));
 
-    if (edgeNormal1.X > 0)
-    {
-        if (edgeNormal1.Y > 0)
-        {
-            rejectIndex0 = 3;
-            acceptIndex0 = 0;
-        }
-        else
-        {
-            rejectIndex0 = 1;
-            acceptIndex0 = 2;
-        }
-    }
-    else
-    {
-        if (edgeNormal1.Y > 0)
-        {
-            rejectIndex0 = 2;
-            acceptIndex0 = 1;
-        }
-        else
-        {
-            rejectIndex0 = 0;
-            acceptIndex0 = 3;
-        }
-    }
-
-    if (edgeNormal2.X > 0)
-    {
-        if (edgeNormal2.Y > 0)
-        {
-            rejectIndex1 = 3;
-            acceptIndex1 = 0;
-        }
-        else
-        {
-            rejectIndex1 = 1;
-            acceptIndex1 = 2;
-        }
-    }
-    else
-    {
-        if (edgeNormal2.Y > 0)
-        {
-            rejectIndex1 = 2;
-            acceptIndex1 = 1;
-        }
-        else
-        {
-            rejectIndex1 = 0;
-            acceptIndex1 = 3;
-        }
-    }
-
-    if (edgeNoraml3.X > 0)
-    {
-        if (edgeNoraml3.Y > 0)
-        {
-            rejectIndex2 = 3;
-            acceptIndex2 = 0;
-        }
-        else
-        {
-            rejectIndex2 = 1;
-            acceptIndex2 = 2;
-        }
-    }
-    else
-    {
-        if (edgeNoraml3.Y > 0)
-        {
-            rejectIndex2 = 2;
-            acceptIndex2 = 1;
-        }
-        else
-        {
-            rejectIndex2 = 0;
-            acceptIndex2 = 3;
-        }
-    }
+    TileCorners(B0, C0, rejectIndex0, acceptIndex0);
+    TileCorners(B1, C1, rejectIndex1, acceptIndex1);
+    TileCorners(B2, C2, rejectIndex2, acceptIndex2);
 
     return det > 0;
 }

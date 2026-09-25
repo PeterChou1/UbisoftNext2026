@@ -2,7 +2,6 @@
 
 #include "ECSManager.h"
 #include "app.h"
-#include "stdafx.h"
 
 extern ECSManager ECS;
 

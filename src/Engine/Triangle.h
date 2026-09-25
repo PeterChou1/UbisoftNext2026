@@ -11,17 +11,17 @@
 
 struct Triangle
 {
-    // Vertex loaded from the obj file
+    // The three corners
     Vertex verts[3]{};
 
     // Precomputed values used for Edge function rasterization
     int B0{}, C0{}, B1{}, C1{}, B2{}, C2{};
 
-    // Indexs used to Reject or Accept a Tile
+    // Tile corners tested to trivially reject or accept a tile
     int rejectIndex0{}, acceptIndex0{}, rejectIndex1{}, acceptIndex1{}, rejectIndex2{},
             acceptIndex2{};
 
-    // AABB computed for the triangle used optimization to speedup rasterization
+    // Bounding box, limits the tiles and pixels tested
     int maxX{}, maxY{};
     int minX{}, minY{};
 
@@ -62,5 +62,4 @@ struct Triangle
     {
         return B2 * (p.X - verts[2].Projection.X) - C2 * (p.Y - verts[2].Projection.Y);
     }
-
 };

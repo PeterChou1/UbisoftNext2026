@@ -1,34 +1,79 @@
 #include "Widget.h"
 
 #include "Input.h"
-
 #include "UIText.h"
-#include "UIUtilities.h"
-#include "stdafx.h"
-
-#include <algorithm>
+#include "app.h"
 
 namespace
 {
     // Space kept free on both sides of a label inside its box
     constexpr float LABEL_PADDING = 3.0f;
 
-    /**
-     * \brief Draw text centered in a box, shortened with ".." when it does
-     *        not fit: labels stay inside their widget at any window size
-     */
-    void PrintCentered(float x, float y, float width, float height, const std::string& text, float r, float g, float b)
+    /// Filled rectangle drawn as horizontal lines 0.1 apart
+    void DrawRect(float x, float y, float width, float height, float r, float g, float b)
+    {
+        for (float scanY = 0.0f; scanY <= height; scanY += 0.1f)
+            App::DrawLine(x, y + scanY, x + width, y + scanY, r, g, b);
+    }
+
+    bool RegionHit(float mouseX, float mouseY, float x, float y, float width, float height)
+    {
+        return !(mouseX < x || mouseY < y || mouseX >= x + width || mouseY >= y + height);
+    }
+
+    /// Hovering the region makes the widget hot, clicking it makes it active
+    void UpdateHotActive(int id, float x, float y, float width, float height, UIState& uiState)
+    {
+        if (RegionHit(uiState.mouseX, uiState.mouseY, x, y, width, height))
+        {
+            uiState.hotItem = id;
+            if (uiState.leftClick)
+                uiState.activeItem = id;
+        }
+    }
+
+    bool Clicked(int id, const UIState& uiState)
+    {
+        return uiState.hotItem == id && uiState.activeItem == id;
+    }
+
+    /// Draw text centered in a box, shortened with ".." when it does not
+    /// fit: labels stay inside their widget at any window size
+    void PrintCentered(float x,
+                       float y,
+                       float width,
+                       float height,
+                       const std::string& text,
+                       float r,
+                       float g,
+                       float b)
     {
         std::string shown = UIText::Fit(text, width - 2.0f * LABEL_PADDING);
-        App::Print(UIText::CenterX(x, width, shown), UIText::CenterY(y, height), shown.c_str(), r, g, b);
+        App::Print(UIText::CenterX(x, width, shown),
+                   UIText::CenterY(y, height),
+                   shown.c_str(),
+                   r,
+                   g,
+                   b);
+    }
+
+    bool Accepts(TextFilter filter, char& c)
+    {
+        switch (filter)
+        {
+        case TextFilter::Number:
+            return (c >= '0' && c <= '9') || c == '.' || c == '-';
+        case TextFilter::Name:
+            if (c == ' ')
+                c = '_';
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                   c == '_' || c == '-';
+        case TextFilter::Any:
+        default:
+            return c >= 32 && c < 127;
+        }
     }
 } // namespace
-
-void TextLabel(float x, float y, float width, float height, std::string label, Color C, Color BG)
-{
-    DrawRect(x, y, width, height, BG.R, BG.G, BG.B);
-    PrintCentered(x, y, width, height, label, C.R, C.G, C.B);
-}
 
 void DrawContainer(int x, int y, float width, float height)
 {
@@ -67,95 +112,61 @@ int ColorSwatch(int id, float x, float y, float size, Color color, bool selected
         App::DrawLine(x + size + o, y + size + o, x - o, y + size + o, c, c, c);
         App::DrawLine(x - o, y + size + o, x - o, y - o, c, c, c);
     }
-    return uiState.hotItem == id && uiState.activeItem == id ? 1 : 0;
+    return Clicked(id, uiState) ? 1 : 0;
 }
 
 int Button(int id, float x, float y, UIState& uiState, float width, float height, std::string label)
 {
-    float shadowOffsetX = 2.0f;
+    const float shadowOffsetX = 2.0f;
 
-    // Check for hover and click
-    if (RegionHit(uiState.mouseX, uiState.mouseY, x, y, width, height))
-    {
-        uiState.hotItem = id;
-        if (uiState.leftClick)
-            uiState.activeItem = id;
-    }
+    UpdateHotActive(id, x, y, width, height, uiState);
 
-    // Draw the background shadow
     DrawRect(x - shadowOffsetX, y, width, height, 1.0f, 1.0f, 1.0f);
-
-    if (uiState.hotItem == id)
+    if (Clicked(id, uiState))
     {
-        if (uiState.activeItem == id)
-        {
-            App::PlayAudio("data/Sounds/clickSound.wav");
-            // Button is active (clicked)
-            DrawRect(x - shadowOffsetX, y, width, height, 0.8f, 0.8f, 0.8f);
-        }
-        else
-        {
-            // Mouse is hovering over the button
-            DrawRect(x, y, width, height, 0.7f, 0.7f, 0.7f);
-        }
-
-        PrintCentered(x, y, width, height, label, 1.0f, 1.0f, 1.0f);
+        App::PlayAudio("data/Sounds/clickSound.wav");
+        DrawRect(x - shadowOffsetX, y, width, height, 0.8f, 0.8f, 0.8f);
     }
     else
     {
-        // Normal state
-        DrawRect(x, y, width, height, 0.6f, 0.6f, 0.6f);
-        PrintCentered(x, y, width, height, label, 1.0f, 1.0f, 1.0f);
+        const float shade = uiState.hotItem == id ? 0.7f : 0.6f;
+        DrawRect(x, y, width, height, shade, shade, shade);
     }
+    PrintCentered(x, y, width, height, label, 1.0f, 1.0f, 1.0f);
 
-    // Return 1 if the button was clicked
-    if (uiState.hotItem == id && uiState.activeItem == id)
-    {
-        return 1;
-    }
-
-    return 0;
+    return Clicked(id, uiState) ? 1 : 0;
 }
 
-int CheckBox(int id, float x, float y, bool state, float size, UIState& uiState, std::string label, float labelWidth)
+int CheckBox(int id,
+             float x,
+             float y,
+             bool state,
+             float size,
+             UIState& uiState,
+             std::string label,
+             float labelWidth)
 {
+    const float padding = 10.0f;
 
-    float padding = 10.0f;
-    if (RegionHit(uiState.mouseX, uiState.mouseY, x, y, size, size))
-    {
-        uiState.hotItem = id;
-        if (uiState.leftClick)
-            uiState.activeItem = id;
-    }
+    UpdateHotActive(id, x, y, size, size, uiState);
 
-    DrawRect(x, y, size, size, 1.0, 1.0, 1.0);
+    DrawRect(x, y, size, size, 1.0f, 1.0f, 1.0f);
     if (state)
-    {
-        DrawRect(x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, 1.0, 0.0, 0.0);
-    }
+        DrawRect(x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, 1.0f, 0.0f, 0.0f);
     else
     {
-        if (uiState.hotItem == id)
-        {
-            DrawRect(x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, 0.7f, 0.7f, 0.7f);
-        }
-        else
-        {
-            DrawRect(x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, 0.5, 0.5, 0.5);
-        }
+        const float shade = uiState.hotItem == id ? 0.7f : 0.5f;
+        DrawRect(x + 1.0f, y + 1.0f, size - 2.0f, size - 2.0f, shade, shade, shade);
     }
 
-    if (label.length() > 0)
+    if (!label.empty())
     {
         // Beside the box, vertically centered on it, cut to labelWidth
         std::string shown = labelWidth > 0.0f ? UIText::Fit(label, labelWidth) : label;
         App::Print(x + padding + size, UIText::CenterY(y, size), shown.c_str());
     }
 
-    if (uiState.hotItem == id && uiState.activeItem == id)
-        return 1;
-
-    return 0;
+    return Clicked(id, uiState) ? 1 : 0;
 }
 
 int DropdownList(int id,
@@ -167,136 +178,69 @@ int DropdownList(int id,
                  const std::vector<std::string>& items,
                  int& currentIndex)
 {
-    // --- 1. Draw the "main button" of the dropdown ---
-    // Show the currently selected item as the label
-    std::string selectedItemText = (currentIndex >= 0 && currentIndex < (int)items.size())
-                                           ? items[currentIndex]
-                                           : "Select...";
+    const int itemCount = static_cast<int>(items.size());
 
-    // If the user hovers or clicks on the main rectangle, update hotItem/activeItem
-    if (RegionHit(uiState.mouseX, uiState.mouseY, x, y, width, height))
-    {
-        uiState.hotItem = id;
-        if (uiState.leftClick)
-            uiState.activeItem = id;
-    }
-
-    // Draw a basic rectangle for the dropdown "button"
+    // The button shows the selected item, clicking it opens / closes the list
+    UpdateHotActive(id, x, y, width, height, uiState);
     DrawRect(x, y, width, height, 0.6f, 0.6f, 0.6f);
+    PrintCentered(x,
+                  y,
+                  width,
+                  height,
+                  currentIndex >= 0 && currentIndex < itemCount ? items[currentIndex] : "Select...",
+                  1.0f,
+                  1.0f,
+                  1.0f);
+    if (Clicked(id, uiState))
+        uiState.openDropDownId = uiState.openDropDownId == id ? 0 : id;
 
-    // Draw the text label (centered)
-    PrintCentered(x, y, width, height, selectedItemText, 1.0f, 1.0f, 1.0f);
-
-    // If the user clicked on the dropdown button, toggle open/close
-    bool clickedMainButton = (uiState.hotItem == id && uiState.activeItem == id);
-    if (clickedMainButton)
-    {
-        if (uiState.openDropDownId == id)
-            uiState.openDropDownId = 0; // close if it was open
-        else
-            uiState.openDropDownId = id; // open this dropdown
-    }
-
-    // --- 2. If not open, exit now ---
     if (uiState.openDropDownId != id)
-    {
-        // Return 0 => no selection changed
         return 0;
-    }
 
-    float itemHeight = height;
-    float dropdownX = x;
-    float dropdownY = y - height; // directly below main button
-
-    // Track if we changed selection to return at the end
+    // The items, one below the other under the button
     int changedSelection = 0;
-
-    for (int i = 0; i < (int)items.size(); i++)
+    for (int i = 0; i < itemCount; i++)
     {
-        // Region for each item
-        float itemX = dropdownX;
-        float itemY = dropdownY - i * itemHeight;
-        float itemW = width;
-        float itemH = itemHeight;
-
-        // Is mouse over this item?
-        bool hover = RegionHit(uiState.mouseX, uiState.mouseY, itemX, itemY, itemW, itemH);
-
-        // If hover and clicked, we select this item
+        const float itemY = y - height - i * height;
+        const bool hover = RegionHit(uiState.mouseX, uiState.mouseY, x, itemY, width, height);
         if (hover)
         {
-            uiState.hotItem = id; // This is still the same dropdown’s ID
+            uiState.hotItem = id;
             if (uiState.leftClick)
             {
                 uiState.activeItem = id;
-                // Set the new selection
                 currentIndex = i;
-                changedSelection = 1; // means a selection changed
-                // Close the dropdown
+                changedSelection = 1;
                 uiState.openDropDownId = 0;
             }
         }
 
-        // Draw the item
-        if (hover)
-            DrawRect(itemX, itemY, itemW, itemH, 0.7f, 0.7f, 0.7f);
-        else
-            DrawRect(itemX, itemY, itemW, itemH, 0.5f, 0.5f, 0.5f);
-
-        // Print the item text
-        PrintCentered(itemX, itemY, itemW, itemH, items[i], 1.0f, 1.0f, 1.0f);
+        const float shade = hover ? 0.7f : 0.5f;
+        DrawRect(x, itemY, width, height, shade, shade, shade);
+        PrintCentered(x, itemY, width, height, items[i], 1.0f, 1.0f, 1.0f);
     }
-
     return changedSelection;
 }
 
 void FillBar(float x, float y, float width, float height, float fillVal)
 {
-    // 1) Clamp the incoming health value between 0 and 100
+    const float MAX_VALUE = 1000.0f;
     if (fillVal < 0.0f)
         fillVal = 0.0f;
-    if (fillVal > 1000.0f)
-        fillVal = 1000.0f;
+    if (fillVal > MAX_VALUE)
+        fillVal = MAX_VALUE;
 
-    // 2) Draw a background rectangle (for empty portion)
-    //    Let's make it a dark gray
     DrawRect(x, y, width, height, 0.2f, 0.2f, 0.2f);
-
-    // 3) Calculate how much of the bar should be filled
-    float fillRatio = fillVal / 1000.0f;
-    float fillWidth = width * fillRatio;
-
-    // 4) Draw the filled portion of the bar
-    DrawRect(x, y, fillWidth, height, 0.5f, 1.0f, 0.5f);
-
-    // 5) Display the health text on top, e.g. "75 / 100"
-    {
-        // Build string
-        std::string fillText = std::to_string(static_cast<int>(fillVal)) + " / 1000";
-
-        // Centered inside the bar
-        PrintCentered(x, y, width, height, fillText, 1.0f, 0.0f, 0.0f);
-    }
+    DrawRect(x, y, width * (fillVal / MAX_VALUE), height, 0.5f, 1.0f, 0.5f);
+    PrintCentered(x,
+                  y,
+                  width,
+                  height,
+                  std::to_string(static_cast<int>(fillVal)) + " / 1000",
+                  1.0f,
+                  0.0f,
+                  0.0f);
 }
-namespace
-{
-    bool Accepts(TextFilter filter, char& c)
-    {
-        switch (filter)
-        {
-        case TextFilter::Number:
-            return (c >= '0' && c <= '9') || c == '.' || c == '-';
-        case TextFilter::Name:
-            if (c == ' ')
-                c = '_';
-            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
-                   c == '-';
-        case TextFilter::Any:
-        default:
-            return c >= 32 && c < 127;
-        }
-    }
-} // namespace
 
 TextFieldEvent TextField(int id,
                          float x,
@@ -386,7 +330,8 @@ TextFieldEvent TextField(int id,
     if (editing)
         DrawRect(x, y, width, height, 0.30f, 0.32f, 0.38f);
     else
-        DrawRect(x, y, width, height, hit ? 0.24f : 0.18f, hit ? 0.25f : 0.19f, hit ? 0.29f : 0.22f);
+        DrawRect(
+                x, y, width, height, hit ? 0.24f : 0.18f, hit ? 0.25f : 0.19f, hit ? 0.29f : 0.22f);
     float border = editing ? 1.0f : 0.5f;
     App::DrawLine(x, y, x + width, y, border, border * 0.85f, border * 0.3f);
     App::DrawLine(x, y + height, x + width, y + height, border, border * 0.85f, border * 0.3f);
@@ -394,7 +339,8 @@ TextFieldEvent TextField(int id,
     // Long texts are cut to the box: the end while editing (where the
     // cursor is), the beginning otherwise
     float room = width - 8.0f;
-    std::string shown = editing ? UIText::FitTail(uiState.editText + "_", room) : UIText::Fit(text, room);
+    std::string shown =
+            editing ? UIText::FitTail(uiState.editText + "_", room) : UIText::Fit(text, room);
     App::Print(x + 4.0f, UIText::CenterY(y, height), shown.c_str(), 1.0f, 1.0f, 1.0f);
     return event;
 }
