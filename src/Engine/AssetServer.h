@@ -11,6 +11,7 @@
 #include "BlingPhong.h"
 #include "DefaultVertexShader.h"
 #include "FragShaderTag.h"
+#include "Log.h"
 #include "Material.h"
 #include "MeshInstance.h"
 #include "NormalShaderSIMD.h"
@@ -66,7 +67,12 @@ class AssetServer
             return it->second;
         MeshInstance instance;
         if (!Utils::LoadInstance(MODEL_DIRECTORY + name + ".obj", instance, TextureList))
+        {
+            LOG_WARN("Assets", "Model '%s' could not be loaded from %s", name.c_str(), MODEL_DIRECTORY);
             instance = MeshInstance{};
+        }
+        else
+            LOG_TRACE("Assets", "Loaded model %s (%zu vertices)", name.c_str(), instance.vertices.size());
         NormalizeModel(instance);
         return Models.emplace(name, std::move(instance)).first->second;
     }

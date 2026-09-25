@@ -109,6 +109,23 @@ r.Register<Spinner>("Spinner", "Spins the object", {{"Speed", 90.0f, 15.0f}});
 
 Derive from `SceneScript` for a script that drives a whole scene. Both programs pick new scripts up after a rebuild.
 
+## Debug logging
+
+```cpp
+#include "Log.h"
+LOG_INFO("MyGame", "Player picked up %s (%d points)", name.c_str(), points);
+LOG_WARN / LOG_ERROR / LOG_TRACE(...)   // same form
+```
+
+In **debug** builds this prints to standard output, e.g.
+`[   12.345] INFO  MyGame   | Player picked up Gem 3 (10 points)`.
+
+- **Windows:** a console window opens with the program, and the lines also
+  appear in Visual Studio's Output window.
+- **Release builds:** the calls compile to nothing.
+- **Runtime control:** `Log::SetLevel(Log::Level::Warning)` hides the
+  chattier levels.
+
 ## Unit tests
 
 The tests are headless (no OpenGL/GLUT/SDL needed) and run the real engine, editor and scripts on any platform:
@@ -119,6 +136,7 @@ cmake --build build/tests
 ctest --test-dir build/tests --output-on-failure
 ```
 
-They can also be built from the root project with `-DBUILD_TESTS=ON`.
+They can also be built from the root project with `-DBUILD_TESTS=ON`. Set `UBI_TEST_LOG=1` to see the engine's debug log
+while they run.
 Regenerate the sample scenes in `data/scenes/` with `cmake --build build/tests --target author_scenes`
 (`SceneFileTests` checks the committed files match `tests/scenes/SampleScenes.cpp`).

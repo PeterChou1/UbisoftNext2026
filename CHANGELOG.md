@@ -2,7 +2,44 @@
 
 A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
 
-## Editor usability: typed values, scene documents, dragging
+## Debug logging utility
+
+`src/Engine/Log.h` / `Log.cpp`:
+
+```cpp
+LOG_INFO("Scene", "Loaded %s (%zu entities)", path.c_str(), count);
+// [   12.345] INFO  Scene    | Loaded data/scenes/level_1.ubsave (13 entities)
+```
+
+- **Levels and categories:** `LOG_TRACE`, `LOG_INFO`, `LOG_WARN`,
+  `LOG_ERROR`, each with a category and a printf format. GCC and Clang check
+  the format against its arguments.
+- **Debug only:** the macros print to standard output when `NDEBUG` is not
+  defined (CMake Debug, Visual Studio Debug). In release builds they expand to
+  nothing: the arguments are not evaluated and the strings are not in the
+  binary. `-DENGINE_LOGGING=1` keeps logging in a release build;
+  `-DENGINE_LOGGING=0` removes it from a debug build.
+- **Windows:** `Game` and `SceneEditor` are GUI-subsystem programs without a
+  console. The first message opens one, and every message is also sent to the
+  debugger (`OutputDebugStringA`), so it shows in Visual Studio's Output
+  window.
+- **Thread safe:** the renderer's worker threads may log.
+- **Runtime control:**
+  - `Log::SetLevel(Log::Level::Warning)` drops the lower levels;
+    `Log::Level::Off` silences everything.
+  - `Log::SetSink(fn)` sends lines elsewhere (the tests use it).
+- **What the engine logs:**
+  - scene changes (`Scene`);
+  - loads with their warnings, and saves (`Load` / `Save`, errors included);
+  - scripts that are not registered or are the wrong kind (`Scripts`);
+  - models that fail to load (`Assets`);
+  - every editor status message (`Editor`).
+- **Tests:** `tests/LogTests.cpp` covers formatting, levels, 8 threads, the
+  engine's messages, and a translation unit compiled with `ENGINE_LOGGING=0`
+  to check that disabled macros evaluate nothing. The test run is silent
+  unless `UBI_TEST_LOG=1`. The suite passes in Debug and Release builds.
+
+
 
 - **Typed values.** Every number in the inspector is a `TextField`: click,
   type, then **Enter** applies and **Esc** cancels; the first key replaces

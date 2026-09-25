@@ -4,6 +4,17 @@ A short log of everything changed on this branch, newest first. Details and
 explanations of how the systems work are in [CHANGELOG.md](CHANGELOG.md); the
 editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md).
 
+## 7. Debug logging
+
+- `Engine/Log.h` provides `LOG_TRACE / LOG_INFO / LOG_WARN / LOG_ERROR(category, printf format, ...)`.
+- It prints to standard output in debug builds, and compiles to nothing in
+  release builds (`NDEBUG`). `ENGINE_LOGGING=0/1` overrides that.
+- On Windows it opens a console for the GUI programs and also writes to the
+  Visual Studio Output window.
+- The engine logs scene changes, loads / saves, missing scripts, models that
+  fail to load, and the editor's status messages.
+- Tests stay quiet unless `UBI_TEST_LOG=1` is set.
+
 ## 6. Editor usability
 
 - **Typed values:** the inspector's numbers are input boxes. Click a value,

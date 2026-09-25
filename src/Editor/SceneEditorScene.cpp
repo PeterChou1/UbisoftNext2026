@@ -7,6 +7,7 @@
 #include "GameOptions.h"
 #include "Input.h"
 #include "Lighting.h"
+#include "Log.h"
 #include "Mesh.h"
 #include "Scripting/ScriptRegistry.h"
 #include "UIState.h"
@@ -503,6 +504,11 @@ void SceneEditorScene::TogglePlay()
 
 void SceneEditorScene::SetStatus(const std::string& message, bool error)
 {
+    // Everything the status bar says also goes to the debug log
+    if (error)
+        LOG_WARN("Editor", "%s", message.c_str());
+    else
+        LOG_INFO("Editor", "%s", message.c_str());
     m_Status = message;
     m_StatusIsError = error;
     m_StatusTimer = STATUS_TIME;

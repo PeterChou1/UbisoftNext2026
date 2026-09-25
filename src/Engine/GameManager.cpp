@@ -9,6 +9,7 @@
 #include "IndexBuffer.h"
 #include "Input.h"
 #include "Lighting.h"
+#include "Log.h"
 #include "PixelBuffer.h"
 #include "RenderConstants.h"
 #include "Serialization/SceneSerialization.h"
@@ -147,6 +148,7 @@ void GameManager::SetActiveScene(const std::string& sceneName)
     // restarting must not reload a previous scene
     m_CurrentScenePath.clear();
     m_ActiveScene = sceneName;
+    LOG_INFO("Scene", "Active scene: %s", sceneName.c_str());
     m_SceneMap[m_ActiveScene]->Setup();
 }
 
@@ -159,36 +161,46 @@ bool GameManager::SaveGame(const std::string& path, std::string& error)
 {
     Serialization::SaveResult result = Serializer().SaveToFile(ECS, path, {{SCENE_KEY, m_ActiveScene}});
     if (!result)
+    {
         error = result.Error;
+        LOG_ERROR("Save", "Could not save %s: %s", path.c_str(), error.c_str());
+    }
+    else
+        LOG_INFO("Save", "Saved %s (%zu bytes)", path.c_str(), result.BytesWritten);
     return result.Success;
 }
 
 bool GameManager::LoadGame(const std::string& path, std::string& error)
 {
+    auto fail = [&](const std::string& reason) {
+        error = reason;
+        LOG_ERROR("Load", "Could not load %s: %s", path.c_str(), reason.c_str());
+        return false;
+    };
     // 1. Read + validate everything before touching the running game
     std::vector<std::uint8_t> bytes;
-    if (!Serialization::WorldSerializer::ReadFile(path, bytes, error))
-        return false;
+    std::string readError;
+    if (!Serialization::WorldSerializer::ReadFile(path, bytes, readError))
+        return fail(readError);
     Serialization::WorldSnapshot snapshot;
     Serialization::LoadResult parsed = Serializer().Parse(bytes, snapshot);
     if (!parsed)
-    {
-        error = parsed.Error;
-        return false;
-    }
+        return fail(parsed.Error);
     auto sceneEntry = parsed.Metadata.find(SCENE_KEY);
     if (sceneEntry == parsed.Metadata.end() || m_SceneMap.count(sceneEntry->second) == 0)
-    {
-        error = "The file does not belong to a scene of this program";
-        return false;
-    }
+        return fail("The file does not belong to a scene of this program");
 
     // 2. Set the scene up like a normal scene switch (resets the ECS)
     SetActiveScene(sceneEntry->second);
 
     // 3. Replace its world with the saved one
-    Serializer().Apply(ECS, snapshot);
+    std::vector<std::string> warnings = Serializer().Apply(ECS, snapshot);
+    for (const std::string& warning : parsed.Warnings)
+        LOG_WARN("Load", "%s: %s", path.c_str(), warning.c_str());
+    for (const std::string& warning : warnings)
+        LOG_WARN("Load", "%s: %s", path.c_str(), warning.c_str());
     m_CurrentScenePath = path;
+    LOG_INFO("Load", "Loaded %s (%zu entities)", path.c_str(), snapshot.LivingEntities.size());
 
     // 4. Let the scene react (camera, runtime state); scripts start next frame
     m_SceneMap[m_ActiveScene]->OnWorldRestored();

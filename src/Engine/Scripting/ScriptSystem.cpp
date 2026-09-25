@@ -1,6 +1,7 @@
 #include "ScriptSystem.h"
 
 #include "../ColliderCallbackSystem.h"
+#include "../Log.h"
 #include "../World/SceneComponents.h"
 #include "ScriptRegistry.h"
 
@@ -163,5 +164,8 @@ std::unique_ptr<ScriptBase> ScriptSystem::Create(const std::string& name,
 void ScriptSystem::ReportMissing(const std::string& name)
 {
     if (std::find(m_Missing.begin(), m_Missing.end(), name) == m_Missing.end())
+    {
         m_Missing.push_back(name);
+        LOG_WARN("Scripts", "Script '%s' is not registered (or is the wrong kind), it will not run", name.c_str());
+    }
 }
