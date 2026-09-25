@@ -68,16 +68,23 @@ TEST_CASE("Text saves: every committed scene converts to text and back exactly")
 {
     for (const auto& scene : SampleScenes::All())
     {
-        std::vector<std::uint8_t> binary;
+        std::vector<std::uint8_t> committed;
         std::string error;
-        REQUIRE(WorldSerializer::ReadFile(GameManager::ScenePath(scene.Name), binary, error));
+        REQUIRE(WorldSerializer::ReadFile(GameManager::ScenePath(scene.Name), committed, error));
         Fixture::FreshWorld();
-        REQUIRE(Serializer().Load(ECS, binary).Success);
-        std::string text = Serializer().SaveText(ECS, Serializer().Load(ECS, binary).Metadata);
+        LoadResult loaded = Serializer().Load(ECS, committed);
+        REQUIRE(loaded.Success);
+        std::vector<std::uint8_t> binary = Serializer().Save(ECS, loaded.Metadata);
+        std::string text = Serializer().SaveText(ECS, loaded.Metadata);
         std::vector<std::string> warnings;
         CHECK(Serializer().TextToBinary(text, warnings) == binary);
         // Much smaller than the binary: the free entity ids are one range
         CHECK(text.size() < binary.size());
+        // A scene committed as text is written back identically
+        if (WorldSerializer::IsTextSave(committed))
+            CHECK(std::string(committed.begin(), committed.end()) == text);
+        else
+            CHECK(committed == binary);
     }
 }
 

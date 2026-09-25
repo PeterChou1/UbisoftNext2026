@@ -23,6 +23,8 @@ editor tutorial is in [docs/EditorTutorial.md](docs/EditorTutorial.md).
     missing `.mtl` falls back to the default material.
   - Existing models load exactly as before.
   - An example model, `data/import/pyramid.obj`, is included.
+- `data/scenes/metal_invasion.ubsave` is now committed as a plain text scene.
+  Sample scenes can be marked as text in `tests/scenes/SampleScenes.cpp`.
 - 16 new tests (143 in total).
 
 ## 7. Debug logging

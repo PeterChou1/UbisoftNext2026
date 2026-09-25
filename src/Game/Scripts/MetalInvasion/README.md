@@ -6,7 +6,8 @@ engine code**: the game is one scene file plus C++ scripts.
 
 - **Play it:** run the **Game** and pick `metal_invasion` in the menu. You can
   also open `metal_invasion` in the **SceneEditor** and press **Play**.
-- **Scene file:** `data/scenes/metal_invasion.ubsave`, authored by
+- **Scene file:** `data/scenes/metal_invasion.ubsave`, a plain text scene file
+  (open it in any text editor), authored by
   `tests/scenes/SampleScenes.cpp` (`MetalInvasionLevel`). It holds only:
   - the field;
   - the base (a `PlayerBase` model, tag `Base`, static body, script `MIBase`);

@@ -11,6 +11,7 @@
 #pragma once
 
 #include "SceneEditor.h"
+#include "Serialization/WorldSerializer.h"
 
 #include <string>
 #include <vector>
@@ -22,7 +23,14 @@ namespace SampleScenes
         std::string Name; // also the file name (without extension)
         std::string Description;
         void (*Author)(Editor::SceneEditor& editor);
+        // Committed as a plain text scene file instead of binary
+        bool PlainText = false;
     };
+
+    /**
+     * \brief Serialization file format of a sample scene's file
+     */
+    Serialization::SaveFormat FormatOf(const SampleScene& scene);
 
     const std::vector<SampleScene>& All();
 } // namespace SampleScenes

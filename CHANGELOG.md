@@ -31,6 +31,11 @@ A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
   editor's `SaveSceneToBytes`. In the editor it is the **Plain text files**
   check box in the Scene tab, and the status bar says when an opened scene
   is a text file. Editor undo snapshots stay binary.
+- **Metal Invasion scene:** `data/scenes/metal_invasion.ubsave` is committed
+  as plain text (1.2 KB instead of 21 KB). `SampleScene::PlainText` marks a
+  sample scene as text. `author_scenes` writes it as text, and
+  `SceneFileTests` checks each committed file is byte-identical in its
+  format.
 - **Enum safety:** serialized enums declare their valid range with
   `SERIALIZATION_ENUM_RANGE(Type, First, Last)`, and the compiler refuses a
   serialized enum without one. Both archives refuse values outside the range.

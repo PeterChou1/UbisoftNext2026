@@ -30,6 +30,8 @@ int main(int argc, char** argv)
     for (const auto& scene : SampleScenes::All())
     {
         scene.Author(editor);
+        // Some scenes are committed as plain text
+        Serialization::WorldSerializer::SetFileFormat(SampleScenes::FormatOf(scene));
         std::string path = directory + "/" + scene.Name + ".ubsave";
         Serialization::SaveResult result = editor.SaveScene(path, scene.Name);
         if (result)
@@ -43,5 +45,6 @@ int main(int argc, char** argv)
             ++failures;
         }
     }
+    Serialization::WorldSerializer::SetFileFormat(Serialization::SaveFormat::Binary);
     return failures == 0 ? 0 : 1;
 }

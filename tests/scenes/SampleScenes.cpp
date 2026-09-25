@@ -178,8 +178,16 @@ namespace SampleScenes
                 {"level_1", "CollectGame level 1: pickups and walls", Level1},
                 {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
                 {"sandbox", "Every shape type, crates, a chaser and 3D models", Sandbox},
-                {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel},
+                {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel, true},
         };
         return scenes;
+    }
+} // namespace SampleScenes
+
+namespace SampleScenes
+{
+    Serialization::SaveFormat FormatOf(const SampleScene& scene)
+    {
+        return scene.PlainText ? Serialization::SaveFormat::Text : Serialization::SaveFormat::Binary;
     }
 } // namespace SampleScenes

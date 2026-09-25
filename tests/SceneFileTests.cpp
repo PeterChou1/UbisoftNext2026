@@ -37,7 +37,9 @@ TEST_CASE("Scene files: committed files match the authoring code (run author_sce
     {
         Fixture::FreshWorld();
         scene.Author(editor);
+        Serialization::WorldSerializer::SetFileFormat(SampleScenes::FormatOf(scene));
         std::vector<std::uint8_t> expected = editor.SaveSceneToBytes(scene.Name);
+        Serialization::WorldSerializer::SetFileFormat(Serialization::SaveFormat::Binary);
         Fixture::WorldImage authored = Capture();
 
         Fixture::FreshWorld();
@@ -48,6 +50,7 @@ TEST_CASE("Scene files: committed files match the authoring code (run author_sce
         std::string error;
         REQUIRE(Serialization::WorldSerializer::ReadFile(GameManager::ScenePath(scene.Name), committed, error));
         CHECK(committed == expected);
+        CHECK(Serialization::WorldSerializer::IsTextSave(committed) == scene.PlainText);
     }
 }
 
