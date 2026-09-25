@@ -44,7 +44,6 @@ class RigidBody
      */
     RigidBody(std::vector<Vec2> polygons);
 
-    void UpdateRadius(float radius);
     /**
      * \brief Setting the body to infinite mass
      */
@@ -76,19 +75,13 @@ class RigidBody
      */
     static float TransformTurn(SlicePlane plane, float angularDelta);
 
-    void RecomputeAABB();
-
     /**
      * \brief Collider points, edge normals and bounding box at the current
      *        position and angle (one rotation matrix for both)
      */
     void RecomputeGeometry();
 
-    void ApplyImpulse(const Vec2& impulse);
-
     void ApplyImpulseAngular(const Vec2& impulse, const Vec2& contactVector);
-
-    void IntegrateVelocity(float deltaTime);
 
     void IntegrateVelocityAngular(float deltaTime);
 

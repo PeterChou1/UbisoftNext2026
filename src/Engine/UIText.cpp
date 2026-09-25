@@ -43,9 +43,6 @@ namespace UIText
         g_WindowHeight = std::max(height, 1);
     }
 
-    int WindowWidth() { return g_WindowWidth; }
-    int WindowHeight() { return g_WindowHeight; }
-
     void SetMeasure(std::function<int(const std::string&)> measure) { g_Measure = std::move(measure); }
 
     float Width(const std::string& text)

@@ -41,13 +41,9 @@ struct DirectionalLight
     float DepthPerUnit = 0.01f;
     LightType lightType = SpotLight;
 
-    void SetColor(float r, float g, float b);
-
     void SetPositionAndTarget(Vec3& Pos, Vec3& Target);
 
     void SetLightPerspective(float fov, float aspect, float near, float far);
-
-    void SetLightOrthogonal(Vec2& Max, Vec2& Min, float near, float far);
 
     /**
      * \brief Parallel light: an orthographic box in light space (the light
@@ -57,5 +53,4 @@ struct DirectionalLight
 
     Vec3 WorldToLightSpace(Vec3& Pos);
 
-    void Update(Vec3& Delta, Quat& Rot);
 };

@@ -25,13 +25,6 @@ class ColorBuffer : public Resource
         m_Buffer.resize((width + 1) * (height + 1) * 3);
     }
 
-    void ResizeColorBuffer(int width, int height)
-    {
-        m_Height = height;
-        m_Width = width;
-        m_Buffer.resize((width + 1) * (height + 1) * 3);
-    }
-
     void SetColor(int x, int y, unsigned char r, unsigned char g, unsigned char b)
     {
         assert(0 <= x && x <= m_Width && 0 <= y && y <= m_Height && "out of bounds index");

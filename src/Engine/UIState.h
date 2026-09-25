@@ -3,17 +3,9 @@
 
 #include <string>
 
-enum UIContextState
-{
-    DefaultContext,
-    InBaseContextMenu,
-    BuildObstacleContext
-};
-
 class UIState : public Resource
 {
   public:
-    UIContextState state = DefaultContext;
     float mouseX;
     float mouseY;
     // whether mouse is held down
@@ -24,8 +16,6 @@ class UIState : public Resource
     bool leftClick = false;
     // whether mouse right is click
     bool rightClick = false;
-    // whether the obstacle being interacted with is flipped
-    bool flipped = false;
 
     // whether mouse is held down (previous frame)
     bool mouseLeftDownPrevFrame = false;

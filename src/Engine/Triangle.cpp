@@ -149,11 +149,3 @@ bool Triangle::Setup(int id, int index)
 
     return det > 0;
 }
-
-bool Triangle::CheckInTriangle(Vec2& point) const
-{
-    float e0 = EdgeFunc0(point);
-    float e1 = EdgeFunc1(point);
-    float e2 = EdgeFunc2(point);
-    return e0 < 0 && e1 < 0 && e2 < 0;
-}

@@ -26,11 +26,4 @@ struct MeshInstance
         }
     }
 
-    void offsetPosition(const Vec3& offset)
-    {
-        for (Vertex& v : vertices)
-        {
-            v.LocalPosition += offset;
-        }
-    }
 };

@@ -110,8 +110,6 @@ class AssetServer
         }
     }
 
-    bool IsModelLoaded(const std::string& name) const { return Models.count(name) > 0; }
-
     /**
      * \brief Drop a cached model so the next GetModel reads its file again
      *        (after importing or replacing it)
@@ -270,8 +268,6 @@ class AssetServer
         VertShaders.erase(ShaderId);
     }
 
-    bool HaveFragShader(size_t ShaderID) { return FragShaders.count(ShaderID) == 0; }
-
     /**
      * \brief Returns a Shader given a shaderID
      * \param shaderID
@@ -291,8 +287,6 @@ class AssetServer
 
         return VertShaders[ShaderID];
     }
-
-    size_t GetCurrentShaderCount() { return FragShaders.size(); }
 
     /**
      * \brief Default shader of the game

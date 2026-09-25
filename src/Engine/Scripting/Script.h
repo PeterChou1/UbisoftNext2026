@@ -126,7 +126,6 @@ class ScriptBase
     Vec2 MouseScreen() const;
     bool MouseClicked() const;
     bool MouseRightClicked() const;
-    bool MouseDown() const;
 
     /**
      * \brief Point of the ground (y = 0) under the mouse, false if the mouse

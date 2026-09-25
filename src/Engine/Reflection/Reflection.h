@@ -108,8 +108,6 @@ namespace Reflection
         Enum = 9
     };
 
-    const char* FieldTypeName(FieldType type);
-
     /**
      * \brief Short name written in text save files: b i u f d s v2 v3 e
      */

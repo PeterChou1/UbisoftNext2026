@@ -24,9 +24,6 @@ class Camera : public Resource
     Vec3 Backward{};
     // Up Vector pointing up in the camera current orientation
     Vec3 Up{};
-    // Points used to construct Orthographic Projection Matrix
-    Vec2 OrthoMin{-3, -3};
-    Vec2 OrthoMax{3, 3};
 
     // -- Default camera values used to construct OpenGL matrix --
     float Nearplane = 0.1f;
@@ -35,30 +32,13 @@ class Camera : public Resource
     float ScreenHeight = APP_VIRTUAL_HEIGHT;
     float ScreenWidth = APP_VIRTUAL_WIDTH;
     float AspectRatio = APP_VIRTUAL_WIDTH / APP_VIRTUAL_HEIGHT;
-    // Whether or not the camera is in perspective mode or orthographic mode
-    bool PerspectiveGL = true;
 
     Camera() = default;
-
-    void ChangeResolution(float Width, float Height);
-
-    void SetOrthographicPlane(Vec2& Min, Vec2& Max);
 
     /**
      * \brief Sets camera to perspective mode
      */
     void SetProjectionPerspective();
-
-    /**
-     * \brief Sets camera to orthog mode
-     */
-    void SetProjectionOrthogonal();
-
-    /**
-     * \brief Sets Transform for the camera
-     * \param t
-     */
-    void SetTransform(Transform t);
 
     /**
      * \brief Reset camera position and orientation
@@ -67,19 +47,6 @@ class Camera : public Resource
      * \param camUp what the camera considers is "up"
      */
     void SetPositionAndOrientation(Vec3 camPos, Vec3 camTarget, Vec3 camUp);
-
-    /**
-     * \brief Just set the camera position
-     * \param camPos
-     */
-    void SetPosition(Vec3 camPos);
-
-    /**
-     * \brief Updates Camera by position by delta and rotation by rot
-     * \param delta vector to add to camera position
-     * \param rot quaternion to add to camera rotation
-     */
-    void UpdatePos(const Vec3& delta, const Quat& rot);
 
     /**
      * \brief Translate Clip Space Point to Raster Space used in the

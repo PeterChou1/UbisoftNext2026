@@ -13,15 +13,9 @@ class Mat4
   public:
     Mat4() {}
 
-    Mat4(const Mat4& rhs);
-    Mat4(const float* mat);
     Mat4(const Vec4& row0, const Vec4& row1, const Vec4& row2, const Vec4& row3);
-    Mat4& operator=(const Mat4& rhs);
-
-    ~Mat4() {}
 
     float Determinant() const;
-    Mat4 Transpose() const;
     Mat4 Inverse() const;
     /// fast inverse specifically for affine matrix
     Mat4 AffineInverse() const;
@@ -32,8 +26,6 @@ class Mat4
     void OrthogonalOpenGL(float bottom, float left, float top, float right, float near, float far);
     Vec4 operator*(const Vec4& rhs) const;
     Vec3 operator*(const Vec3& rhs) const;
-    Mat4 operator*(const float rhs) const;
-    Mat4 operator*(const Mat4& rhs) const;
     Vec4 operator[](const int i) const;
     Vec4& operator[](const int i);
 

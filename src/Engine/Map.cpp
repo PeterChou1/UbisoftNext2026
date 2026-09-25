@@ -13,12 +13,6 @@ struct NodeDistance
     bool operator>(const NodeDistance& other) const { return distance > other.distance; }
 };
 
-void VectorField::ClearField()
-{
-    ObstacleTracker.clear();
-    Map.clear();
-}
-
 Coords VectorField::GetLocation(Transform& T)
 {
     Coords Location;
@@ -214,12 +208,6 @@ void VectorField::RemoveObstacles(std::set<Entity>& Obstacles)
             }
         }
     }
-}
-
-void VectorField::SetDimension(float Height, float Width)
-{
-    HalfHeight = Height / 2.0f;
-    HalfWidth = Width / 2.0f;
 }
 
 void VectorField::SetGridCount(size_t Height, size_t Width)

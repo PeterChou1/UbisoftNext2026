@@ -40,12 +40,6 @@ class Tile
         }
     }
 
-    void DebugDraw(float r, float g, float b) const
-    {
-        App::DrawLine(m_MinRaster.X, m_MinRaster.Y, m_MinRaster.X, m_MaxRaster.Y);
-        App::DrawLine(m_MaxRaster.X, m_MaxRaster.Y, m_MinRaster.X, m_MaxRaster.Y);
-    }
-
     Vec2 GetMin() const { return m_MinRaster; }
 
     Vec2 GetMax() const { return m_MaxRaster; }

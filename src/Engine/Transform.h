@@ -46,13 +46,6 @@ struct Transform
     Transform();
 
     /**
-     * \brief Construct a transform given an affine matrix
-     *        Rotation and position are obtain from the affine matrix
-     * \param affine
-     */
-    Transform(const Mat4& affine);
-
-    /**
      * \brief Construct a transform given only a position
      *        The object will be rotated in its default position
      * \param pos
@@ -71,11 +64,6 @@ struct Transform
      * \brief Construct a transform based on
      */
     Transform(const Vec3& pos, const Quat& rot, const Vec3& scale);
-
-    /**
-     * \brief Scale based on Vector3
-     */
-    void Scale(Vec3 scale);
 
     /**
      * \brief Scale transform uniformly in all direction
@@ -140,11 +128,6 @@ struct Transform
     void SetParentEntity(Entity parent, Entity children);
 
     /**
-     * \brief Get Forward pointing direction for a transform
-     */
-    Vec3 GetForward();
-
-    /**
      * \brief Get Left pointing direction for a transform
      */
     Vec3 GetRight();
@@ -159,12 +142,6 @@ struct Transform
      * \param pos
      */
     void SetLocalPosition(const Vec3& pos);
-
-    /**
-     * \brief Set position with a 2d vector
-     * \param pos
-     */
-    void SetPosition2D(const Vec2& pos);
 
     /**
      *
@@ -218,12 +195,4 @@ struct Transform
      */
     Vec3 TransformNormal(const Vec3& normal) const;
 
-    /**
-     * \brief Lerp beteween 2 transform
-     * \param a
-     * \param b
-     * \param t
-     * \return
-     */
-    static Transform Lerp(const Transform& a, const Transform& b, float t);
 };

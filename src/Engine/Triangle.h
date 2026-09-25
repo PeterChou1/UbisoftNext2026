@@ -63,5 +63,4 @@ struct Triangle
         return B2 * (p.X - verts[2].Projection.X) - C2 * (p.Y - verts[2].Projection.Y);
     }
 
-    bool CheckInTriangle(Vec2& point) const;
 };

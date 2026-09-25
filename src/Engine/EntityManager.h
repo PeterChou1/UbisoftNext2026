@@ -47,7 +47,6 @@ class EntityManager
         assert(entity < MAX_ENTITIES && "Entity out of range.");
         m_Signatures[entity].reset();
         m_Alive[entity] = false;
-        m_RecentlyDeleted.push_back(entity);
         m_AvailableEntities.push(entity);
         --m_LivingEntityCount;
     }
@@ -97,8 +96,6 @@ class EntityManager
         m_Alive.fill(false);
         m_LivingEntityCount = 0;
     }
-
-    void FlushRecentlyDeleted() { m_RecentlyDeleted.clear(); }
 
     bool IsAlive(Entity entity) const { return entity < MAX_ENTITIES && m_Alive[entity]; }
 
@@ -189,11 +186,9 @@ class EntityManager
         for (Entity entity : living)
             m_Alive[entity] = true;
         m_LivingEntityCount = static_cast<uint32_t>(living.size());
-        m_RecentlyDeleted.clear();
     }
 
   private:
-    std::vector<Entity> m_RecentlyDeleted;
     std::queue<Entity> m_AvailableEntities{};
     std::array<Signature, MAX_ENTITIES> m_Signatures{};
     std::array<bool, MAX_ENTITIES> m_Alive{};

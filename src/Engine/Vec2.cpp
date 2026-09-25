@@ -11,12 +11,6 @@ Vec2::Vec2()
 {
 }
 
-Vec2::Vec2(const float value)
-    : X(value)
-    , Y(value)
-{
-}
-
 Vec2::Vec2(const Vec2& rhs)
     : X(rhs.X)
     , Y(rhs.Y)
@@ -29,25 +23,12 @@ Vec2::Vec2(float X, float Y)
 {
 }
 
-Vec2::Vec2(const float* xy)
-    : X(xy[0])
-    , Y(xy[1])
-{
-}
-
 Vec2& Vec2::operator=(const Vec2& rhs) = default;
 
 bool Vec2::operator==(const Vec2& rhs) const
 {
     // Exact, like Vec3 (this used to return false for equal vectors)
     return X == rhs.X && Y == rhs.Y;
-}
-
-bool Vec2::operator!=(const Vec2& rhs) const
-{
-    if (*this == rhs)
-        return false;
-    return true;
 }
 
 Vec2 Vec2::operator+(const Vec2& rhs) const
@@ -98,25 +79,6 @@ const Vec2& Vec2::operator*=(const float rhs)
     X *= rhs;
     Y *= rhs;
     return *this;
-}
-
-const Vec2& Vec2::operator/=(const float rhs)
-{
-    X /= rhs;
-    Y /= rhs;
-    return *this;
-}
-
-float Vec2::operator[](const int idx) const
-{
-    assert(idx >= 0 && idx < 2);
-    return (&X)[idx];
-}
-
-float& Vec2::operator[](const int idx)
-{
-    assert(idx >= 0 && idx < 2);
-    return (&X)[idx];
 }
 
 const Vec2& Vec2::Normalize()

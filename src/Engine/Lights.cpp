@@ -4,11 +4,6 @@
 
 #include <cmath>
 
-void DirectionalLight::SetColor(float r, float g, float b)
-{
-    Color = Vec3(r, g, b);
-}
-
 void DirectionalLight::SetPositionAndTarget(Vec3& Pos, Vec3& Target)
 {
     Position = Pos;
@@ -29,12 +24,6 @@ void DirectionalLight::SetLightPerspective(float fov, float aspect, float near, 
     Proj.PerspectiveOpenGL(fov, aspect, near, far);
 }
 
-void DirectionalLight::SetLightOrthogonal(Vec2& Max, Vec2& Min, float near, float far)
-{
-    lightType = ParallelLight;
-    Proj.OrthogonalOpenGL(Min.X, Min.Y, Max.X, Max.Y, near, far);
-}
-
 void DirectionalLight::SetOrthographic(float left, float right, float bottom, float top, float near, float far)
 {
     lightType = ParallelLight;
@@ -45,10 +34,4 @@ void DirectionalLight::SetOrthographic(float left, float right, float bottom, fl
 Vec3 DirectionalLight::WorldToLightSpace(Vec3& Pos)
 {
     return LightTransform.Inverse * Pos;
-}
-
-void DirectionalLight::Update(Vec3& Delta, Quat& Rot)
-{
-    Position = Position + Delta;
-    LightTransform.Update(Delta, Rot);
 }

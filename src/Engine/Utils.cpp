@@ -13,38 +13,6 @@
 
 extern ECSManager ECS;
 
-float Utils::RandomFloat(float min, float max)
-{
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dist(min, max);
-    return dist(gen);
-}
-
-bool PointInBox(const Vec2& p, const Vec2& a, const Vec2& b)
-{
-    return (p.X >= std::min(a.X, b.X) && p.X <= std::max(a.X, b.X) && p.Y >= std::min(a.Y, b.Y) &&
-            p.Y <= std::max(a.Y, b.Y));
-}
-
-bool Utils::MousePointMeshIntersect(float mouseX, float mouseY, Camera& cam, Entity E)
-{
-    Vec3 planePt = Vec3(0, 0, 0);
-    Vec3 planeNormal = Vec3(0, 1, 0);
-
-    RigidBody& rb = ECS.GetComponent<RigidBody>(E);
-    AABB rbAABB = rb.RigidBodyAABB;
-
-    Vec3 worldPt1 = Vec3(rbAABB.Max.X, 0, rbAABB.Max.Y);
-    Vec2 ScreenSpace1 = cam.WorldPointToScreenSpace(worldPt1);
-
-    Vec3 worldPt2 = Vec3(rbAABB.Min.X, 0, rbAABB.Min.Y);
-    Vec2 ScreenSpace2 = cam.WorldPointToScreenSpace(worldPt2);
-
-    Vec2 point = Vec2(mouseX, mouseY);
-    return PointInBox(point, ScreenSpace1, ScreenSpace2);
-}
-
 Vec2 Utils::PointToLineSegment(Vec2 point, Vec2 a, Vec2 b)
 {
     Vec2 a2b = b - a;

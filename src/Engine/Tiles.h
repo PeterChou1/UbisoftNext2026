@@ -21,10 +21,6 @@ class Tiles : public Resource
             ShadowTilesArray[i].Clear();
     }
 
-    void SetTiles(int width, int height);
-
-    void SetShadowTiles(int widthS, int heightS);
-
     std::vector<Tile> TilesArray;
     std::vector<Tile> ShadowTilesArray;
     int TILE_COUNT_X;

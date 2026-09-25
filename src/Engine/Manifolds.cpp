@@ -26,35 +26,6 @@ Manifold::Manifold(Entity idA, Entity idB, RigidBody& A, RigidBody& B)
     CollisionJumpTable[ShapeAIdx][ShapeBIdx](*this, A, B);
 }
 
-void Manifold::ResolveCollision()
-{
-    if (!A.Collidable || !B.Collidable)
-        return;
-
-    assert(std::abs(Normal.GetMagnitude() - 1.0) < 0.01);
-
-    float invMassSum = A.InvMass() + B.InvMass();
-
-    // sanity check
-    if (invMassSum == 0.0)
-        return;
-
-    Vec2 rv = B.Velocity - A.Velocity;
-    float vNormal = rv.Dot(Normal);
-
-    if (vNormal < 0.0f)
-        return;
-
-    float e = (std::min)(A.Restitution(), B.Restitution());
-    float j = -(1 + e) * vNormal;
-    j /= invMassSum;
-
-    Vec2 impulse = Normal * j;
-
-    A.ApplyImpulse(impulse * -1);
-    B.ApplyImpulse(impulse);
-}
-
 void Manifold::ResolveCollisionAngular()
 {
     if (!A.Collidable || !B.Collidable)

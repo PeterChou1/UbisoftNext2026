@@ -51,21 +51,8 @@ struct AABB
     }
 
     /**
-     * \brief Recomputes AABB at the end of physics pipeline
-     */
-    void RecomputeAABB(const Vec2& newPosition, float newAngle, ShapeType shapeType)
-    {
-        if (shapeType == CircleShape)
-            RecomputeAABB(newPosition, Mat2(), shapeType);
-        else
-            RecomputeAABB(newPosition, Mat2(Vec2(std::cos(newAngle), -std::sin(newAngle)),
-                                            Vec2(std::sin(newAngle), std::cos(newAngle))),
-                          shapeType);
-    }
-
-    /**
-     * \brief The same with the rotation matrix already built (unused for
-     *        circles)
+     * \brief Recomputes the box from the body's position and rotation
+     *        matrix (unused for circles)
      */
     void RecomputeAABB(const Vec2& newPosition, Mat2 matrix, ShapeType shapeType)
     {
@@ -130,18 +117,6 @@ inline bool AABBTest(AABB& A, AABB& B)
     if (A.Max.X < B.Min.X || A.Min.X > B.Max.X)
         return false;
     if (A.Max.Y < B.Min.Y || A.Min.Y > B.Max.Y)
-        return false;
-    return true;
-}
-
-/**
- * \brief AABB intersection test with a point
- */
-inline bool AABBPoint(AABB& A, float x, float y)
-{
-    if (A.Min.X > x || x > A.Max.X)
-        return false;
-    if (A.Min.Y > y || y > A.Max.Y)
         return false;
     return true;
 }

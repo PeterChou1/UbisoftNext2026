@@ -62,17 +62,6 @@ RigidBody::RigidBody(std::vector<Vec2> polygons)
     DynamicFriction = DEFAULT_DYNAMIC_FRICTION;
 }
 
-void RigidBody::UpdateRadius(float radius)
-{
-    Shape = Shape::CreateCircle(radius);
-    RigidBodyAABB = AABB(radius);
-    float area = radius * radius * 3.141f;
-    float mass = DEFAULT_DENSITY * area;
-    float inertia = 0.5f * mass * radius * radius;
-    m_InvMass = 1.0f / mass;
-    m_InvInertia = 1.0f / inertia;
-}
-
 void RigidBody::SetStatic()
 {
     m_InvMass = 0.0f;
@@ -175,11 +164,6 @@ Vec3 RigidBody::RotationAxis(SlicePlane plane)
     }
 }
 
-void RigidBody::RecomputeAABB()
-{
-    RigidBodyAABB.RecomputeAABB(Position, Angular, Shape.GetShapeType());
-}
-
 void RigidBody::RecomputeGeometry()
 {
     if (Shape.GetShapeType() == CircleShape)
@@ -193,22 +177,10 @@ void RigidBody::RecomputeGeometry()
     RigidBodyAABB.RecomputeAABB(Position, rotation, PolygonShape);
 }
 
-void RigidBody::ApplyImpulse(const Vec2& impulse)
-{
-    Velocity += impulse * m_InvMass;
-}
-
 void RigidBody::ApplyImpulseAngular(const Vec2& impulse, const Vec2& contactVector)
 {
     Velocity += impulse * m_InvMass;
     AngularVelocity += contactVector.Cross(impulse) * m_InvInertia;
-}
-
-void RigidBody::IntegrateVelocity(float deltaTime)
-{
-    if (m_InvMass == 0.0f)
-        return;
-    Position += Velocity * deltaTime;
 }
 
 void RigidBody::IntegrateVelocityAngular(float deltaTime)

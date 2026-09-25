@@ -18,11 +18,6 @@ class Manifold
     Manifold(Entity idA, Entity idB, RigidBody& A, RigidBody& B);
 
     /**
-     * \brief Resolve collision while ignoring rotation
-     */
-    void ResolveCollision();
-
-    /**
      * \brief Resolve Collision accounting for rotation
      */
     void ResolveCollisionAngular();

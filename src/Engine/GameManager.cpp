@@ -68,10 +68,6 @@ void GameManager::Setup()
     m_ParticleSystem = std::make_unique<ParticleSystem>();
     m_ShaderHandler = std::make_unique<ShaderHandler>();
     m_ScriptSystem = std::make_unique<ScriptSystem>();
-    // Debug systems
-    m_DebugCamera = std::make_unique<DebugCamera>();
-    m_DebugMesh = std::make_unique<DebugMesh>();
-    m_DebugPhysicsRender = std::make_unique<DebugPhysicsRenderer>();
 }
 
 void GameManager::Update(float deltaTime)

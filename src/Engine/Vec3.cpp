@@ -11,13 +11,6 @@ Vec3::Vec3()
 {
 }
 
-Vec3::Vec3(float value)
-    : X(value)
-    , Y(value)
-    , Z(value)
-{
-}
-
 Vec3::Vec3(const Vec3& rhs)
     : X(rhs.X)
     , Y(rhs.Y)
@@ -32,22 +25,7 @@ Vec3::Vec3(float X, float Y, float Z)
 {
 }
 
-Vec3::Vec3(const float* xyz)
-    : X(xyz[0])
-    , Y(xyz[1])
-    , Z(xyz[2])
-{
-}
-
 Vec3& Vec3::operator=(const Vec3& rhs) = default;
-
-Vec3& Vec3::operator=(const float* rhs)
-{
-    X = rhs[0];
-    Y = rhs[1];
-    Z = rhs[2];
-    return *this;
-}
 
 bool Vec3::operator==(const Vec3& rhs) const
 {
@@ -60,15 +38,6 @@ bool Vec3::operator==(const Vec3& rhs) const
         return false;
     }
     if (Z != rhs.Z)
-    {
-        return false;
-    }
-    return true;
-}
-
-bool Vec3::operator!=(const Vec3& rhs) const
-{
-    if (*this == rhs)
     {
         return false;
     }
@@ -89,14 +58,6 @@ const Vec3& Vec3::operator+=(const Vec3& rhs)
     X += rhs.X;
     Y += rhs.Y;
     Z += rhs.Z;
-    return *this;
-}
-
-const Vec3& Vec3::operator-=(const Vec3& rhs)
-{
-    X -= rhs.X;
-    Y -= rhs.Y;
-    Z -= rhs.Z;
     return *this;
 }
 
@@ -132,14 +93,6 @@ const Vec3& Vec3::operator*=(const float rhs)
     X *= rhs;
     Y *= rhs;
     Z *= rhs;
-    return *this;
-}
-
-const Vec3& Vec3::operator/=(const float rhs)
-{
-    X /= rhs;
-    Y /= rhs;
-    Z /= rhs;
     return *this;
 }
 
@@ -208,32 +161,7 @@ bool Vec3::IsValid() const
     return true;
 }
 
-void Vec3::GetOrtho(Vec3& u, Vec3& v) const
-{
-    Vec3 n = *this;
-    n.Normalize();
-    const Vec3 w = (n.Z * n.Z > 0.9f * 0.9f) ? Vec3(1, 0, 0) : Vec3(0, 0, 1);
-    u = w.Cross(n);
-    u.Normalize();
-    v = n.Cross(u);
-    v.Normalize();
-    u = v.Cross(n);
-    u.Normalize();
-}
-
 std::string Vec3::ToString() const
 {
     return "{" + std::to_string(X) + "," + std::to_string(Y) + "," + std::to_string(Z) + "}";
-}
-
-Vec3 Vec3::Lerp(const Vec3& a, const Vec3& b, float t)
-{
-    // Ensure the interpolation factor is clamped between 0 and 1
-    if (t < 0.0f)
-        t = 0.0f;
-    if (t > 1.0f)
-        t = 1.0f;
-
-    // Perform the linear interpolation
-    return a + (b - a) * t;
 }

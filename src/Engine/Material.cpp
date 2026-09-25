@@ -13,13 +13,6 @@ Material::Material(Vec3 ambient, Vec3 diffuse, Vec3 specular, float highlight)
 {
 }
 
-void Material::ResetMaterial()
-{
-    diffuse = Vec3(0.0f, 0.0f, 0.0f);
-    ambient = Vec3(0.0f, 0.0f, 0.0f);
-    specular = Vec3(0.0f, 0.0f, 0.0f);
-}
-
 void Material::SampleSIMD(SIMDFloat& r, SIMDFloat& g, SIMDFloat& b) const
 {
     r = 255 * diffuse[0];

@@ -41,7 +41,6 @@ class MIUnit : public Script
     void Damage(float amount);
 
     float Health() const { return m_Health; }
-    float MaxHealth() const { return m_MaxHealth; }
     bool IsDead() const { return m_Dead; }
     virtual MI::Side GetSide() const = 0;
 

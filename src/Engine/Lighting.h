@@ -15,15 +15,7 @@ class Lighting : public Resource
 
     void SetLightPerspective(float FOV, float Aspect, float Near, float Far)
     {
-        DirectionalLight.lightType = SpotLight;
         DirectionalLight.SetLightPerspective(FOV, Aspect, Near, Far);
-    }
-
-    void SetLightOrthogonal(Vec2 Max, Vec2 Min, float Near, float Far)
-    {
-        // NOTE: orthogonal parallel lights don't work currently
-        DirectionalLight.lightType = ParallelLight;
-        DirectionalLight.SetLightOrthogonal(Max, Min, Near, Far);
     }
 
     DirectionalLight& GetDirectionalLight() { return DirectionalLight; }

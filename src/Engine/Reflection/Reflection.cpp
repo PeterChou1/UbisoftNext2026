@@ -44,32 +44,6 @@ namespace Reflection
         }
     } // namespace
 
-    const char* FieldTypeName(FieldType type)
-    {
-        switch (type)
-        {
-        case FieldType::Bool:
-            return "Bool";
-        case FieldType::Int:
-            return "Int";
-        case FieldType::Float:
-            return "Float";
-        case FieldType::String:
-            return "String";
-        case FieldType::Vec2:
-            return "Vec2";
-        case FieldType::Vec3:
-            return "Vec3";
-        case FieldType::Color:
-            return "Color";
-        case FieldType::Enum:
-            return "Enum";
-        case FieldType::Entity:
-            return "Entity";
-        }
-        return "?";
-    }
-
     const char* TagName(ValueTag tag)
     {
         for (const TagEntry& entry : TAGS)

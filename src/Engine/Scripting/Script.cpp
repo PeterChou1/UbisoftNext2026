@@ -79,11 +79,6 @@ bool ScriptBase::MouseRightClicked() const
     return ECS.GetResource<UIState>()->rightClick;
 }
 
-bool ScriptBase::MouseDown() const
-{
-    return ECS.GetResource<UIState>()->mouseLeftDown;
-}
-
 bool ScriptBase::MouseGround(Vec3& groundPoint) const
 {
     Vec2 mouse = MouseScreen();

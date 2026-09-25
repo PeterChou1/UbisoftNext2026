@@ -79,7 +79,6 @@ class SceneEditorScene : public Scene
      * \brief Folder holding the prefab files (default data/prefabs)
      */
     void SetPrefabDirectory(const std::string& directory);
-    const std::string& PrefabDirectory() const { return m_PrefabDirectory; }
 
     // Where the editor looks for .obj files typed by name
     static constexpr const char* IMPORT_DIRECTORY = "data/import";
@@ -129,7 +128,6 @@ class SceneEditorScene : public Scene
     bool BackToScene();
     bool InPrefabMode() const { return m_PrefabMode; }
     const std::string& PrefabName() const { return m_PrefabName; }
-    const std::vector<std::string>& PrefabNames() const { return m_Prefabs; }
 
     /**
      * \brief Start placing a prefab / model: the next click on the field

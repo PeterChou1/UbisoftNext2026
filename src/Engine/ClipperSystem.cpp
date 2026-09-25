@@ -234,18 +234,10 @@ void ClipperSystem::Clip()
             Vertex v1 = vertexBuffer[indexBuffer[3 * i]];
             Vertex v2 = vertexBuffer[indexBuffer[3 * i + 1]];
             Vertex v3 = vertexBuffer[indexBuffer[3 * i + 2]];
-            // back face culling
             auto t = Triangle(v1, v2, v3);
             Vec3 normal = (v1.Normal + v2.Normal + v3.Normal) / 3;
-            bool culling;
-
-            // Clip Triangle from the camera perspective
-            if (m_Cam->PerspectiveGL)
-                culling = normal.Dot(v1.Position - m_Cam->Position) < 0.0;
-            else
-                culling = normal.Dot(m_Cam->CamTransform.GetForward()) > 0.0;
-
-            if (culling)
+            // Back face culling, then clip the triangle from the camera
+            if (normal.Dot(v1.Position - m_Cam->Position) < 0.0)
             {
                 std::vector<Triangle> clipped = ClipAgainstPlane(t);
                 // Output projected screenSpacePosition to raster space
@@ -264,18 +256,12 @@ void ClipperSystem::Clip()
             if (!shadowMap)
                 continue;
 
-            // Clip from the light perspective
-            if (Light.lightType == SpotLight)
-            {
-                culling = normal.Dot(v1.Position - Light.Position) < 0.0;
-            }
-            else
-            {
-                // Parallel light: the faces turned towards it
-                culling = normal.Dot(Light.Direction) < 0.0;
-            }
-
-            if (culling)
+            // Clip from the light perspective (parallel light: the faces
+            // turned towards it)
+            const bool facesLight = Light.lightType == SpotLight
+                                            ? normal.Dot(v1.Position - Light.Position) < 0.0
+                                            : normal.Dot(Light.Direction) < 0.0;
+            if (facesLight)
             {
                 t.verts[0].Projection = v1.ShadowProjection;
                 t.verts[1].Projection = v2.ShadowProjection;

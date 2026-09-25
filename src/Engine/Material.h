@@ -20,11 +20,6 @@ class Material
     Material(Vec3 ambient, Vec3 diffuse, Vec3 specular, float highlight);
 
     /**
-     * \brief Reset material clearing texture and lighting terms
-     */
-    void ResetMaterial();
-
-    /**
      * \brief Samples 8 pixels at once
      * \param tex UV coordinates of the 8 pixels
      * \param r output red channel

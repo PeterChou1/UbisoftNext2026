@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Transform.h"
+#include "Vec2.h"
 
 #include <set>
 #include <vector>
@@ -31,8 +32,6 @@ struct MapLoc
 struct VectorField
 {
 
-    void ClearField();
-
     Coords GetLocation(Transform& T);
 
     void CalculateVectorField(Transform& Target);
@@ -42,8 +41,6 @@ struct VectorField
     void SetObstacles(std::set<Entity>& Obstacles);
 
     void RemoveObstacles(std::set<Entity>& Obstacles);
-
-    void SetDimension(float Height, float Width);
 
     void SetGridCount(size_t Height, size_t Width);
 

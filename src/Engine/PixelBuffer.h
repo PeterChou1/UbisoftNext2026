@@ -24,13 +24,6 @@ class PixelBuffer : public Resource
         m_Pixelbuffer.resize(m_Height * m_Width);
     }
 
-    void ResizePixelBuffer(int width, int height)
-    {
-        m_Width = width / SIMDPixel::PIXEL_WIDTH;
-        m_Height = height / SIMDPixel::PIXEL_HEIGHT;
-        m_Pixelbuffer.resize(m_Height * m_Width);
-    }
-
     void SetBuffer(int x, int y, const SIMDPixel& pixel, SIMDFloat& mask)
     {
         if (SIMD::All(mask))

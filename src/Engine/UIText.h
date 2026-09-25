@@ -32,8 +32,6 @@ namespace UIText
      * \brief Current window size in pixels (default: the virtual size)
      */
     void SetWindowSize(int width, int height);
-    int WindowWidth();
-    int WindowHeight();
 
     /**
      * \brief Pixel width of a string in the UI font (nullptr: built in table)

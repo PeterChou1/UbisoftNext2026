@@ -99,15 +99,6 @@ void MetalInvasion::OnUpdate(float deltaSeconds)
     HandleMouse();
 }
 
-float MetalInvasion::PhaseTimeLeft() const
-{
-    if (m_Phase == Phase::Preparation)
-        return m_PrepLeft;
-    if (m_Phase == Phase::Invasion)
-        return m_InvasionLeft;
-    return 0.0f;
-}
-
 float MetalInvasion::BaseHealth()
 {
     auto* base = ScriptOf<MIBase>(m_Base);

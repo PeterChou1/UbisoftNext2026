@@ -7,18 +7,6 @@
 
 extern ECSManager ECS;
 
-Vec3 GetScale(const Mat4& M)
-{
-    Vec3 Scale;
-    Vec3 ScaleX = Vec3(M[0][0], M[1][0], M[0][2]);
-    Vec3 ScaleY = Vec3(M[0][1], M[1][1], M[1][2]);
-    Vec3 ScaleZ = Vec3(M[0][2], M[1][2], M[2][2]);
-    Scale.X = ScaleX.GetMagnitude();
-    Scale.Y = ScaleY.GetMagnitude();
-    Scale.Z = ScaleZ.GetMagnitude();
-    return Scale;
-}
-
 void UpdateChild(std::vector<Entity> children)
 {
 
@@ -79,19 +67,6 @@ Transform::Transform()
     LocalScale = Vec3(1, 1, 1);
 }
 
-Transform::Transform(const Mat4& a)
-    : Affine(a)
-{
-    LocalPosition = Vec3(a[0][3], a[1][3], a[2][3]);
-    Mat3 r;
-    r.Rows[0] = {a[0][0], a[0][1], a[0][2]};
-    r.Rows[1] = {a[1][0], a[1][1], a[1][2]};
-    r.Rows[2] = {a[2][0], a[2][1], a[2][2]};
-    LocalRotation = Quat::FromRotationMatrix(r);
-    LocalScale = GetScale(a);
-    Inverse = Affine.AffineInverse();
-}
-
 Transform::Transform(const Vec3& pos)
     : LocalPosition(pos)
     , LocalRotation(Quat(0, 0, 0, 1))
@@ -129,27 +104,6 @@ Transform::Transform(const Vec3& pos, const Quat& rot, const Vec3& scale)
     LocalScale = scale;
     LocalRotation = rot;
     Inverse = Affine.AffineInverse();
-}
-
-void Transform::Scale(Vec3 scale)
-{
-    Affine.Rows[0] = {scale.X * Affine.Rows[0][0],
-                      scale.Y * Affine.Rows[0][1],
-                      scale.Z * Affine.Rows[0][2],
-                      LocalPosition.X};
-    Affine.Rows[1] = {scale.X * Affine.Rows[1][0],
-                      scale.Y * Affine.Rows[1][1],
-                      scale.Z * Affine.Rows[1][2],
-                      LocalPosition.Y};
-    Affine.Rows[2] = {scale.X * Affine.Rows[2][0],
-                      scale.Y * Affine.Rows[2][1],
-                      scale.Z * Affine.Rows[2][2],
-                      LocalPosition.Z};
-    Affine.Rows[3] = {0.0, 0.0, 0.0, 1.0};
-    Inverse = Affine.AffineInverse();
-    LocalScale = scale;
-    IsDirty = true;
-    UpdateChild(Children);
 }
 
 void Transform::Scale(float scale)
@@ -278,28 +232,12 @@ Vec3 Transform::GetUp()
     return {Affine[0][1], Affine[1][1], Affine[2][1]};
 }
 
-Vec3 Transform::GetForward()
-{
-    return {Affine[0][2], Affine[1][2], Affine[2][2]};
-}
-
 void Transform::SetLocalPosition(const Vec3& pos)
 {
     LocalPosition = pos;
     Affine.Rows[0][3] = LocalPosition.X;
     Affine.Rows[1][3] = LocalPosition.Y;
     Affine.Rows[2][3] = LocalPosition.Z;
-    Inverse = Affine.AffineInverse();
-    IsDirty = true;
-    UpdateChild(Children);
-}
-
-void Transform::SetPosition2D(const Vec2& pos)
-{
-    LocalPosition.X = pos.X;
-    LocalPosition.Y = pos.Y;
-    Affine.Rows[0][3] = LocalPosition.X;
-    Affine.Rows[1][3] = LocalPosition.Y;
     Inverse = Affine.AffineInverse();
     IsDirty = true;
     UpdateChild(Children);
@@ -392,17 +330,4 @@ Vec3 Transform::TransformVec3(const Vec3& point) const
 Vec3 Transform::TransformNormal(const Vec3& normal) const
 {
     return LocalRotation.RotatePoint(normal);
-}
-
-Transform Transform::Lerp(const Transform& a, const Transform& b, float t)
-{
-    // Interpolate position
-    Vec3 Position = Vec3::Lerp(a.LocalPosition, b.LocalPosition, t);
-    // Interpolate rotation using SLERP
-    Quat Rotation = Quat::Slerp(a.LocalRotation, b.LocalRotation, t);
-    // Interpolate scale
-    Vec3 scale = a.LocalScale * (1 - t) + b.LocalScale * t;
-    Transform result = Transform(Position, Rotation);
-    result.Scale(scale);
-    return result;
 }

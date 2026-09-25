@@ -26,20 +26,6 @@ class DepthBuffer : public Resource
         m_DepthShadowBuffer.resize(m_ShadowHeight * m_ShadowWidth);
     }
 
-    void SetDepthSize(int width, int height)
-    {
-        m_CamHeight = height / SIMDPixel::PIXEL_HEIGHT;
-        m_CamWidth = width / SIMDPixel::PIXEL_WIDTH;
-        m_DepthCamBuffer.resize(m_ShadowHeight * m_ShadowWidth);
-    }
-
-    void SetShadowDepthSize(int width, int height)
-    {
-        m_ShadowHeight = height / SIMDPixel::PIXEL_HEIGHT;
-        m_ShadowWidth = width / SIMDPixel::PIXEL_WIDTH;
-        m_DepthShadowBuffer.resize(m_ShadowHeight * m_ShadowWidth);
-    }
-
     // Size of the shadow map in texels
     int ShadowTexelsX() const { return m_ShadowWidth * SIMDPixel::PIXEL_WIDTH; }
     int ShadowTexelsY() const { return m_ShadowHeight * SIMDPixel::PIXEL_HEIGHT; }
@@ -62,19 +48,6 @@ class DepthBuffer : public Resource
         const SIMDFloat visible = depth > curDepth;
         const SIMDFloat updateMask = mask & visible;
         return updateMask;
-    }
-
-    SIMDFloat GetDepthSIMD(SIMDVec2& location, bool shadow) const
-    {
-        SIMDFloat Depth{};
-        SIMDFloat x = location.X;
-        SIMDFloat y = location.Y;
-        int limit = SIMDPixel::PIXEL_WIDTH * SIMDPixel::PIXEL_HEIGHT;
-        for (int i = 0; i < limit; i++)
-        {
-            Depth.V[i] = GetBufferSingle(static_cast<int>(x[i]), static_cast<int>(y[i]), shadow);
-        }
-        return Depth;
     }
 
     void UpdateBuffer(int x, int y, SIMDFloat& mask, SIMDFloat& depth, bool shadow)

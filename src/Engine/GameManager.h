@@ -18,9 +18,6 @@
 #pragma once
 
 #include "ClipperSystem.h"
-#include "DebugCamera.h"
-#include "DebugMesh.h"
-#include "DebugPhysicsRenderer.h"
 #include "FragmentShaderSystem.h"
 #include "MeshHandler.h"
 #include "ParticleSystem.h"
@@ -62,8 +59,6 @@ class GameManager
     void SetActiveScene(const std::string& sceneName);
 
     const std::string& GetActiveScene() const { return m_ActiveScene; }
-
-    bool HasScene(const std::string& sceneName) const { return m_SceneMap.count(sceneName) > 0; }
 
     ScriptSystem& Scripts() { return *m_ScriptSystem; }
 
@@ -136,10 +131,7 @@ class GameManager
     std::unique_ptr<RasterizerSystem> m_Rasterizer;
     std::unique_ptr<FragmentShaderSystem> m_FragmentShader;
     std::unique_ptr<MeshHandler> m_MeshHandler;
-    std::unique_ptr<DebugCamera> m_DebugCamera;
-    std::unique_ptr<DebugMesh> m_DebugMesh;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
-    std::unique_ptr<DebugPhysicsRenderer> m_DebugPhysicsRender;
     std::unique_ptr<ShaderHandler> m_ShaderHandler;
     std::unique_ptr<ScriptSystem> m_ScriptSystem;
 };

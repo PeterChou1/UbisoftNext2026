@@ -5,41 +5,9 @@
 
 #include <iostream>
 
-void Camera::ChangeResolution(float Width, float Height)
-{
-    ScreenWidth = Width;
-    ScreenHeight = Height;
-    AspectRatio = Width / Height;
-    if (PerspectiveGL)
-        Proj.PerspectiveOpenGL(Fov, AspectRatio, Nearplane, Farplane);
-    else
-        Proj.OrthogonalOpenGL(OrthoMin.X, OrthoMin.Y, OrthoMax.X, OrthoMax.Y, Nearplane, Farplane);
-}
-
-void Camera::SetOrthographicPlane(Vec2& Min, Vec2& Max)
-{
-    OrthoMin = Min;
-    OrthoMax = Max;
-}
-
 void Camera::SetProjectionPerspective()
 {
-    PerspectiveGL = true;
     Proj.PerspectiveOpenGL(Fov, AspectRatio, Nearplane, Farplane);
-}
-
-void Camera::SetProjectionOrthogonal()
-{
-    PerspectiveGL = false;
-    Proj.OrthogonalOpenGL(OrthoMin.X, OrthoMin.Y, OrthoMax.X, OrthoMax.Y, Nearplane, Farplane);
-}
-
-void Camera::SetTransform(Transform t)
-{
-    CamTransform = t;
-    Position = t.LocalPosition;
-    Up = Vec3(0, 1, 0);
-    Backward = (Vec3(0, 0, 0) - Position).Normalize() * -1;
 }
 
 void Camera::SetPositionAndOrientation(Vec3 camPos, Vec3 camTarget, Vec3 camUp)
@@ -48,19 +16,6 @@ void Camera::SetPositionAndOrientation(Vec3 camPos, Vec3 camTarget, Vec3 camUp)
     Up = camUp;
     Backward = (camTarget - Position).Normalize() * -1;
     CamTransform = Transform(Position, camTarget, Up);
-}
-
-void Camera::SetPosition(Vec3 camPos)
-{
-    Position = camPos;
-    CamTransform.SetLocalPosition(Position);
-}
-
-void Camera::UpdatePos(const Vec3& delta, const Quat& rot)
-{
-    Backward = rot.RotatePoint(Backward);
-    Position += delta;
-    CamTransform.Update(delta, rot);
 }
 
 void Camera::ToRasterSpace(Vec4& point)

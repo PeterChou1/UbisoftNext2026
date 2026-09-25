@@ -70,7 +70,6 @@ class MetalInvasion : public SceneScript
     int Round() const { return m_Round; }
     int Crystals() const { return m_Crystals; }
     int SpawnVolume() const { return m_SpawnVolume; }
-    float PhaseTimeLeft() const;
     Entity BaseEntity() const { return m_Base; }
     float BaseHealth();
 

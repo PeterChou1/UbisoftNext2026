@@ -46,7 +46,6 @@ namespace MI
          */
         Vec3 Direction(const Vec3& from);
 
-        bool HasGoal() const { return m_HasGoal; }
         const Vec3& Goal() const { return m_Goal; }
 
       private:

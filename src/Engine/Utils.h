@@ -7,6 +7,7 @@
 #pragma once
 #include "Camera.h"
 #include "Entity.h"
+#include "Mat2.h"
 #include "Material.h"
 #include "MeshInstance.h"
 
@@ -15,13 +16,6 @@
 
 namespace Utils
 {
-
-    float RandomFloat(float min, float max);
-
-    /**
-     * \brief generate a point in world space between mouseX and the X Y plane
-     */
-    bool MousePointMeshIntersect(float mouseX, float mouseY, Camera& cam, Entity E);
 
     /**
      * \brief Returns closest point between point and line segment ab
@@ -86,13 +80,6 @@ namespace Utils
                 });
 
         vec.erase(it_erase_from, vec.end());
-    }
-    /**
-     * \brief Map x in (in_min, in_max) to (out_min, out_max)
-     */
-    inline float mapRange(float x, float in_min, float in_max, float out_min, float out_max)
-    {
-        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
     }
 
     /**

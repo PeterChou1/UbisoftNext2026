@@ -285,7 +285,7 @@ void RasterizerSystem::RasterizeTiles()
             /// Hidden Surface is determined by: Depth Buffer Algorithmn
             for (auto& tri : binTriangle)
             {
-                RasterizeTriangle(tri, tileMin, tileMax, false, m_GameOptions->Projection);
+                RasterizeTriangle(tri, tileMin, tileMax, false, true);
             }
         }
     });

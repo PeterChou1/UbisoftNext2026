@@ -45,7 +45,6 @@ namespace EditorStyle
     constexpr float LEFT_W = 200.0f;
     constexpr float INSPECTOR_W = 270.0f;
     constexpr float BUTTON_H = 26.0f;
-    constexpr float ROW_H = 26.0f;
     constexpr float WIDGET_H = 22.0f;
     constexpr float STEP_W = 24.0f;
     constexpr float SWATCH = 17.0f;
@@ -120,7 +119,6 @@ namespace EditorStyle
     constexpr int ID_FIELD_POS_Y = 30;
     constexpr int ID_FIELD_COLLIDER_SCALE = 31;
     constexpr int ID_FIELD_PARAM = 20;
-    constexpr int ID_FIELD_LAST_OBJECT = 39;
     // Scene settings fields
     constexpr int ID_FIELD_FIELD_W = 40;
     constexpr int ID_FIELD_FIELD_H = 41;
