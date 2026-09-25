@@ -3,6 +3,7 @@
 #include "Scripting/ScriptRegistry.h"
 #include "Scripts/CollectGame.h"
 #include "Scripts/GameplayScripts.h"
+#include "Scripts/MetalInvasion/MIScripts.h"
 #include "Scripts/MovementScripts.h"
 #include "Scripts/ScriptNames.h"
 
@@ -39,4 +40,7 @@ void RegisterGameScripts()
     r.Register<CollectGame>(ScriptNames::CollectGame,
                             "Collect every Pickup, avoid hazards, next level",
                             {{"Level", 1.0f, 1.0f}, {"Lives", 3.0f, 1.0f}});
+
+    // Metal Invasion, the original game rebuilt on scenes + scripts
+    RegisterMetalInvasionScripts(r);
 }

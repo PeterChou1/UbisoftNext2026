@@ -1,5 +1,38 @@
 # Changelog
 
+## Metal Invasion rebuilt on the new engine (reference game)
+
+The original game is back as `data/scenes/metal_invasion.ubsave` plus the
+scripts in `src/Game/Scripts/MetalInvasion/`. It is a worked example of how to
+build a game on the engine. It has the same rules as the original:
+
+- rounds with preparation and invasion phases;
+- crystals mined by support units;
+- a shop in the base: soldiers, support, tanks and walls;
+- battalion selection and move orders with path finding;
+- enemy soldiers and tanks marching on the base, and game over.
+
+[`src/Game/Scripts/MetalInvasion/README.md`](src/Game/Scripts/MetalInvasion/README.md)
+maps every original system to its new place and explains which engine
+feature each part uses.
+
+Engine additions it needed, generic and usable by any script:
+
+- **Mouse for scripts:** `MouseScreen()`, `MouseClicked()`,
+  `MouseRightClicked()`, `MouseDown()`, and `MouseGround(point)` (the field
+  point under the cursor).
+- **`ScriptOf<T>(entity)`:** reach the script running on another object, e.g.
+  to damage it.
+- **Frame order:** `GameManager` now updates the mouse / click state before
+  the scripts run, so scripts see this frame's clicks. Before, a click was
+  set and cleared between two script updates.
+
+Tests: `tests/MetalInvasionTests.cpp` has 13 tests playing the scene through
+real frames. They cover rounds, the shop, selection and orders, path finding
+around walls, mining, combat, tanks, walls, game over / restart, mouse input,
+and saving mid-game. The suite (117 tests) passes, including under
+AddressSanitizer / UndefinedBehaviorSanitizer.
+
 ## Generic scene editor, C++ scripting and the Engine / Editor / Game split
 
 The Metal Invasion game logic is gone. What is left of it (ECS, 3D CPU renderer,
@@ -125,6 +158,8 @@ it in a few helpers:
 | `Param("Speed")` | value from the `ScriptComponent` (or `SceneSettings`) merged over the declared defaults |
 | `SceneScriptAs<CollectGame>()` | the running scene script, so objects can report to it |
 | `KeyDown`, `KeyPressed` | `Input` (edge-detected keyboard, updated once per frame) |
+| `MouseClicked`, `MouseRightClicked`, `MouseGround(p)` | `UIState` resource + `Camera` (the field point under the cursor) |
+| `ScriptOf<T>(e)` | the script instance the `ScriptSystem` runs on entity `e` |
 | `LoadScene(name)`, `RestartScene()` | deferred requests handled by `GameManager` **between** frames |
 
 A spawned entity gets its script on the **next** frame's sync, the same way a
@@ -151,11 +186,12 @@ authored level, not a mid-game save.
 Update(ms)
   ProcessRequests()      pending save / load / restart / scene change (scripts ask, never switch mid-frame)
   Input::Update()        key edges for the frame; Tab toggles the renderer
+  UIStateManager         mouse position / clicks for the frame
   if scene simulates:    ScenePlayer always, SceneEditor only while playing
      PhysicsSystem       → contact events
      ParticleSystem
      ScriptSystem        sync → contacts → OnUpdate
-  UIStateManager, active Scene::Update (editor GUI input, menu, Esc)
+  active Scene::Update   (editor GUI input, menu, Esc)
   ShaderHandler, MeshHandler (build / rebuild / delete geometry)
 Render()
   vertex → clip → raster → fragment (3D renderer, unchanged)

@@ -81,6 +81,8 @@ void GameManager::Update(float deltaTime)
 
     assert(m_SceneMap.count(m_ActiveScene) > 0 && "Active Scene Name Not registered");
     Input::Update();
+    // Mouse / click state first: scripts and scenes see this frame's clicks
+    m_UIStateManager->Update();
     // Tab switches between the two renderers: hardware triangles (fast,
     // default) and the engine's software rasterizer (lit, shadows)
     if (Input::WasPressed(App::KEY_TAB))
@@ -97,7 +99,6 @@ void GameManager::Update(float deltaTime)
         m_ParticleSystem->Update(deltaTime);
         m_ScriptSystem->Update(deltaTime);
     }
-    m_UIStateManager->Update();
     m_SceneMap[m_ActiveScene]->Update(deltaTime);
     m_ShaderHandler->Update(deltaTime);
     m_MeshHandler->Update();

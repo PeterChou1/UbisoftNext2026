@@ -87,6 +87,9 @@ The game lists the scenes of `data/scenes`: click one to play it. **Esc** goes b
 between the hardware and the software renderer. `level_1` and `level_2` are small `CollectGame` levels (WASD / arrows:
 collect every pickup, avoid hazards), `sandbox` shows every object type.
 
+**`metal_invasion`** is the original Metal Invasion rebuilt as a scene + C++ scripts: the reference for how to make a
+game with this engine. See [src/Game/Scripts/MetalInvasion/README.md](src/Game/Scripts/MetalInvasion/README.md).
+
 ## Scripts
 
 Scripts are C++ classes in `src/Game/Scripts`, registered by name in `src/Game/GameScripts.cpp`:

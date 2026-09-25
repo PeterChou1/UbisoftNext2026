@@ -1,5 +1,7 @@
 #include "SampleScenes.h"
 
+#include "Scripts/MetalInvasion/MINames.h"
+#include "Scripts/MetalInvasion/MIPrefabs.h"
 #include "Scripts/ScriptNames.h"
 
 using Editor::ObjectKind;
@@ -145,6 +147,26 @@ namespace
         editor.SetScript(ball, ScriptNames::Rotator);
         editor.SetGameCamera({0, 0, -1}, 30.0f);
     }
+    // Metal Invasion: the field, the player's base and the game's scene
+    // script. Everything else (crystals, units, enemies) is spawned by the
+    // scripts while playing
+    void MetalInvasionLevel(SceneEditor& editor)
+    {
+        editor.NewScene();
+        editor.SetFieldSize(54.0f, 54.0f);
+        editor.SetColor(editor.Objects()[0], {0.30f, 0.34f, 0.28f});
+
+        PlaceSettings base;
+        base.Model = MI::Models::Base;
+        base.Width = MI::BASE_SCALE;
+        base.Body = BodyType::Static;
+        base.Tag = MI::Tags::Base;
+        Entity b = editor.Place(ObjectKind::Model, {0, 0, 0}, base);
+        editor.SetScript(b, MI::Scripts::Base);
+
+        editor.SetSceneScript(MI::Scripts::Game);
+        editor.SetGameCamera({0, 0, -2}, 16.0f);
+    }
 } // namespace
 
 namespace SampleScenes
@@ -156,6 +178,7 @@ namespace SampleScenes
                 {"level_1", "CollectGame level 1: pickups and walls", Level1},
                 {"level_2", "CollectGame level 2: patrolling hazards and a turret", Level2},
                 {"sandbox", "Every shape type, crates, a chaser and 3D models", Sandbox},
+                {"metal_invasion", "The original Metal Invasion game on scenes + scripts", MetalInvasionLevel},
         };
         return scenes;
     }

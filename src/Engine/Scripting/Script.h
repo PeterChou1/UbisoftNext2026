@@ -115,6 +115,19 @@ class ScriptBase
     bool KeyDown(App::Key key) const;
     bool KeyPressed(App::Key key) const;
 
+    // Mouse (virtual screen coordinates, y up). Clicks are reported for the
+    // frame the button went down
+    Vec2 MouseScreen() const;
+    bool MouseClicked() const;
+    bool MouseRightClicked() const;
+    bool MouseDown() const;
+
+    /**
+     * \brief Point of the ground (y = 0) under the mouse, false if the mouse
+     *        ray misses the ground
+     */
+    bool MouseGround(Vec3& groundPoint) const;
+
     // -- Scene flow / drawing ---------------------------------------------------
 
     /**
@@ -131,6 +144,18 @@ class ScriptBase
      * \brief The script driving the current scene (nullptr if none)
      */
     ScriptBase* CurrentSceneScript() const;
+
+    /**
+     * \brief Script instance running on another object if it is a T (nullptr
+     *        otherwise), so scripts can talk to each other, e.g.
+     *        if (auto* unit = ScriptOf<MIUnit>(other)) unit->Damage(10);
+     */
+    template <typename T>
+    T* ScriptOf(Entity entity) const
+    {
+        return dynamic_cast<T*>(ScriptInstance(entity));
+    }
+    ScriptBase* ScriptInstance(Entity entity) const;
 
     /**
      * \brief The current scene script if it is a T, e.g.

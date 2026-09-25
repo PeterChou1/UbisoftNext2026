@@ -1,8 +1,10 @@
 #include "Script.h"
 
+#include "../Camera.h"
 #include "../GameManager.h"
 #include "../Input.h"
 #include "../RigidBody.h"
+#include "../UIState.h"
 #include "../World/SceneComponents.h"
 #include "ScriptRegistry.h"
 
@@ -52,6 +54,41 @@ bool ScriptBase::KeyDown(App::Key key) const
 bool ScriptBase::KeyPressed(App::Key key) const
 {
     return Input::WasPressed(key);
+}
+
+Vec2 ScriptBase::MouseScreen() const
+{
+    auto ui = ECS.GetResource<UIState>();
+    return Vec2(ui->mouseX, ui->mouseY);
+}
+
+bool ScriptBase::MouseClicked() const
+{
+    return ECS.GetResource<UIState>()->leftClick;
+}
+
+bool ScriptBase::MouseRightClicked() const
+{
+    return ECS.GetResource<UIState>()->rightClick;
+}
+
+bool ScriptBase::MouseDown() const
+{
+    return ECS.GetResource<UIState>()->mouseLeftDown;
+}
+
+bool ScriptBase::MouseGround(Vec3& groundPoint) const
+{
+    Vec2 mouse = MouseScreen();
+    Vec3 planePoint(0, 0, 0);
+    Vec3 planeNormal(0, 1, 0);
+    groundPoint = ECS.GetResource<Camera>()->ScreenSpaceToWorldPoint(mouse.X, mouse.Y, planePoint, planeNormal);
+    return groundPoint.IsValid();
+}
+
+ScriptBase* ScriptBase::ScriptInstance(Entity entity) const
+{
+    return GameSceneManager.Scripts().GetScript(entity);
 }
 
 void ScriptBase::LoadScene(const std::string& sceneName)
