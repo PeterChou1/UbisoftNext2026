@@ -1,10 +1,9 @@
 #include "TestEnvironment.h"
 
 #include "AppStub.h"
-
 #include "ECSManager.h"
-#include "GameOptions.h"
 #include "GameManager.h"
+#include "GameOptions.h"
 #include "GameScripts.h"
 #include "SceneEditorScene.h"
 #include "SceneMenu.h"
@@ -45,15 +44,20 @@ namespace TestEnvironment
         ECS.GetResource<GameOptions>()->LineRendering = true;
     }
 
-    SceneEditorScene& Editor() { return *g_Editor; }
+    SceneEditorScene& Editor()
+    {
+        return *g_Editor;
+    }
 
-    ScenePlayer& Player() { return *g_Player; }
+    ScenePlayer& Player()
+    {
+        return *g_Player;
+    }
 
     void RunFrame(float deltaMilliseconds)
     {
         // Text and lines are recorded per frame, the mouse / keys persist
         AppStub::Get().Printed.clear();
-        AppStub::Get().LinesDrawn = 0;
         AppStub::Get().Lines.clear();
         AppStub::Get().Triangles.clear();
         GameSceneManager.Update(deltaMilliseconds);

@@ -19,7 +19,9 @@
 extern ECSManager ECS;
 
 SERIALIZATION_ENUM_RANGE(Prefab::ObjectType, Prefab::ObjectType::Empty, Prefab::ObjectType::Model)
-SERIALIZATION_ENUM_RANGE(SceneObjects::BodyType, SceneObjects::BodyType::None, SceneObjects::BodyType::Trigger)
+SERIALIZATION_ENUM_RANGE(SceneObjects::BodyType,
+                         SceneObjects::BodyType::None,
+                         SceneObjects::BodyType::Trigger)
 
 namespace Prefab
 {
@@ -61,7 +63,7 @@ namespace Prefab
     namespace
     {
         constexpr std::uint8_t MAGIC[4] = {'U', 'B', 'P', 'F'};
-        constexpr const char* TEXT_MAGIC = "UBPF-TEXT";
+        const std::string TEXT_MAGIC = "UBPF-TEXT";
         constexpr float DEG_TO_RAD = 3.14159265f / 180.0f;
 
         std::unordered_map<std::string, Data>& Cache()
@@ -76,7 +78,10 @@ namespace Prefab
                    ECS.HasComponent<Transform>(e);
         }
 
-        bool Finite(const Vec3& v) { return std::isfinite(v.X) && std::isfinite(v.Y) && std::isfinite(v.Z); }
+        bool Finite(const Vec3& v)
+        {
+            return std::isfinite(v.X) && std::isfinite(v.Y) && std::isfinite(v.Z);
+        }
 
         /**
          * \brief Rewrite every Entity field of the reflected components of
@@ -95,7 +100,8 @@ namespace Prefab
                         continue;
                     void* data = entry.Data(ECS, e);
                     auto value = std::get<std::int64_t>(field.GetValue(data));
-                    field.SetValue(data, static_cast<std::int64_t>(map(static_cast<Entity>(value))));
+                    field.SetValue(data,
+                                   static_cast<std::int64_t>(map(static_cast<Entity>(value))));
                 }
             }
         }
@@ -112,18 +118,23 @@ namespace Prefab
             {
                 const Object& o = prefab.Objects[i];
                 std::string where = "object " + std::to_string(i) + " '" + o.Name + "': ";
-                bool rootOk = i == 0 ? o.Parent == -1 : o.Parent >= 0 && o.Parent < static_cast<std::int32_t>(i);
+                bool rootOk = i == 0 ? o.Parent == -1
+                                     : o.Parent >= 0 && o.Parent < static_cast<std::int32_t>(i);
                 if (!rootOk)
-                    throw SerializationError(where + "its parent must be an earlier object (the first is the root)");
+                    throw SerializationError(
+                            where + "its parent must be an earlier object (the first is the root)");
                 if (!Finite(o.Position) || !Finite(o.Scale) || !std::isfinite(o.Rotation.X) ||
-                    !std::isfinite(o.Rotation.Y) || !std::isfinite(o.Rotation.Z) || !std::isfinite(o.Rotation.W))
+                    !std::isfinite(o.Rotation.Y) || !std::isfinite(o.Rotation.Z) ||
+                    !std::isfinite(o.Rotation.W))
                     throw SerializationError(where + "position, rotation or scale is not a number");
                 if (o.Type == ObjectType::Model && o.Model.empty())
                     throw SerializationError(where + "a model object needs a model name");
                 if (o.Type == ObjectType::Shape &&
-                    (!(o.Shape.Width >= 0.0f) || !(o.Shape.Height >= 0.0f) || !(o.Shape.Thickness >= 0.0f)))
+                    (!(o.Shape.Width >= 0.0f) || !(o.Shape.Height >= 0.0f) ||
+                     !(o.Shape.Thickness >= 0.0f)))
                     throw SerializationError(where + "shape sizes must be positive numbers");
-                if (!o.Script.empty() && ScriptRegistry::Get().Find(o.Script) == nullptr && warnings != nullptr)
+                if (!o.Script.empty() && ScriptRegistry::Get().Find(o.Script) == nullptr &&
+                    warnings != nullptr)
                     warnings->push_back(where + "unknown script '" + o.Script + "'");
                 for (const Component& c : o.Components)
                 {
@@ -131,7 +142,8 @@ namespace Prefab
                     if (entry == nullptr)
                     {
                         if (warnings != nullptr)
-                            warnings->push_back(where + "unknown component '" + c.Name + "' is skipped");
+                            warnings->push_back(where + "unknown component '" + c.Name +
+                                                "' is skipped");
                         continue;
                     }
                     try
@@ -193,13 +205,15 @@ namespace Prefab
                 throw SerializationError("not a prefab file");
             std::uint32_t version = 0;
             {
-                TextInputArchive header(line.substr(std::string(TEXT_MAGIC).size()), number);
+                TextInputArchive header(line.substr(TEXT_MAGIC.size()), number);
                 header(version);
                 if (version == 0 || version > FORMAT_VERSION)
-                    header.Fail("prefab format version " + std::to_string(version) + " is newer than this program");
+                    header.Fail("prefab format version " + std::to_string(version) +
+                                " is newer than this program");
             }
             if (!next() || line.rfind("prefab ", 0) != 0)
-                throw SerializationError("line " + std::to_string(number) + ": expected 'prefab \"name\" [count]'");
+                throw SerializationError("line " + std::to_string(number) +
+                                         ": expected 'prefab \"name\" [count]'");
             TextInputArchive record(line.substr(7), number);
             record(prefab.Name);
             // The objects follow on their own lines: the count is a plain number
@@ -213,7 +227,8 @@ namespace Prefab
             for (std::uint32_t i = 0; i < count; ++i)
             {
                 if (!next() || line.rfind("object ", 0) != 0)
-                    throw SerializationError("line " + std::to_string(number) + ": expected an object record");
+                    throw SerializationError("line " + std::to_string(number) +
+                                             ": expected an object record");
                 TextInputArchive object(line.substr(7), number);
                 object.SetVersion(version);
                 Object o;
@@ -338,7 +353,8 @@ namespace Prefab
         for (std::size_t i = 0; i < prefab.Objects.size(); ++i)
         {
             const Object& o = prefab.Objects[i];
-            std::string name = SceneObjects::UniqueName(o.Name.empty() ? std::string("Object") : o.Name);
+            std::string name =
+                    SceneObjects::UniqueName(o.Name.empty() ? std::string("Object") : o.Name);
             Entity e = NULL_ENTITY;
             if (o.Type == ObjectType::Shape)
             {
@@ -413,11 +429,14 @@ namespace Prefab
         {
             Serialization::TextOutputArchive ar;
             ar.SetVersion(FORMAT_VERSION);
-            ar.Raw(std::string(TEXT_MAGIC) + " " + std::to_string(FORMAT_VERSION));
+            ar.Raw(TEXT_MAGIC + " " + std::to_string(FORMAT_VERSION));
             ar.NewLine();
-            ar.Raw("# Prefab: one line per object, the root first. Object fields: name, tag, parent\n"
-                   "# (-1 = root), position, rotation, scale, type (0 empty 1 shape 2 model), shape,\n"
-                   "# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, components,\n"
+            ar.Raw("# Prefab: one line per object, the root first. Object fields: name, tag, "
+                   "parent\n"
+                   "# (-1 = root), position, rotation, scale, type (0 empty 1 shape 2 model), "
+                   "shape,\n"
+                   "# model, body (0 none 1 static 2 dynamic 3 trigger), script, parameters, "
+                   "components,\n"
                    "# fragment shader, vertex shader (see Assets.h)\n");
             ar.Raw("prefab");
             auto count = static_cast<std::uint32_t>(copy.Objects.size());
@@ -446,13 +465,17 @@ namespace Prefab
         return ar.TakeBuffer();
     }
 
-    bool Load(const std::vector<std::uint8_t>& bytes, Data& prefab, std::string& error, std::vector<std::string>* warnings)
+    bool Load(const std::vector<std::uint8_t>& bytes,
+              Data& prefab,
+              std::string& error,
+              std::vector<std::string>* warnings)
     {
         Data parsed;
         std::vector<std::string> found;
         try
         {
-            std::string head(bytes.begin(), bytes.begin() + std::min<std::size_t>(bytes.size(), 9));
+            std::string head(bytes.begin(),
+                             bytes.begin() + std::min(bytes.size(), TEXT_MAGIC.size()));
             if (head == TEXT_MAGIC)
                 ParseText(std::string(bytes.begin(), bytes.end()), parsed);
             else
@@ -480,7 +503,10 @@ namespace Prefab
         return ok;
     }
 
-    bool LoadFile(const std::string& path, Data& prefab, std::string& error, std::vector<std::string>* warnings)
+    bool LoadFile(const std::string& path,
+                  Data& prefab,
+                  std::string& error,
+                  std::vector<std::string>* warnings)
     {
         std::vector<std::uint8_t> bytes;
         if (!Serialization::WorldSerializer::ReadFile(path, bytes, error))
@@ -526,14 +552,18 @@ namespace Prefab
         return &Cache().emplace(name, std::move(prefab)).first->second;
     }
 
-    void ClearCache() { Cache().clear(); }
+    void ClearCache()
+    {
+        Cache().clear();
+    }
 
     std::string SafeName(const std::string& name)
     {
         std::string safe;
         for (char c : name)
         {
-            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+            bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                      c == '_' || c == '-';
             safe += ok ? c : '_';
         }
         return safe.empty() ? std::string("prefab") : safe;

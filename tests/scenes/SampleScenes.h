@@ -22,7 +22,6 @@ namespace SampleScenes
     struct SampleScene
     {
         std::string Name; // also the file name (without extension)
-        std::string Description;
         void (*Author)(Editor::SceneEditor& editor);
         // Committed as a plain text scene file instead of binary
         bool PlainText = false;

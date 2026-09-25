@@ -20,8 +20,6 @@ class SceneMenu : public Scene
     void Setup() override;
     void Render() override;
 
-    const std::vector<std::string>& SceneNames() const { return m_Scenes; }
-
   private:
     std::vector<std::string> m_Scenes;
     int m_Page = 0;

@@ -32,7 +32,6 @@ namespace AppStub
         };
         // Every string printed during the current frame, with its position
         std::vector<PrintedText> Printed;
-        size_t LinesDrawn = 0;
         // Lines drawn this frame by the UI / overlays (not the renderer's
         // 1 px pixel lines)
         struct DrawnLine
@@ -50,7 +49,8 @@ namespace AppStub
 
         // Last frame presented by the renderer (FragmentShaderSystem draws every
         // pixel as a 1 px line), RGB in [0, 1], index y * width + x
-        std::vector<float> Frame = std::vector<float>(APP_VIRTUAL_WIDTH * APP_VIRTUAL_HEIGHT * 3, 0.0f);
+        std::vector<float> Frame =
+                std::vector<float>(APP_VIRTUAL_WIDTH * APP_VIRTUAL_HEIGHT * 3, 0.0f);
     };
 
     State& Get();

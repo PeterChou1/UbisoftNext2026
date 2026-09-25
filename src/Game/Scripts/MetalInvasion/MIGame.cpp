@@ -12,10 +12,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace
 {
-
     // Crystal deposits appear in a ring around the base
     constexpr float CRYSTAL_RING_MIN = 10.0f;
     constexpr float CRYSTAL_RING_MAX = 20.0f;
@@ -33,11 +33,16 @@ namespace
     constexpr float CAMERA_PAN_SPEED = 18.0f;
     constexpr float CAMERA_LIMIT = 25.0f;
     constexpr float PICK_MARGIN = 0.25f;
+    // How far from a wall other objects must stand for it to be built
+    constexpr float WALL_CLEARANCE = 0.6f;
 
     const Vec3 WALL_OK = {0.6f, 0.6f, 0.65f};
     const Vec3 WALL_BLOCKED = {0.9f, 0.2f, 0.2f};
 
-    std::string Seconds(float s) { return std::to_string(static_cast<int>(std::ceil(std::max(s, 0.0f)))); }
+    std::string Seconds(float s)
+    {
+        return std::to_string(static_cast<int>(std::ceil(std::max(s, 0.0f))));
+    }
 } // namespace
 
 //-----------------------------------------------------------------------------
@@ -66,13 +71,12 @@ void MetalInvasion::OnStart()
     // Battalion ids continue after the units already in the scene
     for (Entity unit : FindByTag(MI::Tags::Unit))
     {
-        if (Has<ScriptComponent>(unit))
-        {
-            auto& params = Get<ScriptComponent>(unit).Params;
-            auto it = params.find("Battalion");
-            if (it != params.end())
-                m_NextBattalion = std::max(m_NextBattalion, static_cast<int>(it->second) + 1);
-        }
+        if (!Has<ScriptComponent>(unit))
+            continue;
+        const auto& params = Get<ScriptComponent>(unit).Params;
+        auto it = params.find("Battalion");
+        if (it != params.end())
+            m_NextBattalion = std::max(m_NextBattalion, static_cast<int>(it->second) + 1);
     }
 
     // Two path finding fields over the whole field: enemies go to the base,
@@ -165,15 +169,18 @@ void MetalInvasion::SkipPreparation()
 
 void MetalInvasion::SpawnCrystals()
 {
-    int missing = static_cast<int>(Param("CrystalCount")) - static_cast<int>(FindByTag(MI::Tags::Crystal).size());
+    int missing = static_cast<int>(Param("CrystalCount")) -
+                  static_cast<int>(FindByTag(MI::Tags::Crystal).size());
     for (int i = 0; i < missing; ++i)
     {
         // Uniform in the ring
         float angle = Random01() * 2.0f * PI;
         float r2 = CRYSTAL_RING_MIN * CRYSTAL_RING_MIN +
-                   Random01() * (CRYSTAL_RING_MAX * CRYSTAL_RING_MAX - CRYSTAL_RING_MIN * CRYSTAL_RING_MIN);
+                   Random01() * (CRYSTAL_RING_MAX * CRYSTAL_RING_MAX -
+                                 CRYSTAL_RING_MIN * CRYSTAL_RING_MIN);
         float radius = std::sqrt(r2);
-        AddObstacle(MI::SpawnCrystal(Vec3(std::cos(angle) * radius, 0.0f, std::sin(angle) * radius), CRYSTAL_AMOUNT));
+        AddObstacle(MI::SpawnCrystal(Vec3(std::cos(angle) * radius, 0.0f, std::sin(angle) * radius),
+                                     CRYSTAL_AMOUNT));
     }
 }
 
@@ -182,7 +189,9 @@ void MetalInvasion::SpawnEnemyWave()
     for (int i = 0; i < m_SpawnVolume; ++i)
     {
         float angle = Random01() * 2.0f * PI;
-        Vec3 at(std::cos(angle) * ENEMY_SPAWN_DISTANCE, 0.0f, std::sin(angle) * ENEMY_SPAWN_DISTANCE);
+        Vec3 at(std::cos(angle) * ENEMY_SPAWN_DISTANCE,
+                0.0f,
+                std::sin(angle) * ENEMY_SPAWN_DISTANCE);
         if (Random01() < ENEMY_TO_TANK_RATIO)
         {
             float speed = ENEMY_SPEED_MIN + Random01() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN);
@@ -384,10 +393,8 @@ bool MetalInvasion::Purchase(Item item)
     switch (item)
     {
     case Item::Soldiers:
-        MI::SpawnBattalion(RALLY_POINT, BATTALION_SIZE, m_NextBattalion++, false);
-        break;
     case Item::Support:
-        MI::SpawnBattalion(RALLY_POINT, BATTALION_SIZE, m_NextBattalion++, true);
+        MI::SpawnBattalion(RALLY_POINT, BATTALION_SIZE, m_NextBattalion++, item == Item::Support);
         break;
     case Item::Tank:
         MI::SpawnTank(RALLY_POINT, m_NextBattalion++);
@@ -432,10 +439,13 @@ bool MetalInvasion::WallPreviewValid()
     if (m_WallPreview == NULL_ENTITY)
         return false;
     // Nothing may stand where the wall goes
-    const char* const blocking[] = {MI::Tags::Unit, MI::Tags::Enemy, MI::Tags::Crystal, MI::Tags::Wall, MI::Tags::Base};
-    for (const char* tag : blocking)
+    const std::pair<const char*, float> blocking[] = {{MI::Tags::Unit, WALL_CLEARANCE},
+                                                      {MI::Tags::Enemy, WALL_CLEARANCE},
+                                                      {MI::Tags::Crystal, WALL_CLEARANCE},
+                                                      {MI::Tags::Wall, WALL_CLEARANCE},
+                                                      {MI::Tags::Base, MI::BASE_SCALE * 0.5f}};
+    for (const auto& [tag, margin] : blocking)
     {
-        float margin = std::string(tag) == MI::Tags::Base ? MI::BASE_SCALE * 0.5f : 0.6f;
         for (Entity e : FindByTag(tag))
         {
             if (e != m_WallPreview && SceneObjects::Contains(m_WallPreview, PositionOf(e), margin))
@@ -478,7 +488,9 @@ void MetalInvasion::OnRender()
     else if (m_Mode == Mode::PlaceWall)
     {
         Vec2 mouse = MouseScreen();
-        DrawText(mouse.X + 12.0f, mouse.Y + 12.0f, "Press R to Rotate | Click to Place | Right click: cancel");
+        DrawText(mouse.X + 12.0f,
+                 mouse.Y + 12.0f,
+                 "Press R to Rotate | Click to Place | Right click: cancel");
     }
     if (m_Phase == Phase::GameOver)
         RenderGameOver();
@@ -497,7 +509,8 @@ void MetalInvasion::RenderHud()
                                       : "Invasion Phase (Kill All Enemy to Advance)";
     DrawText(600.0f, APP_VIRTUAL_HEIGHT - 75.0f, phase);
     DrawText(100.0f, 75.0f, "Round: " + std::to_string(m_Round));
-    DrawText(100.0f, 45.0f,
+    DrawText(100.0f,
+             45.0f,
              "WASD to pan camera - LEFT Click to select/guide units - RIGHT Click to unselect - "
              "SPACE to group units - Click the base to buy");
 }

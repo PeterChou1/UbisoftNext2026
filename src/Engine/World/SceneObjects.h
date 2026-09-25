@@ -83,9 +83,6 @@ namespace SceneObjects
      */
     bool IsEmpty(Entity entity);
 
-    // Radius around an empty's position that picks it
-    constexpr float EMPTY_PICK_RADIUS = 0.4f;
-
     // -- Hierarchy -------------------------------------------------------------
     //
     // Transform::Parent / Children link objects into a tree. A child's

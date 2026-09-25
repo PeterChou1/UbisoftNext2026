@@ -25,6 +25,7 @@
 #include "Scripting/Script.h"
 
 class MetalInvasion;
+class MITurret;
 
 //-----------------------------------------------------------------------------
 // Shared
@@ -55,6 +56,8 @@ class MIUnit : public Script
      *        when includeBase), NULL_ENTITY if none
      */
     Entity NearestOf(MI::Side side, float range, bool includeBase = true);
+    // Nearest object with one of `tags` within `range` (dead units skipped)
+    Entity NearestTagged(const std::vector<const char*>& tags, float range);
 
     // Damage another object (anything with an MIUnit script)
     void Hit(Entity target, float amount);
@@ -65,6 +68,9 @@ class MIUnit : public Script
     void Halt();
 
     float DistanceTo(Entity other) const;
+
+    // A destroyed tank: a (harmless) explosion, the cannon goes too
+    void ExplodeWithTurret(MITurret& turret);
 
     float m_Health = 100.0f;
     float m_MaxHealth = 100.0f;
@@ -79,16 +85,19 @@ class MITurret
 {
   public:
     void Attach(Entity hull, const std::string& hullName);
+    // Stay on the hull and reload
+    void Update(Entity hull, float deltaSeconds);
+    // Turn towards `target` and, once aimed and reloaded, fire a bullet of `side`
+    void FireAt(const Vec3& target, float deltaSeconds, MI::Side side);
+    void Remove();
+
+  private:
     void Follow(Entity hull);
     // Turn towards `target`, true once aimed
     bool Aim(const Vec3& target, float deltaSeconds);
-    void Remove();
-    Entity Cannon() const { return m_Cannon; }
 
-    float Cooldown = 0.0f;
-
-  private:
     Entity m_Cannon = NULL_ENTITY;
+    float m_Cooldown = 0.0f;
 };
 
 //-----------------------------------------------------------------------------
