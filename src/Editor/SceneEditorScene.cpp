@@ -59,11 +59,32 @@ namespace
     constexpr float STATUS_TIME = 4.0f;
     constexpr float DRAG_THRESHOLD = 0.01f;
 
-    // The scene list dropdown keeps its id across frames (open / closed state)
+    // Widgets that keep state across frames have fixed ids: the scene list
+    // (open / closed) and the text fields (being edited). Buttons use
+    // dynamic ids from FIRST_DYNAMIC_ID
     constexpr int ID_SCENE_LIST = 1;
+    constexpr int ID_FIELD_SCENE_NAME = 2;
+    // Fields of the selected object (dropped when the selection changes)
+    constexpr int ID_FIELD_FIRST_OBJECT = 10;
+    constexpr int ID_FIELD_NAME = 10;
+    constexpr int ID_FIELD_POS_X = 11;
+    constexpr int ID_FIELD_POS_Z = 12;
+    constexpr int ID_FIELD_ROT = 13;
+    constexpr int ID_FIELD_WIDTH = 14;
+    constexpr int ID_FIELD_HEIGHT = 15;
+    constexpr int ID_FIELD_SIDES = 16;
+    constexpr int ID_FIELD_THICK = 17;
+    constexpr int ID_FIELD_SCALE = 18;
+    constexpr int ID_FIELD_PARAM = 20;
+    constexpr int ID_FIELD_LAST_OBJECT = 39;
+    // Scene tab fields
+    constexpr int ID_FIELD_FIELD_W = 40;
+    constexpr int ID_FIELD_FIELD_H = 41;
+    constexpr int ID_FIELD_SCENE_PARAM = 42;
+    constexpr int MAX_PARAM_FIELDS = 8;
     constexpr int FIRST_DYNAMIC_ID = 100;
-
-    const char* const DEFAULT_SLOTS[] = {"my_scene_1", "my_scene_2", "my_scene_3"};
+    // Width of the labels in front of typed values
+    constexpr float LABEL_W = 62.0f;
     const char* const TAGS[] = {"", "Player", "Enemy", "Pickup", "Wall", "Goal", "Hazard", "Spawner"};
     constexpr int TAG_COUNT = sizeof(TAGS) / sizeof(TAGS[0]);
 
@@ -132,6 +153,8 @@ void SceneEditorScene::Start()
     m_Light = ECS.GetResource<Lighting>();
     m_Options = ECS.GetResource<GameOptions>();
     m_UI = ECS.GetResource<UIState>();
+    if (m_SceneDirectory.empty())
+        m_SceneDirectory = GameManager::SCENES_DIRECTORY;
     m_Editor.OnWorldReplaced = [this] {
         // The world was replaced without per entity delete events
         GameSceneManager.ResetRenderCaches();
@@ -149,14 +172,19 @@ void SceneEditorScene::Setup()
     m_CamDistance = 30.0f;
     m_Tool = Tool::Select;
     m_Dragging = false;
+    m_PaletteDrag = false;
+    m_PendingSceneIndex = -1;
     m_UI->openDropDownId = 0;
+    m_UI->focusedItem = 0;
     m_Models = AssetServer::AvailableModels();
     if (m_Brush.Model.empty() && !m_Models.empty())
         m_Brush.Model = m_Models.front();
 
+    // Open the first scene of the folder, or start a new one
     RefreshSceneList();
-    m_Editor.NewScene();
-    SetStatus("New scene. Pick a shape on the left and click the field to place it");
+    if (m_SceneNames.empty() || !OpenScene(m_SceneNames.front()))
+        NewDocument();
+    SetStatus("Pick a shape on the left and click (or drag it onto) the field. Tutorial: docs/EditorTutorial.md");
 }
 
 void SceneEditorScene::Update(float deltaTime)
@@ -165,6 +193,12 @@ void SceneEditorScene::Update(float deltaTime)
     if (m_StatusTimer > 0.0f)
         m_StatusTimer -= deltaSeconds;
 
+    // While a text field is being edited the keyboard types into it
+    if (m_UI->IsTyping())
+    {
+        UpdateViewportMouse();
+        return;
+    }
     // While playing, the keyboard belongs to the scripts (only P stops)
     if (Input::WasPressed(App::KEY_P))
         TogglePlay();
@@ -186,6 +220,15 @@ void SceneEditorScene::Render()
     if (listOpen)
         m_UI->leftClick = false;
 
+    // The inspector's text fields always edit the selected object: an edit
+    // in progress is dropped when the selection changes
+    if (m_Editor.Selected() != m_FieldsEntity)
+    {
+        if (m_UI->focusedItem >= ID_FIELD_FIRST_OBJECT && m_UI->focusedItem <= ID_FIELD_LAST_OBJECT)
+            m_UI->focusedItem = 0;
+        m_FieldsEntity = m_Editor.Selected();
+    }
+
     RenderOverlay();
     RenderPalette();
     RenderInspector();
@@ -195,16 +238,7 @@ void SceneEditorScene::Render()
 
     m_UI->leftClick = click;
     if (!m_Editor.IsPlaying())
-    {
-        DropdownList(ID_SCENE_LIST,
-                     10.0f,
-                     SCREEN_H - TOOLBAR_H + (TOOLBAR_H - BUTTON_H) * 0.5f,
-                     180.0f,
-                     BUTTON_H,
-                     *m_UI,
-                     m_SceneNames,
-                     m_SceneIndex);
-    }
+        RenderSceneList();
     if (listOpen && click && m_UI->openDropDownId == ID_SCENE_LIST &&
         m_UI->activeItem != ID_SCENE_LIST)
         m_UI->openDropDownId = 0;
@@ -269,12 +303,23 @@ bool SceneEditorScene::MouseOverUI() const
            y > SCREEN_H - TOOLBAR_H || y < STATUS_H;
 }
 
-bool SceneEditorScene::MouseToGround(Vec3& groundPoint) const
+bool SceneEditorScene::MouseAtHeight(float height, Vec3& point) const
 {
-    Vec3 planePoint(0, 0, 0);
+    Vec3 planePoint(0, height, 0);
     Vec3 planeNormal(0, 1, 0);
-    groundPoint = m_Cam->ScreenSpaceToWorldPoint(m_UI->mouseX, m_UI->mouseY, planePoint, planeNormal);
-    return groundPoint.IsValid();
+    point = m_Cam->ScreenSpaceToWorldPoint(m_UI->mouseX, m_UI->mouseY, planePoint, planeNormal);
+    return point.IsValid();
+}
+
+Entity SceneEditorScene::PickUnderMouse(float* hitHeight) const
+{
+    return m_Editor.PickRay(
+            [this](float height) {
+                Vec3 point;
+                MouseAtHeight(height, point);
+                return point;
+            },
+            hitHeight);
 }
 
 Vec3 SceneEditorScene::SnapPoint(const Vec3& point) const
@@ -286,23 +331,50 @@ Vec3 SceneEditorScene::SnapPoint(const Vec3& point) const
             Editor::SceneEditor::Snap(point.Z, SNAP_STEP)};
 }
 
+void SceneEditorScene::BeginDrag(Entity entity, float height)
+{
+    // Keep the grabbed point under the mouse: drag on the plane at the
+    // height it was grabbed
+    Vec3 grabbed;
+    if (!MouseAtHeight(height, grabbed))
+        return;
+    m_Dragging = true;
+    m_DragMoved = false;
+    m_DragHeight = height;
+    m_DragOffset = SceneObjects::GetPosition(entity) - grabbed;
+    m_DragOffset.Y = 0.0f;
+}
+
 void SceneEditorScene::UpdateViewportMouse()
 {
+    // A palette shape dragged onto the field is dropped where it is released
+    if (m_PaletteDrag && !m_UI->mouseLeftDown)
+    {
+        m_PaletteDrag = false;
+        Vec3 ground;
+        if (!MouseOverUI() && MouseToGround(ground))
+        {
+            Entity placed = m_Editor.Place(m_Kind, SnapPoint(ground), m_Brush);
+            if (placed != NULL_ENTITY)
+                SetStatus("Placed " + m_Editor.NameOf(placed));
+        }
+        return;
+    }
+
     if (m_Dragging && !m_UI->mouseLeftDown)
     {
         m_Dragging = false;
-        if (m_DragRecorded)
+        if (m_DragMoved)
             SetStatus("Moved " + m_Editor.NameOf(m_Editor.Selected()));
     }
 
-    Vec3 ground;
-    if (!MouseToGround(ground))
-        return;
-
     if (m_Dragging)
     {
+        Vec3 point;
+        if (!MouseAtHeight(m_DragHeight, point))
+            return;
         Entity selected = m_Editor.Selected();
-        Vec3 target = SnapPoint(ground + m_DragOffset);
+        Vec3 target = SnapPoint(point + m_DragOffset);
         Vec3 delta = target - SceneObjects::GetPosition(selected);
         if (std::fabs(delta.X) > DRAG_THRESHOLD || std::fabs(delta.Z) > DRAG_THRESHOLD)
         {
@@ -313,11 +385,15 @@ void SceneEditorScene::UpdateViewportMouse()
                 m_DragRecorded = true;
             }
             m_Editor.Move(selected, target, false);
+            m_DragMoved = true;
         }
         return;
     }
 
-    if (MouseOverUI())
+    if (MouseOverUI() || m_PaletteDrag)
+        return;
+    // The first click outside a text field only finishes the edit
+    if (m_UI->IsTyping())
         return;
 
     if (m_UI->rightClick)
@@ -329,6 +405,21 @@ void SceneEditorScene::UpdateViewportMouse()
     if (!m_UI->leftClick)
         return;
 
+    // Pressing an object grabs it (also while placing), so objects can
+    // always be dragged
+    float grabHeight = 0.0f;
+    Entity picked = PickUnderMouse(&grabHeight);
+    if (picked != NULL_ENTITY && !m_Editor.IsField(picked))
+    {
+        m_Editor.Select(picked);
+        m_DragRecorded = false;
+        BeginDrag(picked, grabHeight);
+        return;
+    }
+
+    Vec3 ground;
+    if (!MouseToGround(ground))
+        return;
     if (m_Tool == Tool::Place)
     {
         if (m_Kind == ObjectKind::Model && m_Brush.Model.empty())
@@ -337,19 +428,14 @@ void SceneEditorScene::UpdateViewportMouse()
             return;
         }
         Entity placed = m_Editor.Place(m_Kind, SnapPoint(ground), m_Brush);
-        SetStatus("Placed " + m_Editor.NameOf(placed));
+        SetStatus("Placed " + m_Editor.NameOf(placed) + " (keep the button down to drag it)");
+        // Place and drag in one gesture; placing already recorded the undo step
+        m_DragRecorded = true;
+        BeginDrag(placed, 0.0f);
         return;
     }
-
-    Entity picked = m_Editor.Pick(ground);
+    // Clicking the field selects it (to resize / recolour it)
     m_Editor.Select(picked);
-    if (picked != NULL_ENTITY && !m_Editor.IsField(picked))
-    {
-        m_Dragging = true;
-        m_DragRecorded = false;
-        m_DragOffset = SceneObjects::GetPosition(picked) - ground;
-        m_DragOffset.Y = 0.0f;
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -361,7 +447,7 @@ void SceneEditorScene::SelectKind(ObjectKind kind)
     m_Kind = kind;
     m_Tool = Tool::Place;
     SetStatus(std::string("Placing ") + Editor::ObjectKindName(kind) +
-              ". Click the field, right click to stop");
+              ". Click the field (or drag the button onto it), right click to stop");
 }
 
 void SceneEditorScene::DeleteSelected()
@@ -390,37 +476,6 @@ void SceneEditorScene::RotateSelected(float degrees)
         m_Editor.SetYaw(selected, SceneObjects::GetYaw(selected) + degrees);
 }
 
-void SceneEditorScene::NewScene()
-{
-    m_Editor.NewScene();
-    SetStatus("New scene");
-}
-
-void SceneEditorScene::SaveScene()
-{
-    Serialization::SaveResult result = m_Editor.SaveScene(CurrentScenePath(), CurrentSceneName());
-    if (!result)
-    {
-        SetStatus("Save failed: " + result.Error, true);
-        return;
-    }
-    SetStatus("Saved " + CurrentScenePath());
-    std::string current = CurrentSceneName();
-    RefreshSceneList();
-    m_SceneIndex = IndexOf(m_SceneNames, current);
-}
-
-void SceneEditorScene::LoadScene()
-{
-    Serialization::LoadResult result = m_Editor.LoadScene(CurrentScenePath());
-    if (!result)
-        SetStatus("Load failed: " + result.Error, true);
-    else if (!result.Warnings.empty())
-        SetStatus("Loaded with problems: " + result.Warnings.front(), true);
-    else
-        SetStatus("Loaded " + CurrentScenePath());
-}
-
 void SceneEditorScene::TogglePlay()
 {
     if (m_Editor.IsPlaying())
@@ -438,41 +493,12 @@ void SceneEditorScene::TogglePlay()
         return;
     }
     m_Dragging = false;
+    m_PaletteDrag = false;
     m_UI->openDropDownId = 0;
+    m_UI->focusedItem = 0;
     m_Editor.BeginPlay();
     GameSceneManager.Scripts().Reset();
     SetStatus("Playing. Press P or Stop to go back to editing");
-}
-
-void SceneEditorScene::RefreshSceneList()
-{
-    m_SceneNames.clear();
-    std::error_code ec;
-    for (const auto& entry :
-         std::filesystem::directory_iterator(GameManager::SCENES_DIRECTORY, ec))
-    {
-        if (entry.is_regular_file() && entry.path().extension() == GameManager::SCENE_EXTENSION)
-            m_SceneNames.push_back(entry.path().stem().string());
-    }
-    for (const char* slot : DEFAULT_SLOTS)
-    {
-        if (std::find(m_SceneNames.begin(), m_SceneNames.end(), slot) == m_SceneNames.end())
-            m_SceneNames.push_back(slot);
-    }
-    std::sort(m_SceneNames.begin(), m_SceneNames.end());
-    m_SceneIndex = std::clamp(m_SceneIndex, 0, static_cast<int>(m_SceneNames.size()) - 1);
-}
-
-std::string SceneEditorScene::CurrentSceneName() const
-{
-    if (m_SceneIndex < 0 || m_SceneIndex >= static_cast<int>(m_SceneNames.size()))
-        return DEFAULT_SLOTS[0];
-    return m_SceneNames[m_SceneIndex];
-}
-
-std::string SceneEditorScene::CurrentScenePath() const
-{
-    return GameManager::ScenePath(CurrentSceneName());
 }
 
 void SceneEditorScene::SetStatus(const std::string& message, bool error)
@@ -480,6 +506,131 @@ void SceneEditorScene::SetStatus(const std::string& message, bool error)
     m_Status = message;
     m_StatusIsError = error;
     m_StatusTimer = STATUS_TIME;
+}
+
+//-----------------------------------------------------------------------------
+// Scene documents
+//-----------------------------------------------------------------------------
+
+std::string SceneEditorScene::ScenePath(const std::string& name) const
+{
+    return m_SceneDirectory + "/" + name + GameManager::SCENE_EXTENSION;
+}
+
+void SceneEditorScene::RefreshSceneList()
+{
+    m_SceneNames.clear();
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(m_SceneDirectory, ec))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == GameManager::SCENE_EXTENSION)
+            m_SceneNames.push_back(entry.path().stem().string());
+    }
+    // The open scene is listed even before its first save
+    if (!m_DocName.empty() && std::find(m_SceneNames.begin(), m_SceneNames.end(), m_DocName) == m_SceneNames.end())
+        m_SceneNames.push_back(m_DocName);
+    std::sort(m_SceneNames.begin(), m_SceneNames.end());
+    m_SceneIndex = m_DocName.empty() ? 0 : IndexOf(m_SceneNames, m_DocName);
+}
+
+std::string SceneEditorScene::UniqueSceneName() const
+{
+    for (int i = 1;; ++i)
+    {
+        std::string name = "scene_" + std::to_string(i);
+        std::error_code ec;
+        if (std::find(m_SceneNames.begin(), m_SceneNames.end(), name) == m_SceneNames.end() &&
+            !std::filesystem::exists(ScenePath(name), ec))
+            return name;
+    }
+}
+
+void SceneEditorScene::NewDocument()
+{
+    std::error_code ec;
+    std::filesystem::create_directories(m_SceneDirectory, ec);
+    std::string name = UniqueSceneName();
+    m_Editor.NewScene();
+    m_DocName = name;
+    // Saved right away: the new scene is a real entry of the scene list
+    Serialization::SaveResult result = m_Editor.SaveScene(ScenePath(name), name);
+    RefreshSceneList();
+    m_PendingSceneIndex = -1;
+    if (result)
+        SetStatus("Created " + name + ". Click its name (top right) to rename it");
+    else
+        SetStatus("Created " + name + " (not saved: " + result.Error + ")", true);
+}
+
+bool SceneEditorScene::OpenScene(const std::string& name)
+{
+    Serialization::LoadResult result = m_Editor.LoadScene(ScenePath(name));
+    if (!result)
+    {
+        SetStatus("Could not open " + name + ": " + result.Error, true);
+        m_SceneIndex = IndexOf(m_SceneNames, m_DocName);
+        return false;
+    }
+    m_DocName = name;
+    m_PendingSceneIndex = -1;
+    RefreshSceneList();
+    if (!result.Warnings.empty())
+        SetStatus("Opened " + name + " with problems: " + result.Warnings.front(), true);
+    else
+        SetStatus("Opened " + name);
+    return true;
+}
+
+bool SceneEditorScene::SaveDocument()
+{
+    Serialization::SaveResult result = m_Editor.SaveScene(ScenePath(m_DocName), m_DocName);
+    if (!result)
+    {
+        SetStatus("Save failed: " + result.Error, true);
+        return false;
+    }
+    SetStatus("Saved " + ScenePath(m_DocName));
+    RefreshSceneList();
+    return true;
+}
+
+void SceneEditorScene::RevertScene()
+{
+    std::error_code ec;
+    if (!std::filesystem::exists(ScenePath(m_DocName), ec))
+    {
+        SetStatus(m_DocName + " was never saved", true);
+        return;
+    }
+    OpenScene(m_DocName);
+}
+
+bool SceneEditorScene::RenameDocument(const std::string& newName)
+{
+    if (newName.empty() || newName == m_DocName)
+        return false;
+    std::error_code ec;
+    if (std::filesystem::exists(ScenePath(newName), ec))
+    {
+        SetStatus("A scene called " + newName + " already exists", true);
+        return false;
+    }
+    std::string oldPath = ScenePath(m_DocName);
+    if (std::filesystem::exists(oldPath, ec))
+    {
+        std::filesystem::rename(oldPath, ScenePath(newName), ec);
+        if (ec)
+        {
+            SetStatus("Could not rename: " + ec.message(), true);
+            return false;
+        }
+    }
+    std::string oldName = m_DocName;
+    m_DocName = newName;
+    ECS.GetResource<SceneSettings>()->Name = newName;
+    RefreshSceneList();
+    SetStatus("Renamed " + oldName + " to " + newName);
+    return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -500,6 +651,41 @@ int SceneEditorScene::Stepper(
     return delta;
 }
 
+bool SceneEditorScene::NumberRow(
+        float x, float y, float width, const std::string& label, int fieldId, float& value, float step, const char* format)
+{
+    // "label [ value ] [-] [+]": type a value (Enter) or step it
+    Text(x, y + 7.0f, label);
+    float fieldX = x + LABEL_W;
+    float fieldW = width - LABEL_W - 2 * STEP_W - 10.0f;
+    bool changed = false;
+    std::string text = Fmt(format, value);
+    if (TextField(fieldId, fieldX, y, fieldW, 22.0f, *m_UI, text, TextFilter::Number) == TextFieldEvent::Committed)
+    {
+        char* end = nullptr;
+        float typed = std::strtof(text.c_str(), &end);
+        if (end != text.c_str() && std::isfinite(typed))
+        {
+            value = typed;
+            changed = true;
+        }
+        else if (!text.empty())
+            SetStatus("Not a number: " + text, true);
+    }
+    float right = x + width;
+    if (Button(NextId(), right - 2 * STEP_W - 4.0f, y, *m_UI, STEP_W, 22.0f, "-"))
+    {
+        value -= step;
+        changed = true;
+    }
+    if (Button(NextId(), right - STEP_W, y, *m_UI, STEP_W, 22.0f, "+"))
+    {
+        value += step;
+        changed = true;
+    }
+    return changed;
+}
+
 bool SceneEditorScene::RenderToolbar()
 {
     float y = SCREEN_H - TOOLBAR_H;
@@ -517,11 +703,11 @@ bool SceneEditorScene::RenderToolbar()
     if (!playing)
     {
         if (toolbarButton("New", 50))
-            NewScene();
-        if (toolbarButton("Load", 50))
-            LoadScene();
+            NewDocument();
+        if (toolbarButton("Revert", 60))
+            RevertScene();
         if (toolbarButton("Save", 50))
-            SaveScene();
+            SaveDocument();
         if (toolbarButton("Undo", 50) && !m_Editor.Undo())
             SetStatus("Nothing to undo");
         if (toolbarButton("Redo", 50) && !m_Editor.Redo())
@@ -529,7 +715,7 @@ bool SceneEditorScene::RenderToolbar()
     }
     else
     {
-        x += 5 * 58.0f;
+        x += 4 * 58.0f + 68.0f;
     }
     if (toolbarButton(playing ? "Stop" : "Play", 60))
         TogglePlay();
@@ -537,13 +723,50 @@ bool SceneEditorScene::RenderToolbar()
         m_ShowScene = !m_ShowScene;
 
     if (playing)
-        Text(x + 90.0f, by + 7.0f, "PLAYING " + CurrentSceneName(), PLAY_TEXT);
-    else
     {
-        std::string title = CurrentSceneName() + (m_Editor.IsDirty() ? " *" : "");
-        Text(x + 10.0f, by + 7.0f, title, m_Editor.IsDirty() ? ACCENT : TEXT_DIM);
+        Text(x + 90.0f, by + 7.0f, "PLAYING " + m_DocName, PLAY_TEXT);
+        return true;
     }
+    // The scene's name: click it to rename the scene (and its file)
+    Text(x + 4.0f, by + 7.0f, "Name", TEXT_DIM);
+    std::string name = m_DocName;
+    if (TextField(ID_FIELD_SCENE_NAME, x + 50.0f, by + 2.0f, 150.0f, 22.0f, *m_UI, name, TextFilter::Name) ==
+        TextFieldEvent::Committed)
+        RenameDocument(name);
+    if (m_Editor.IsDirty())
+        Text(x + 206.0f, by + 7.0f, "*", ACCENT);
     return true;
+}
+
+void SceneEditorScene::RenderSceneList()
+{
+    int before = m_SceneIndex;
+    if (!DropdownList(ID_SCENE_LIST,
+                      10.0f,
+                      SCREEN_H - TOOLBAR_H + (TOOLBAR_H - BUTTON_H) * 0.5f,
+                      180.0f,
+                      BUTTON_H,
+                      *m_UI,
+                      m_SceneNames,
+                      m_SceneIndex))
+        return;
+    if (m_SceneIndex < 0 || m_SceneIndex >= static_cast<int>(m_SceneNames.size()))
+        return;
+    const std::string picked = m_SceneNames[m_SceneIndex];
+    if (picked == m_DocName)
+    {
+        m_PendingSceneIndex = -1;
+        return;
+    }
+    // Unsaved changes are only thrown away when the scene is picked twice
+    if (m_Editor.IsDirty() && m_PendingSceneIndex != m_SceneIndex)
+    {
+        m_PendingSceneIndex = m_SceneIndex;
+        m_SceneIndex = before;
+        SetStatus(m_DocName + " has unsaved changes: Save, or pick " + picked + " again to discard them", true);
+        return;
+    }
+    OpenScene(picked);
 }
 
 void SceneEditorScene::RenderPalette()
@@ -568,7 +791,11 @@ void SceneEditorScene::RenderPalette()
         if (m_Tool == Tool::Place && m_Kind == kind)
             label = "> " + label;
         if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, label))
+        {
             SelectKind(kind);
+            // Keep the button down and drag it onto the field to drop it there
+            m_PaletteDrag = true;
+        }
         y -= BUTTON_H + 4.0f;
     }
 
@@ -648,6 +875,7 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
 {
     float width = INSPECTOR_W - 20.0f;
     Text(x, y, "OBJECT", ACCENT);
+    Text(x + 80.0f, y, "click a value to type it", TEXT_DIM);
     y -= 30.0f;
     Entity e = m_Editor.Selected();
     if (e == NULL_ENTITY)
@@ -660,36 +888,64 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
 
     bool isShape = ECS.HasComponent<Shape2D>(e);
     bool isField = m_Editor.IsField(e);
-    Text(x, y, m_Editor.NameOf(e) + "  #" + std::to_string(e));
-    y -= ROW_H;
-    Vec3 p = SceneObjects::GetPosition(e);
-    Text(x, y, "Pos " + Fmt("%.1f", p.X) + ", " + Fmt("%.1f", p.Z) + "  Rot " + Fmt("%.0f", SceneObjects::GetYaw(e)), TEXT_DIM);
-    y -= ROW_H + 4.0f;
+    std::string kind = Editor::ObjectKindName(m_Editor.KindOf(e));
 
-    int d = 0;
+    if (isField)
+    {
+        Text(x, y + 7.0f, "Field  #" + std::to_string(e), TEXT_DIM);
+        y -= ROW_H;
+    }
+    else
+    {
+        // Name: type a new one (must be unique)
+        Text(x, y + 7.0f, "Name");
+        std::string name = m_Editor.NameOf(e);
+        if (TextField(ID_FIELD_NAME, x + LABEL_W, y, width - LABEL_W, 22.0f, *m_UI, name) ==
+                    TextFieldEvent::Committed &&
+            name != m_Editor.NameOf(e) && !m_Editor.Rename(e, name))
+            SetStatus("Can not rename to '" + name + "' (empty or already used)", true);
+        y -= ROW_H;
+        Text(x, y + 7.0f, kind + "  #" + std::to_string(e), TEXT_DIM);
+        y -= ROW_H;
+
+        // Position / rotation
+        Vec3 p = SceneObjects::GetPosition(e);
+        float px = p.X, pz = p.Z, yaw = SceneObjects::GetYaw(e);
+        if (NumberRow(x, y, width, "Pos X", ID_FIELD_POS_X, px, SNAP_STEP))
+            m_Editor.Move(e, Vec3(px, p.Y, p.Z));
+        y -= ROW_H;
+        if (NumberRow(x, y, width, "Pos Z", ID_FIELD_POS_Z, pz, SNAP_STEP))
+            m_Editor.Move(e, Vec3(p.X, p.Y, pz));
+        y -= ROW_H;
+        if (NumberRow(x, y, width, "Rot", ID_FIELD_ROT, yaw, ROTATE_STEP, "%.0f"))
+            m_Editor.SetYaw(e, yaw);
+        y -= ROW_H + 4.0f;
+    }
+
     if (isShape)
     {
         Shape2D shape = ECS.GetComponent<Shape2D>(e);
         bool round = shape.Type == Shape2DType::Circle || shape.Type == Shape2DType::Polygon;
-        if ((d = Stepper(x, y, width, (round ? "Size " : "Width ") + Fmt("%.2f", shape.Width))) != 0)
-            m_Editor.SetSize(e, shape.Width + d * SIZE_STEP, shape.Height);
+        float w = shape.Width, h = shape.Height, thick = shape.Thickness, sides = static_cast<float>(shape.Sides);
+        if (NumberRow(x, y, width, round ? "Size" : "Width", ID_FIELD_WIDTH, w, SIZE_STEP))
+            m_Editor.SetSize(e, w, shape.Height);
         y -= ROW_H;
         if (!round)
         {
-            if ((d = Stepper(x, y, width, "Height " + Fmt("%.2f", shape.Height))) != 0)
-                m_Editor.SetSize(e, shape.Width, shape.Height + d * SIZE_STEP);
+            if (NumberRow(x, y, width, "Height", ID_FIELD_HEIGHT, h, SIZE_STEP))
+                m_Editor.SetSize(e, shape.Width, h);
             y -= ROW_H;
         }
         if (shape.Type == Shape2DType::Polygon)
         {
-            if ((d = Stepper(x, y, width, "Sides " + std::to_string(shape.Sides))) != 0)
-                m_Editor.SetSides(e, shape.Sides + d);
+            if (NumberRow(x, y, width, "Sides", ID_FIELD_SIDES, sides, 1.0f, "%.0f"))
+                m_Editor.SetSides(e, static_cast<int>(std::lround(sides)));
             y -= ROW_H;
         }
         if (!isField)
         {
-            if ((d = Stepper(x, y, width, "Thick " + Fmt("%.2f", shape.Thickness))) != 0)
-                m_Editor.SetThickness(e, shape.Thickness + d * 0.05f);
+            if (NumberRow(x, y, width, "Thick", ID_FIELD_THICK, thick, 0.05f))
+                m_Editor.SetThickness(e, thick);
             y -= ROW_H;
         }
         y -= SWATCH - 4.0f;
@@ -704,12 +960,13 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
     else
     {
         float scale = ECS.GetComponent<Transform>(e).LocalScale.X;
-        if ((d = Stepper(x, y, width, "Scale " + Fmt("%.2f", scale))) != 0)
-            m_Editor.SetSize(e, scale + d * SIZE_STEP, scale);
+        if (NumberRow(x, y, width, "Scale", ID_FIELD_SCALE, scale, SIZE_STEP))
+            m_Editor.SetSize(e, scale, scale);
         y -= ROW_H;
         if (!m_Models.empty())
         {
             const std::string& model = ECS.GetComponent<Mesh>(e).Model;
+            int d = 0;
             if ((d = Stepper(x, y, width, "Model " + model.substr(0, 10), "<", ">")) != 0)
             {
                 int count = static_cast<int>(m_Models.size());
@@ -727,6 +984,7 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
         return;
     }
 
+    int d = 0;
     BodyType body = SceneObjects::GetBodyType(e);
     if ((d = Stepper(x, y, width, std::string("Body ") + SceneObjects::BodyTypeName(body), "<", ">")) != 0)
         m_Editor.SetBody(e, static_cast<BodyType>(Cycle(static_cast<int>(body), d, static_cast<int>(BodyType::Count))));
@@ -736,7 +994,7 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
         m_Editor.SetTag(e, TAGS[Cycle(IndexOf(TAGS, tag), d, TAG_COUNT)]);
     y -= ROW_H;
 
-    // Script picker + its declared parameters
+    // Script picker + its declared parameters (typed or stepped)
     std::vector<std::string> scripts = WithNone(ScriptRegistry::Get().Names(false));
     std::string script = m_Editor.GetScript(e);
     std::string scriptLabel = script.empty() ? "-" : script;
@@ -748,12 +1006,16 @@ void SceneEditorScene::RenderObjectInspector(float x, float& y)
     y -= ROW_H;
     if (const ScriptInfo* info = ScriptRegistry::Get().Find(script))
     {
+        int index = 0;
         for (const ScriptParam& param : info->Params)
         {
+            if (index >= MAX_PARAM_FIELDS)
+                break;
             float value = m_Editor.GetScriptParam(e, param.Name);
-            if ((d = Stepper(x + 10.0f, y, width - 10.0f, param.Name + " " + Fmt("%.2f", value))) != 0)
-                m_Editor.SetScriptParam(e, param.Name, value + d * param.Step);
+            if (NumberRow(x + 10.0f, y, width - 10.0f, param.Name.substr(0, 7), ID_FIELD_PARAM + index, value, param.Step))
+                m_Editor.SetScriptParam(e, param.Name, value);
             y -= ROW_H;
+            ++index;
         }
     }
 
@@ -786,23 +1048,27 @@ void SceneEditorScene::RenderSceneInspector(float x, float& y)
     y -= ROW_H;
     if (const ScriptInfo* info = ScriptRegistry::Get().Find(settings->SceneScript))
     {
+        int index = 0;
         for (const ScriptParam& param : info->Params)
         {
+            if (index >= MAX_PARAM_FIELDS)
+                break;
             float value = m_Editor.GetSceneParam(param.Name);
-            if ((d = Stepper(x + 10.0f, y, width - 10.0f, param.Name + " " + Fmt("%.2f", value))) != 0)
-                m_Editor.SetSceneParam(param.Name, value + d * param.Step);
+            if (NumberRow(x + 10.0f, y, width - 10.0f, param.Name.substr(0, 7), ID_FIELD_SCENE_PARAM + index, value, param.Step))
+                m_Editor.SetSceneParam(param.Name, value);
             y -= ROW_H;
+            ++index;
         }
     }
 
     y -= 6.0f;
     float fieldW = settings->FieldWidth;
     float fieldH = settings->FieldHeight;
-    if ((d = Stepper(x, y, width, "Field W " + Fmt("%.0f", fieldW))) != 0)
-        m_Editor.SetFieldSize(fieldW + d * 2.0f, fieldH);
+    if (NumberRow(x, y, width, "Field W", ID_FIELD_FIELD_W, fieldW, 2.0f, "%.0f"))
+        m_Editor.SetFieldSize(fieldW, settings->FieldHeight);
     y -= ROW_H;
-    if ((d = Stepper(x, y, width, "Field H " + Fmt("%.0f", fieldH))) != 0)
-        m_Editor.SetFieldSize(fieldW, fieldH + d * 2.0f);
+    if (NumberRow(x, y, width, "Field H", ID_FIELD_FIELD_H, fieldH, 2.0f, "%.0f"))
+        m_Editor.SetFieldSize(settings->FieldWidth, fieldH);
     y -= ROW_H + 6.0f;
 
     if (Button(NextId(), x, y, *m_UI, width, BUTTON_H, "Game camera = view"))
@@ -834,7 +1100,7 @@ void SceneEditorScene::RenderStatusBar()
         Text(10.0f, 28.0f, m_Status, m_StatusIsError ? ERROR_TEXT : TEXT);
     const char* hints = m_Editor.IsPlaying()
                                 ? "P stop  (the keyboard goes to the scene's scripts)"
-                                : "WASD pan Z/C zoom 1-5 shape Space select R rotate F dup X del U/Y undo P play";
+                                : "WASD pan Z/C zoom 1-5 shape Space select R rotate F dup X del U/Y undo P play (click a value to type)";
     Text(10.0f, 8.0f, hints, TEXT_DIM);
 }
 
@@ -872,7 +1138,7 @@ void SceneEditorScene::RenderOverlay()
     }
     else
     {
-        Entity hovered = m_Editor.Pick(ground);
+        Entity hovered = PickUnderMouse();
         if (hovered != NULL_ENTITY && hovered != selected && !m_Editor.IsField(hovered))
             DrawOutline(hovered, 0.8f, 0.8f, 0.8f);
     }

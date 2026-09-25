@@ -12,6 +12,8 @@ extern HWND MAIN_WINDOW_HANDLE;
 
 #endif //BUILD_PLATFORM_WINDOWS
 
+#include <string>
+
 extern int WINDOW_WIDTH;
 extern int WINDOW_HEIGHT;
 
@@ -27,6 +29,9 @@ namespace Internal
     void GetMousePos(float& x, float& y);
 
     bool IsMousePressed(int button);
+
+    //Characters typed since the last call (text input)
+    std::string TakeTypedText();
 
 }
 

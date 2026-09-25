@@ -17,7 +17,8 @@ Top 5 contest submission for ubisoft 2026 next programming contest
 - **Game**: a separate program that plays the authored scenes, driven by C++ scripts
   (per object scripts and scene scripts, running on top of the ECS)
 
-See [CHANGELOG.md](CHANGELOG.md) for how the editor, the scenes and the scripts work with the ECS.
+See [CHANGES.md](CHANGES.md) for a high level log of all changes and [CHANGELOG.md](CHANGELOG.md) for how the editor,
+the scenes and the scripts work with the ECS.
 
 ## Project layout
 
@@ -72,13 +73,16 @@ Both programs must run from the repository root (the build does this) to find `d
 
 ## Scene editor
 
-* Pick a shape in the palette (or keys **1-5**), set the brush (size, sides, rotation, body, tag, model, colour) and
-  click the field to place it. Right click stops placing.
-* Click an object to select it, drag to move it. The inspector edits its shape, colour, body
-  (None / Static / Dynamic / Trigger), tag and **script** with its parameters.
+**New to the editor? Follow the tutorial: [docs/EditorTutorial.md](docs/EditorTutorial.md).**
+
+* **New** creates a scene (added to the scene list and saved). Rename it by clicking the **Name** box (top right).
+  Pick a scene in the list (top left) to open it, **Save** saves it, **Revert** reloads it.
+* Place shapes: click a palette shape (or keys **1-5**) then click the field, or drag a palette shape onto the field.
+  Press + drag places and positions in one go. Right click stops placing.
+* Click an object to select it, drag it to move it. In the inspector click any value (name, position, rotation,
+  size, script parameters...) and type it, **Enter** applies. The **- / +** buttons step values.
 * The **Scene** tab sets the scene script (e.g. `CollectGame`), the field size and the game camera.
 * Keys: WASD pan, Z/C zoom, R rotate, F duplicate, X delete, U/Y undo/redo, G snap, **P** play / stop, Tab renderer.
-* Choose a scene in the list (top left) and **Save** / **Load** it (`data/scenes/<name>.ubsave`).
 * **Play** runs physics and scripts inside the editor, **Stop** restores the scene exactly.
 
 ## Game

@@ -51,3 +51,31 @@ int DropdownList(int id,
                  UIState& uiState,
                  const std::vector<std::string>& items,
                  int& currentIndex);
+enum class TextFieldEvent
+{
+    None,
+    Committed, // Enter or a click elsewhere: `text` holds the new value
+    Cancelled  // Esc: `text` is unchanged
+};
+
+enum class TextFilter
+{
+    Any,
+    Number, // digits, '.', '-'
+    Name    // letters, digits, '_', '-' (space becomes '_')
+};
+
+/**
+ * \brief Single line text box. Click it to edit, type, then Enter (or click
+ *        anywhere else) commits and Esc cancels. Shows `text` while not
+ *        being edited. Give each field a fixed id: the focus is kept by id
+ *        across frames (UIState::focusedItem)
+ */
+TextFieldEvent TextField(int id,
+                         float x,
+                         float y,
+                         float width,
+                         float height,
+                         UIState& uiState,
+                         std::string& text,
+                         TextFilter filter = TextFilter::Any);

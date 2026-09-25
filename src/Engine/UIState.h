@@ -1,6 +1,8 @@
 #pragma once
 #include "Resource.h"
 
+#include <string>
+
 enum UIContextState
 {
     DefaultContext,
@@ -37,6 +39,18 @@ class UIState : public Resource
     int activeItem = -1;
     // id of the drop down list
     int openDropDownId = 0;
+
+    // Text field being edited (0 = none) and its text so far
+    int focusedItem = 0;
+    std::string editText;
+    // Just focused: the first typed character replaces the whole text
+    bool editFresh = false;
+    // A text field that lost the focus to another one this frame commits
+    // this text when it is next drawn (see TextField)
+    int unfocusedItem = 0;
+    std::string unfocusedText;
+
+    bool IsTyping() const { return focusedItem != 0; }
 
     void ResetResource() override {}
 };

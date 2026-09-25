@@ -242,6 +242,49 @@ namespace Editor
         return best != NULL_ENTITY ? best : field;
     }
 
+    Entity SceneEditor::PickRay(const std::function<Vec3(float)>& pointAtHeight, float* hitHeight) const
+    {
+        constexpr int SAMPLES = 8;
+        Entity best = NULL_ENTITY;
+        float bestArea = 1e30f;
+        float bestHeight = 0.0f;
+        Entity field = NULL_ENTITY;
+        for (Entity e : Objects())
+        {
+            // Where does the ray go through the object's body? Sampled from
+            // the top down: the first hit is the surface the user sees
+            float base = SceneObjects::GetPosition(e).Y;
+            float height = ECS.HasComponent<Shape2D>(e) ? ECS.GetComponent<Shape2D>(e).Thickness
+                                                         : ECS.GetComponent<Transform>(e).LocalScale.Y;
+            height = std::max(height, 0.0f);
+            bool hit = false;
+            float at = base;
+            for (int i = SAMPLES; i >= 0 && !hit; --i)
+            {
+                at = base + height * static_cast<float>(i) / SAMPLES;
+                Vec3 point = pointAtHeight(at);
+                hit = point.IsValid() && SceneObjects::Contains(e, point, PICK_MARGIN);
+            }
+            if (!hit)
+                continue;
+            if (IsField(e))
+            {
+                field = e;
+                continue;
+            }
+            float area = FootprintArea(e);
+            if (area < bestArea)
+            {
+                best = e;
+                bestArea = area;
+                bestHeight = at;
+            }
+        }
+        if (hitHeight != nullptr)
+            *hitHeight = best != NULL_ENTITY ? bestHeight : 0.0f;
+        return best != NULL_ENTITY ? best : field;
+    }
+
     bool SceneEditor::Move(Entity entity, const Vec3& position, bool recordUndo)
     {
         if (!CanEdit(entity))
@@ -358,6 +401,21 @@ namespace Editor
             return false;
         RecordUndo();
         ECS.GetComponent<SceneObject>(entity).Tag = tag;
+        m_Dirty = true;
+        return true;
+    }
+
+    bool SceneEditor::Rename(Entity entity, const std::string& name)
+    {
+        if (!CanEdit(entity) || name.empty() || name == FIELD_NAME)
+            return false;
+        if (ECS.GetComponent<SceneObject>(entity).Name == name)
+            return true;
+        Entity existing = SceneObjects::FindByName(name);
+        if (existing != NULL_ENTITY && existing != entity)
+            return false;
+        RecordUndo();
+        ECS.GetComponent<SceneObject>(entity).Name = name;
         m_Dirty = true;
         return true;
     }

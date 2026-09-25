@@ -1,5 +1,56 @@
 # Changelog
 
+A shorter, high level log of every change is in [CHANGES.md](CHANGES.md).
+
+## Editor usability: typed values, scene documents, dragging
+
+- **Typed values.** Every number in the inspector is a `TextField`: click,
+  type, then **Enter** applies and **Esc** cancels; the first key replaces
+  the old value. It covers:
+  - name, Pos X / Pos Z, Rot;
+  - Width / Height / Size / Sides / Thick / Scale;
+  - script parameters, scene parameters, Field W / H.
+
+  **- / +** still step the value.
+  - Changes go through the same `SceneEditor` calls as before, so each is one
+    undo step and positions stay on the field.
+  - Invalid numbers are refused with a status message.
+  - While a field has the focus, the editor ignores its keyboard shortcuts.
+  - The first click outside a field only finishes the edit.
+  - Object names must be unique (`SceneEditor::Rename`).
+- **Scene documents.** The editor always has one open scene, named in the
+  toolbar's **Name** box.
+  - **New** creates `scene_<n>`, saves it immediately and adds it to the list.
+  - Typing a new name renames the scene and its file.
+  - Picking a scene in the list opens it. With unsaved changes the first pick
+    only warns; picking again discards them.
+  - **Revert** reloads the file.
+  - The editor opens the first scene of the folder, or creates a new one.
+  - `SetSceneDirectory` lets the tests use a temporary folder.
+- **Dragging.**
+  - Press a palette shape and drag it onto the field to drop it there.
+  - While placing, press + drag places and positions in one gesture (one
+    undo step).
+  - Pressing an existing object grabs it, in either tool.
+  - Picking uses the mouse ray through each object's height
+    (`SceneEditor::PickRay`), so the visible top of tall or thick objects can
+    be clicked.
+  - Drags happen on the plane at the height the object was grabbed, so it
+    stays under the cursor.
+- **Text input plumbing.**
+  - ContestAPI: `App::GetTypedText()`, a queue filled by the GLUT keyboard
+    callback. It is needed because `App::Key` has no backspace, minus or
+    period.
+  - Engine: `Input::TypedText()` (sampled once per frame), and focus state in
+    `UIState` (`focusedItem`, `editText`, `IsTyping()`).
+  - The `TextField` widget with number / name filters.
+- **Tutorial:** `docs/EditorTutorial.md`.
+- **Tests:**
+  - 6 new editor GUI tests: typed values, typing vs shortcuts, palette
+    drag-and-drop, place-and-drag, tall-object picking, scene documents.
+  - The scene list test was rewritten for the new document flow.
+  - 122 tests in total, clean under ASan / UBSan.
+
 ## Metal Invasion rebuilt on the new engine (reference game)
 
 The original game is back as `data/scenes/metal_invasion.ubsave` plus the
@@ -266,18 +317,23 @@ Scripts in `GameScripts`:
 
 ## 3. Scene editor (SceneEditor target)
 
+(Updated by "Editor usability" above; tutorial: `docs/EditorTutorial.md`.)
+
 - **Palette:** Select, Rectangle, Circle, Triangle, Polygon and Model (keys 1-5).
-  Click the field to place an object. The brush sets size, sides, rotation,
-  body type, tag, model and colour. Snap-to-grid is toggled with G.
+  Click the field to place an object, or drag a palette shape onto it. The
+  brush sets size, sides, rotation, body type, tag, model and colour.
+  Snap-to-grid is toggled with G.
 - **Viewport:** click to select; drag to move (one undo step per drag).
   Right click stops placing. WASD pans, Z / C zooms.
-- **Object inspector:** size / height / sides / thickness, colour, body
-  (None, Static, Dynamic, Trigger), tag, model and scale, script and its
-  parameters. Buttons rotate (R), duplicate (F) and delete (X).
+- **Object inspector:** typed or stepped name, position, rotation, size /
+  height / sides / thickness or scale; colour, body (None, Static, Dynamic,
+  Trigger), tag, model, script and its parameters. Buttons rotate (R),
+  duplicate (F) and delete (X).
 - **Scene tab:** scene script and its parameters, field size, and
   "Game camera = view". It also shows a live validation report.
-- **Toolbar:** scene list (`data/scenes` plus `my_scene_1..3` slots), New,
-  Load, Save, Undo / Redo (U / Y) and Play / Stop (P).
+- **Toolbar:** scene list (every file in `data/scenes`, picking one opens
+  it), New (creates and saves `scene_<n>`), Revert, Save, Undo / Redo
+  (U / Y), Play / Stop (P), and the scene's **Name** box (renames it).
 - **Play** first validates the scene: unique names, objects on the field, and
   known scripts. It then runs physics and scripts inside the editor. **Stop**
   restores the scene exactly (serializer snapshot).
@@ -378,7 +434,7 @@ frame runs the real `GameManager::Update` / `Render`.
 | `ScriptingTests` | registry, lifecycle, missing / wrong-kind scripts, scene script, contacts from real physics, triggers vs solids, spawning, input edges, `LoadScene`, restart |
 | `GameScriptsTests` | every game script: Rotator, Patrol, PlayerController (kinematic / dynamic), Follower, Collectible + CollectGame score, level transition to `level_2`, hazards / lives / game over / restart, Spawner / Projectile |
 | `EditorTests` | editor core: new scene, placing every kind, unique names, clamping, edits, pick, duplicate, scripts, validation, save / load, undo / redo, play snapshot |
-| `EditorGuiTests` | the GUI through mouse / keys: palette placing, brush steppers, drag, inspector, shortcuts, scene tab, Play / Stop, scene list + Save / Load |
+| `EditorGuiTests` | the GUI through mouse / keys: palette placing and drag-and-drop, brush steppers, drag, typed inspector values, shortcuts vs typing, tall-object picking, scene tab, Play / Stop, New / rename / open / save / revert scenes |
 | `RenderTests` | shape colours at their projected pixels (software renderer), deletion, models over shapes, hardware path colours, model normalisation, Tab toggle |
 | `SceneFileTests` | committed `data/scenes` load cleanly, match `tests/scenes/SampleScenes.cpp` byte for byte, and play without missing scripts |
 | `ArchiveTests`, `CameraPickingTests` | unchanged low level tests |

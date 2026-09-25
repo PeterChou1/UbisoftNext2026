@@ -25,6 +25,8 @@
 #include "SimpleController.h"
 #include "SimpleSprite.h"
 
+#include <string>
+
 #define APP_VIRTUAL_TO_NATIVE_COORDS(_x_,_y_)			_x_ = ((_x_ / APP_VIRTUAL_WIDTH )*2.0f) - 1.0f; _y_ = ((_y_ / APP_VIRTUAL_HEIGHT)*2.0f) - 1.0f;
 #define APP_NATIVE_TO_VIRTUAL_COORDS(_x_,_y_)			_x_ = ((_x_ + 1.0f) * APP_VIRTUAL_WIDTH) / 2.0f; _y_ = ((_y_ + 1.0f) * APP_VIRTUAL_HEIGHT) / 2.0f;
 
@@ -163,6 +165,12 @@ namespace App
 	// IsKeyPressed(App::KEY_LEFT; // Is left arrow pressed
 	//-------------------------------------------------------------------------------------------
 	bool IsKeyPressed(const Key key);
+
+	//-------------------------------------------------------------------------------------------
+	// Characters typed since the previous call, in order (key repeat included), for text input.
+	// Printable ASCII plus '\b' / 127 (backspace / delete), '\r' (enter) and 27 (escape).
+	//-------------------------------------------------------------------------------------------
+	std::string GetTypedText();
 
 	//-------------------------------------------------------------------------------------------
 	// Sets the value of the passed in float references to the current position of the mouse pointer.

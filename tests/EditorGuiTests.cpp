@@ -233,9 +233,9 @@ TEST_CASE("Editor GUI: the inspector edits the selected object")
     TestEnvironment::RunFrame(FRAME_MS);
     CHECK(FindText("Polygon  #", INSPECTOR_X, true) != nullptr);
 
-    REQUIRE(ClickStepper("Size ", +1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Size", +1, INSPECTOR_X));
     CHECK_EQ(ECS.GetComponent<Shape2D>(e).Width, 1.25f);
-    REQUIRE(ClickStepper("Sides ", +1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Sides", +1, INSPECTOR_X));
     CHECK_EQ(ECS.GetComponent<Shape2D>(e).Sides, 7);
     REQUIRE(ClickStepper("Body ", -1, INSPECTOR_X));
     CHECK(SceneObjects::GetBodyType(e) == BodyType::Trigger);
@@ -249,7 +249,7 @@ TEST_CASE("Editor GUI: the inspector edits the selected object")
     const ScriptInfo* info = ScriptRegistry::Get().Find(first);
     REQUIRE(info != nullptr && !info->Params.empty());
     const ScriptParam& param = info->Params.front();
-    REQUIRE(ClickStepper(param.Name + " ", +1, INSPECTOR_X));
+    REQUIRE(ClickStepper(param.Name.substr(0, 7), +1, INSPECTOR_X));
     CHECK_EQ(Core().GetScriptParam(e, param.Name), param.Default + param.Step);
 
     REQUIRE(ClickButton("Rot R", INSPECTOR_X));
@@ -304,10 +304,10 @@ TEST_CASE("Editor GUI: the scene tab sets the scene script and the field")
     CHECK(FindText("SCENE", INSPECTOR_X) != nullptr);
     REQUIRE(ClickStepper("Script ", +1, INSPECTOR_X));
     CHECK_EQ(ECS.GetResource<SceneSettings>()->SceneScript, std::string("CollectGame"));
-    REQUIRE(ClickStepper("Lives ", +1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Lives", +1, INSPECTOR_X));
     CHECK_EQ(Core().GetSceneParam("Lives"), 4.0f);
     float width = ECS.GetResource<SceneSettings>()->FieldWidth;
-    REQUIRE(ClickStepper("Field W ", -1, INSPECTOR_X));
+    REQUIRE(ClickStepper("Field W", -1, INSPECTOR_X));
     CHECK_EQ(ECS.GetResource<SceneSettings>()->FieldWidth, width - 2.0f);
     CHECK_EQ(ECS.GetComponent<Shape2D>(Core().Objects()[0]).Width, width - 2.0f);
     REQUIRE(ClickButton("Game camera = view", INSPECTOR_X));
@@ -364,56 +364,295 @@ TEST_CASE("Editor GUI: an unplayable scene does not start")
     CHECK(AppStub::WasPrinted("Can not play"));
 }
 
-TEST_CASE("Editor GUI: choose a slot in the scene list, save, change, load")
+namespace
 {
-    const std::string slot = "my_scene_3";
-    const std::string path = GameManager::ScenePath(slot);
-    const std::string backup = path + ".testbackup";
-    bool existed = std::filesystem::exists(path);
-    if (existed)
-        std::filesystem::rename(path, backup);
-
-    OpenEditor();
-    // The list starts on the first scene, open it and pick the slot
-    // (the toolbar also prints the scene name further right)
-    const AppStub::State::PrintedText* list = nullptr;
-    for (const auto& printed : AppStub::Get().Printed)
+    // The editor working on its own scene folder (a temporary directory)
+    struct SceneFolder
     {
-        if (printed.Text == "empty" && printed.X < 190.0f)
-            list = &printed;
-    }
-    REQUIRE(list != nullptr);
-    Click(list->X + 25.0f, list->Y + 5.0f);
-    REQUIRE(ClickButton(slot));
-    CHECK(FindText(slot) != nullptr);
-    // The click on the list entry did not reach the widgets under it
-    CHECK_EQ(Core().Objects().size(), size_t(1));
+        std::string Directory;
+        explicit SceneFolder(const std::string& name)
+        {
+            Directory = (std::filesystem::temp_directory_path() / ("ubisoft_next_editor_" + name)).string();
+            std::filesystem::remove_all(Directory);
+            std::filesystem::create_directories(Directory);
+            TestEnvironment::Editor().SetSceneDirectory(Directory);
+            OpenEditor();
+        }
+        ~SceneFolder()
+        {
+            TestEnvironment::Editor().SetSceneDirectory(GameManager::SCENES_DIRECTORY);
+            std::filesystem::remove_all(Directory);
+        }
+        bool Exists(const std::string& scene) const
+        {
+            return std::filesystem::exists(Directory + "/" + scene + ".ubsave");
+        }
+    };
 
+    // Click a text field shown after `label` and type into it (Enter commits)
+    bool TypeInto(const std::string& label, const std::string& text, float minX = -1.0f)
+    {
+        const auto* found = FindText(label, minX);
+        ++TestFramework::TotalChecks();
+        if (found == nullptr)
+        {
+            TestFramework::ReportFailure(__FILE__, __LINE__, "no field '" + label + "'");
+            return false;
+        }
+        // Fields start 62 px after their label, rows are 22 px high
+        Click(found->X + 62.0f + 20.0f, found->Y - 7.0f + 11.0f);
+        AppStub::Type(text);
+        TestEnvironment::RunFrame(FRAME_MS);
+        return true;
+    }
+
+    SceneEditorScene& Gui() { return TestEnvironment::Editor(); }
+
+    const AppStub::State::PrintedText* SceneList()
+    {
+        // The list is on the left of the toolbar (the scene name field is
+        // further right)
+        for (const auto& printed : AppStub::Get().Printed)
+        {
+            if (printed.X < 190.0f && printed.Y > APP_VIRTUAL_HEIGHT - 50.0f && printed.Text == Gui().SceneName())
+                return &printed;
+        }
+        return nullptr;
+    }
+} // namespace
+
+TEST_CASE("Editor GUI: type positions, rotation and sizes in the inspector")
+{
+    OpenEditor();
+    Entity e = Core().Place(Editor::ObjectKind::Rectangle, {0, 0, 0});
+    TestEnvironment::RunFrame(FRAME_MS);
+
+    REQUIRE(TypeInto("Pos X", "3.5\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).X, 3.5f);
+    REQUIRE(TypeInto("Pos Z", "-2.25\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Z, -2.25f);
+    REQUIRE(TypeInto("Rot", "45\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetYaw(e), 45.0f);
+    REQUIRE(TypeInto("Width", "4\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Shape2D>(e).Width, 4.0f);
+    REQUIRE(TypeInto("Height", "0.5\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Shape2D>(e).Height, 0.5f);
+    REQUIRE(TypeInto("Thick", "1.5\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Shape2D>(e).Thickness, 1.5f);
+    // The values are shown in the fields
+    CHECK(FindText("3.50", INSPECTOR_X) != nullptr);
+    // Each typed value is one undo step
+    CHECK(Core().Undo());
+    CHECK_EQ(ECS.GetComponent<Shape2D>(e).Thickness, 0.25f);
+
+    // Typed positions are kept on the field
+    REQUIRE(TypeInto("Pos X", "9999\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).X, ECS.GetResource<SceneSettings>()->FieldWidth * 0.5f);
+
+    // Backspace edits, Esc cancels, garbage is refused
+    REQUIRE(TypeInto("Pos Z", "12\b\b7\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Z, 7.0f);
+    REQUIRE(TypeInto("Pos Z", "3\x1b", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Z, 7.0f);
+    REQUIRE(TypeInto("Pos Z", "-\r", INSPECTOR_X));
+    CHECK_EQ(SceneObjects::GetPosition(e).Z, 7.0f);
+    CHECK(AppStub::WasPrinted("Not a number"));
+
+    // A model's scale
+    Editor::PlaceSettings model;
+    model.Model = "Box";
+    Entity box = Core().Place(Editor::ObjectKind::Model, {-4, 0, -4}, model);
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(TypeInto("Scale", "2.5\r", INSPECTOR_X));
+    CHECK_EQ(ECS.GetComponent<Transform>(box).LocalScale.X, 2.5f);
+}
+
+TEST_CASE("Editor GUI: typing goes to the field, not to the editor's shortcuts")
+{
+    OpenEditor();
+    Entity e = Core().Place(Editor::ObjectKind::Circle, {1, 0, 1});
+    TestEnvironment::RunFrame(FRAME_MS);
+    const auto* label = FindText("Name", INSPECTOR_X);
+    REQUIRE(label != nullptr);
+    Click(label->X + 62.0f + 20.0f, label->Y - 7.0f + 11.0f);
+    // x deletes, f duplicates, 1 picks the rectangle, wasd pans... none of
+    // it may happen while typing (the keys are also reported as held)
+    AppStub::Type("fox 1 wasd");
+    AppStub::Get().Keys[App::KEY_X] = true;
+    AppStub::Get().Keys[App::KEY_F] = true;
+    TestEnvironment::RunFrame(FRAME_MS);
+    AppStub::Get().Keys[App::KEY_X] = false;
+    AppStub::Get().Keys[App::KEY_F] = false;
+    AppStub::Type("\r");
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK_EQ(Core().NameOf(e), std::string("fox 1 wasd"));
+
+    // Names must stay unique
+    Entity other = Core().Place(Editor::ObjectKind::Rectangle, {4, 0, 4});
+    TestEnvironment::RunFrame(FRAME_MS);
+    REQUIRE(TypeInto("Name", "fox 1 wasd\r", INSPECTOR_X));
+    CHECK(Core().NameOf(other) != std::string("fox 1 wasd"));
+    CHECK(AppStub::WasPrinted("Can not rename"));
+}
+
+TEST_CASE("Editor GUI: drag a shape from the palette onto the field")
+{
+    OpenEditor();
+    const auto* button = FindText("2 Circle");
+    REQUIRE(button != nullptr);
+    Press(button->X + 20.0f, button->Y + 5.0f);
+    // Drag across the palette and the field, release on the field
+    Vec2 target = ScreenOf({-4, 0, 3});
+    for (int i = 1; i <= 5; ++i)
+    {
+        AppStub::Get().MouseX = button->X + (target.X - button->X) * i / 5.0f;
+        AppStub::Get().MouseY = button->Y + (target.Y - button->Y) * i / 5.0f;
+        TestEnvironment::RunFrame(FRAME_MS);
+    }
+    CHECK_EQ(Core().Objects().size(), size_t(1)); // nothing until released
+    Release();
+    REQUIRE(Core().Objects().size() == 2);
+    Entity dropped = Core().Objects()[1];
+    CHECK(Core().KindOf(dropped) == Editor::ObjectKind::Circle);
+    CHECK(std::fabs(SceneObjects::GetPosition(dropped).X + 4.0f) < 0.3f);
+    CHECK(std::fabs(SceneObjects::GetPosition(dropped).Z - 3.0f) < 0.3f);
+
+    // Released back over the palette: nothing is placed
+    button = FindText("> 2 Circle");
+    REQUIRE(button != nullptr);
+    Press(button->X + 20.0f, button->Y + 5.0f);
+    Release();
+    CHECK_EQ(Core().Objects().size(), size_t(2));
+}
+
+TEST_CASE("Editor GUI: place and drag in one gesture, pressing an object drags it")
+{
+    OpenEditor();
+    REQUIRE(ClickButton("1 Rectangle"));
+    // Press on the field places, keeping the button down drags the new object
+    Vec2 start = ScreenOf({0, 0, 0});
+    Press(start.X, start.Y);
+    REQUIRE(Core().Objects().size() == 2);
+    Entity placed = Core().Objects()[1];
+    Vec2 end = ScreenOf({5, 0, -3});
+    AppStub::Get().MouseX = end.X;
+    AppStub::Get().MouseY = end.Y;
+    TestEnvironment::RunFrame(FRAME_MS);
+    Release();
+    CHECK(std::fabs(SceneObjects::GetPosition(placed).X - 5.0f) < 0.3f);
+    CHECK(std::fabs(SceneObjects::GetPosition(placed).Z + 3.0f) < 0.3f);
+    // One undo removes it again
+    CHECK(Core().Undo());
+    CHECK_EQ(Core().Objects().size(), size_t(1));
+    CHECK(Core().Redo());
+
+    // Still placing: pressing the object grabs it instead of stacking a new one
+    Vec2 on = ScreenOf({5, 0, -3});
+    Press(on.X, on.Y);
+    Vec2 moved = ScreenOf({-2, 0, 6});
+    AppStub::Get().MouseX = moved.X;
+    AppStub::Get().MouseY = moved.Y;
+    TestEnvironment::RunFrame(FRAME_MS);
+    Release();
+    CHECK_EQ(Core().Objects().size(), size_t(2));
+    CHECK(std::fabs(SceneObjects::GetPosition(placed).X + 2.0f) < 0.3f);
+    CHECK(std::fabs(SceneObjects::GetPosition(placed).Z - 6.0f) < 0.3f);
+}
+
+TEST_CASE("Editor GUI: tall objects are picked where they are seen")
+{
+    OpenEditor();
+    Editor::PlaceSettings tall;
+    tall.Width = 1.0f;
+    tall.Height = 1.0f;
+    tall.Thickness = 4.0f;
+    Entity tower = Core().Place(Editor::ObjectKind::Rectangle, {0, 0, 0}, tall);
+    Core().Select(NULL_ENTITY);
+    TestEnvironment::RunFrame(FRAME_MS);
+    // The top of the tower is drawn over the ground far behind it
+    Vec2 top = ScreenOf({0, 4.0f, 0});
+    Vec3 groundBehind;
+    {
+        Vec3 planePoint(0, 0, 0), normal(0, 1, 0);
+        groundBehind = ECS.GetResource<Camera>()->ScreenSpaceToWorldPoint(top.X, top.Y, planePoint, normal);
+    }
+    CHECK(!SceneObjects::Contains(tower, groundBehind, 0.1f));
+    Click(top.X, top.Y);
+    CHECK_EQ(Core().Selected(), tower);
+}
+
+TEST_CASE("Editor GUI: New adds a saved scene to the list, rename it, switch scenes")
+{
+    SceneFolder folder("documents");
+    // An empty folder starts with a new scene
+    CHECK_EQ(Gui().SceneName(), std::string("scene_1"));
+    CHECK(folder.Exists("scene_1"));
+
+    REQUIRE(ClickButton("New"));
+    CHECK_EQ(Gui().SceneName(), std::string("scene_2"));
+    CHECK(folder.Exists("scene_2"));
+    CHECK(Gui().SceneNames() == std::vector<std::string>({"scene_1", "scene_2"}));
+    CHECK(SceneList() != nullptr);
+
+    // Rename with the name field of the toolbar (spaces become '_')
+    const auto* nameLabel = FindText("Name");
+    REQUIRE(nameLabel != nullptr);
+    Click(nameLabel->X + 60.0f, nameLabel->Y + 4.0f);
+    AppStub::Type("my level\r");
+    TestEnvironment::RunFrame(FRAME_MS);
+    CHECK_EQ(Gui().SceneName(), std::string("my_level"));
+    CHECK(folder.Exists("my_level"));
+    CHECK(!folder.Exists("scene_2"));
+    CHECK(Gui().SceneNames() == std::vector<std::string>({"my_level", "scene_1"}));
+    // A name already used is refused
+    CHECK(!Gui().RenameDocument("scene_1"));
+    CHECK_EQ(Gui().SceneName(), std::string("my_level"));
+
+    // Work on it and save
     Entity e = Core().Place(Editor::ObjectKind::Triangle, {2, 0, 2});
     Core().SetScript(e, "Rotator");
     Fixture::WorldImage saved = Fixture::Capture();
     REQUIRE(ClickButton("Save"));
-    CHECK(std::filesystem::exists(path));
-    CHECK(AppStub::WasPrinted("Saved"));
+    CHECK(!Core().IsDirty());
 
-    REQUIRE(ClickButton("New"));
+    // Pick scene_1 in the list: it opens
+    const auto* list = SceneList();
+    REQUIRE(list != nullptr);
+    Click(list->X + 20.0f, list->Y + 5.0f);
+    REQUIRE(ClickButton("scene_1"));
+    CHECK_EQ(Gui().SceneName(), std::string("scene_1"));
     CHECK_EQ(Core().Objects().size(), size_t(1));
-    REQUIRE(ClickButton("Load"));
-    CHECK_EQ(Core().Objects().size(), size_t(2));
-    saved.Settings.Name = slot;
+
+    // Unsaved changes: the first pick only warns, the second one discards
+    Core().Place(Editor::ObjectKind::Circle, {0, 0, 0});
+    list = SceneList();
+    REQUIRE(list != nullptr);
+    Click(list->X + 20.0f, list->Y + 5.0f);
+    REQUIRE(ClickButton("my_level"));
+    CHECK_EQ(Gui().SceneName(), std::string("scene_1"));
+    CHECK(AppStub::WasPrinted("unsaved changes"));
+    list = SceneList();
+    REQUIRE(list != nullptr);
+    Click(list->X + 20.0f, list->Y + 5.0f);
+    REQUIRE(ClickButton("my_level"));
+    CHECK_EQ(Gui().SceneName(), std::string("my_level"));
+    saved.Settings.Name = "my_level";
     CHECK_SAME_WORLD(saved, Fixture::Capture());
     // Everything is rebuilt for the renderer after the world was replaced
+    TestEnvironment::RunFrame(FRAME_MS);
     for (Entity shape : ECS.Visit<Shape2D>())
         CHECK(ECS.GetComponent<Shape2D>(shape).Built);
 
+    // Revert throws away unsaved changes
+    Core().Place(Editor::ObjectKind::Circle, {-3, 0, 0});
+    REQUIRE(ClickButton("Revert"));
+    CHECK_SAME_WORLD(saved, Fixture::Capture());
+
     // The saved scene plays in the Game's scene player
     std::string error;
-    REQUIRE(GameSceneManager.LoadGame(path, error));
+    REQUIRE(GameSceneManager.LoadGame(Gui().ScenePath("my_level"), error));
     CHECK_EQ(GameSceneManager.GetActiveScene(), std::string(ScenePlayer::NAME));
     TestEnvironment::RunFrames(5, 20.0f);
     CHECK(GameSceneManager.Scripts().GetScript(e) != nullptr);
-
-    std::filesystem::remove(path);
-    if (existed)
-        std::filesystem::rename(backup, path);
 }

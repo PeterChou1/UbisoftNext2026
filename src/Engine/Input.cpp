@@ -6,6 +6,7 @@ namespace Input
     {
         bool g_Down[KEY_COUNT] = {};
         bool g_Previous[KEY_COUNT] = {};
+        std::string g_Typed;
     } // namespace
 
     void Update()
@@ -15,7 +16,10 @@ namespace Input
             g_Previous[i] = g_Down[i];
             g_Down[i] = App::IsKeyPressed(static_cast<App::Key>(i));
         }
+        g_Typed = App::GetTypedText();
     }
+
+    const std::string& TypedText() { return g_Typed; }
 
     bool IsDown(App::Key key) { return g_Down[key]; }
 
@@ -30,5 +34,6 @@ namespace Input
             g_Down[i] = false;
             g_Previous[i] = false;
         }
+        g_Typed.clear();
     }
 } // namespace Input

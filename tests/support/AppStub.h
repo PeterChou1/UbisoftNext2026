@@ -23,6 +23,8 @@ namespace AppStub
         bool LeftDown = false;
         bool RightDown = false;
         bool Keys[64] = {};
+        // Characters "typed" but not read yet (App::GetTypedText)
+        std::string Typed;
         struct PrintedText
         {
             float X, Y;
@@ -45,6 +47,11 @@ namespace AppStub
     };
 
     State& Get();
+
+    /**
+     * \brief Queue typed characters ('\b' backspace, '\r' enter, 27 escape)
+     */
+    void Type(const std::string& text);
 
     void Reset();
 

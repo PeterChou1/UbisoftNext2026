@@ -8,6 +8,11 @@ namespace AppStub
         return state;
     }
 
+    void Type(const std::string& text)
+    {
+        Get().Typed += text;
+    }
+
     void Reset()
     {
         Get() = State{};
@@ -98,6 +103,13 @@ namespace App
     bool IsMousePressed(int button)
     {
         return button == GLUT_LEFT_BUTTON ? AppStub::Get().LeftDown : AppStub::Get().RightDown;
+    }
+
+    std::string GetTypedText()
+    {
+        std::string text;
+        text.swap(AppStub::Get().Typed);
+        return text;
     }
 
     const CController& GetController(const int)

@@ -97,6 +97,15 @@ namespace Editor
         Entity Pick(const Vec3& groundPoint) const;
 
         /**
+         * \brief Pick with the mouse ray: `pointAtHeight(h)` is where the ray
+         *        crosses the horizontal plane y = h. Each object is tested from
+         *        its top down to its base, so the visible top or side of a thick
+         *        shape or a tall model is what gets clicked (not the ground
+         *        behind it). `hitHeight` receives the height of the hit
+         */
+        Entity PickRay(const std::function<Vec3(float)>& pointAtHeight, float* hitHeight = nullptr) const;
+
+        /**
          * \brief Every scene object (entities with a SceneObject)
          */
         std::vector<Entity> Objects() const;
@@ -126,6 +135,12 @@ namespace Editor
         bool SetColor(Entity entity, const Vec3& color);
         bool SetBody(Entity entity, SceneObjects::BodyType body);
         bool SetTag(Entity entity, const std::string& tag);
+
+        /**
+         * \brief Rename an object (not the field). Names must be unique and
+         *        non empty: false (nothing changed) otherwise
+         */
+        bool Rename(Entity entity, const std::string& name);
         bool SetModel(Entity entity, const std::string& model);
 
         /**

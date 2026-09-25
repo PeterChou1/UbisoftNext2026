@@ -182,10 +182,15 @@ constexpr int KEY_UP = 0;
 constexpr int KEY_DOWN = 1;
 
 int gKeyboardState[256] = {0};
+// Characters typed since the game last asked for them (App::GetTypedText)
+std::string gTypedText;
 
 void GlutKeyboardDown(unsigned char key, int x, int y)
 {
 	gKeyboardState[key] = KEY_DOWN;
+	// Keep a bounded backlog in case nobody reads it
+	if (gTypedText.size() < 256)
+		gTypedText.push_back(static_cast<char>(key));
 }
 
 void GlutKeyboardUp(unsigned char key, int x, int y)
@@ -231,6 +236,13 @@ namespace Internal
 	bool IsMousePressed(int button)
 	{
 		return gMouseButtonState[button] == GLUT_DOWN;
+	}
+
+	std::string TakeTypedText()
+	{
+		std::string text;
+		text.swap(gTypedText);
+		return text;
 	}
 
 }

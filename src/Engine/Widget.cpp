@@ -1,7 +1,11 @@
 #include "Widget.h"
 
+#include "Input.h"
+
 #include "UIUtilities.h"
 #include "stdafx.h"
+
+#include <algorithm>
 
 void TextLabel(float x, float y, float width, float height, std::string label, Color C, Color BG)
 {
@@ -281,4 +285,120 @@ void FillBar(float x, float y, float width, float height, float fillVal)
         // Draw the text in white. You can also use TextLabel(...) if you prefer
         App::Print(textX, textY, fillText.c_str(), 1.0f, 0.0f, 0.0f);
     }
+}
+namespace
+{
+    constexpr size_t MAX_FIELD_CHARS = 32;
+
+    bool Accepts(TextFilter filter, char& c)
+    {
+        switch (filter)
+        {
+        case TextFilter::Number:
+            return (c >= '0' && c <= '9') || c == '.' || c == '-';
+        case TextFilter::Name:
+            if (c == ' ')
+                c = '_';
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
+                   c == '-';
+        case TextFilter::Any:
+        default:
+            return c >= 32 && c < 127;
+        }
+    }
+} // namespace
+
+TextFieldEvent TextField(
+        int id, float x, float y, float width, float height, UIState& uiState, std::string& text, TextFilter filter)
+{
+    bool hit = RegionHit(uiState.mouseX, uiState.mouseY, x, y, width, height);
+    TextFieldEvent event = TextFieldEvent::None;
+
+    // Another field took the focus before this one was drawn: keep the edit
+    if (uiState.unfocusedItem == id)
+    {
+        text = uiState.unfocusedText;
+        uiState.unfocusedItem = 0;
+        event = TextFieldEvent::Committed;
+    }
+
+    bool editing = uiState.focusedItem == id;
+    if (!editing && hit && uiState.leftClick)
+    {
+        if (uiState.focusedItem != 0)
+        {
+            // Hand the other field's text over so it commits when drawn
+            uiState.unfocusedItem = uiState.focusedItem;
+            uiState.unfocusedText = uiState.editText;
+        }
+        uiState.focusedItem = id;
+        uiState.editText = text;
+        uiState.editFresh = true;
+        uiState.hotItem = id;
+        uiState.activeItem = id;
+        editing = true;
+    }
+    else if (editing)
+    {
+        if (uiState.leftClick && !hit)
+        {
+            text = uiState.editText;
+            uiState.focusedItem = 0;
+            event = TextFieldEvent::Committed;
+            editing = false;
+        }
+        else
+        {
+            for (char c : Input::TypedText())
+            {
+                if (c == '\r' || c == '\n')
+                {
+                    text = uiState.editText;
+                    uiState.focusedItem = 0;
+                    event = TextFieldEvent::Committed;
+                    editing = false;
+                    break;
+                }
+                if (c == 27)
+                {
+                    uiState.focusedItem = 0;
+                    event = TextFieldEvent::Cancelled;
+                    editing = false;
+                    break;
+                }
+                if (c == '\b' || c == 127)
+                {
+                    if (!uiState.editText.empty())
+                        uiState.editText.pop_back();
+                    uiState.editFresh = false;
+                }
+                else if (Accepts(filter, c))
+                {
+                    // Typing right after clicking replaces the old value
+                    if (uiState.editFresh)
+                        uiState.editText.clear();
+                    uiState.editFresh = false;
+                    if (uiState.editText.size() < MAX_FIELD_CHARS)
+                        uiState.editText.push_back(c);
+                }
+            }
+        }
+    }
+
+    // Box, lighter while editing
+    if (editing)
+        DrawRect(x, y, width, height, 0.30f, 0.32f, 0.38f);
+    else
+        DrawRect(x, y, width, height, hit ? 0.24f : 0.18f, hit ? 0.25f : 0.19f, hit ? 0.29f : 0.22f);
+    float border = editing ? 1.0f : 0.5f;
+    App::DrawLine(x, y, x + width, y, border, border * 0.85f, border * 0.3f);
+    App::DrawLine(x, y + height, x + width, y + height, border, border * 0.85f, border * 0.3f);
+
+    // Show the end of long texts, with a cursor while editing
+    std::string shown = editing ? uiState.editText + "_" : text;
+    size_t fits = static_cast<size_t>(std::max(1.0f, (width - 8.0f) / 10.0f));
+    if (shown.size() > fits)
+        shown = shown.substr(shown.size() - fits);
+    App::Print(x + 4.0f, y + (height - 10.0f) * 0.5f, shown.c_str(), 1.0f, 1.0f, 1.0f);
+    return event;
 }

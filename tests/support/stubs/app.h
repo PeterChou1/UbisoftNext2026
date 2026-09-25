@@ -9,6 +9,8 @@
 // so the editor GUI and the render pipeline can be driven and checked by tests.
 //
 #pragma once
+
+#include <string>
 #include "AppSettings.h"
 
 #define GLUT_LEFT_BUTTON 0
@@ -37,6 +39,9 @@ namespace App
     };
 
     const CController& GetController(const int pad = 0);
+
+    // Characters typed since the previous call (scripted by AppStub::Type)
+    std::string GetTypedText();
 
     void DrawTriangle(const float p1x, const float p1y, const float p1z, const float p1w,
                       const float p2x, const float p2y, const float p2z, const float p2w,

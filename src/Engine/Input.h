@@ -9,6 +9,8 @@
 
 #include "app.h"
 
+#include <string>
+
 namespace Input
 {
     // Number of keys in App::Key
@@ -33,6 +35,12 @@ namespace Input
      * \brief Key went up this frame
      */
     bool WasReleased(App::Key key);
+
+    /**
+     * \brief Characters typed this frame (see App::GetTypedText), the same
+     *        for every reader during the frame. Used by text fields
+     */
+    const std::string& TypedText();
 
     /**
      * \brief Forget every key (e.g. when a scene starts)

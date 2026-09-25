@@ -134,6 +134,11 @@ namespace App
 		return CSimpleControllers::GetInstance().GetController(pad);
 	}
 
+	std::string GetTypedText()
+	{
+		return Internal::TakeTypedText();
+	}
+
 	bool IsKeyPressed(const App::Key key)
 	{
 		//ASCII keys with on symbol (space, delete, backspace)
