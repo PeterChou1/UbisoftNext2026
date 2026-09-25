@@ -1,143 +1,112 @@
 #include "Map.h"
 
 #include "ECSManager.h"
-#include "stdafx.h"
+
+#include <cassert>
+#include <cmath>
+#include <functional>
+#include <limits>
+#include <queue>
 
 extern ECSManager ECS;
 
-// A small struct to represent a node in the priority queue.
-struct NodeDistance
+namespace
 {
-    size_t index;
-    float distance;
-    bool operator>(const NodeDistance& other) const { return distance > other.distance; }
-};
+    // A cell (linear index) in the Dijkstra priority queue
+    struct NodeDistance
+    {
+        size_t index;
+        float distance;
+        bool operator>(const NodeDistance& other) const { return distance > other.distance; }
+    };
+} // namespace
 
 Coords VectorField::GetLocation(Transform& T)
 {
-    Coords Location;
-    float Distance = std::numeric_limits<float>::max();
-    size_t Height = Map.size();
-    size_t Width = Map[0].size();
-    for (size_t Y = 0; Y < Height; Y++)
+    const Vec3 position = T.GetWorldPosition();
+    Coords location;
+    float distance = std::numeric_limits<float>::max();
+    for (size_t y = 0; y < Map.size(); y++)
     {
-        for (size_t X = 0; X < Width; X++)
+        for (size_t x = 0; x < Map[0].size(); x++)
         {
-            MapLoc& Loc = Map[Y][X];
-            if (Loc.MapT == MapObstacle)
+            const MapLoc& loc = Map[y][x];
+            if (loc.MapT == MapObstacle)
                 continue;
 
-            float CX = std::abs(T.GetWorldPosition().X - Loc.Location.X);
-            float CY = std::abs(T.GetWorldPosition().Z - Loc.Location.Y);
-            float CurrentDist = CX + CY;
-            if (CurrentDist < Distance)
+            // Manhattan distance
+            float current =
+                    std::abs(position.X - loc.Location.X) + std::abs(position.Z - loc.Location.Y);
+            if (current < distance)
             {
-                Location.first = X;
-                Location.second = Y;
-                Distance = CurrentDist;
+                location = {x, y};
+                distance = current;
             }
         }
     }
-    return Location;
+    return location;
 }
 
 void VectorField::CalculateVectorField(Transform& Target)
 {
+    const size_t height = Map.size();
+    if (height == 0)
+        return;
+    const size_t width = Map[0].size();
+
     size_t startX, startY;
     std::tie(startX, startY) = GetLocation(Target);
 
-    size_t Height = Map.size();
-    if (Height == 0)
-        return;
+    std::vector<bool> visited(height * width, false);
+    std::vector<float> distance(height * width, std::numeric_limits<float>::max());
 
-    size_t Width = Map[0].size();
-    size_t GridSize = Height * Width;
-
-    // Prepare arrays for Dijkstra
-    std::vector<bool> Visited(GridSize, false);
-    std::vector<float> Distance(GridSize, std::numeric_limits<float>::max());
-
-    // 8 possible directions
-    std::pair<int, int> Paths[8] = {
+    const std::pair<int, int> NEIGHBOURS[8] = {
             {1, 1}, {1, 0}, {1, -1}, {0, 1}, {0, -1}, {-1, 1}, {-1, 0}, {-1, -1}};
 
-    // Convert (x, y) to linear index
-    auto toIndex = [&](size_t x, size_t y) { return y * Width + x; };
+    auto toIndex = [&](size_t x, size_t y) { return y * width + x; };
 
-    // Convert linear index back to (x, y)
-    auto toCoord = [&](size_t idx) { return std::make_pair(idx % Width, idx / Width); };
-    // Set the distance to start cell as 0
-    Distance[toIndex(startX, startY)] = 0.0f;
+    // Min-heap by distance
+    std::priority_queue<NodeDistance, std::vector<NodeDistance>, std::greater<NodeDistance>> queue;
+    distance[toIndex(startX, startY)] = 0.0f;
+    queue.push({toIndex(startX, startY), 0.0f});
 
-    // Priority queue for Dijkstra (min-heap by distance)
-    std::priority_queue<NodeDistance, std::vector<NodeDistance>, std::greater<NodeDistance>> pq;
-
-    // Push the start node
-    pq.push({toIndex(startX, startY), 0.0f});
-
-    while (!pq.empty())
+    while (!queue.empty())
     {
-        // Pop the cell with the smallest distance
-        NodeDistance top = pq.top();
-        pq.pop();
+        const size_t idx = queue.top().index;
+        queue.pop();
 
-        size_t idx = top.index;
-
-        // If we've already visited it, skip
-        if (Visited[idx])
+        if (visited[idx])
             continue;
-        Visited[idx] = true;
+        visited[idx] = true;
 
-        // If distance is inf, no path from start -> idx
-        if (Distance[idx] == std::numeric_limits<float>::max())
-        {
+        // Unreachable
+        if (distance[idx] == std::numeric_limits<float>::max())
             break;
-        }
 
-        // Get (x, y) for this index
-        size_t x, y;
-        std::tie(x, y) = toCoord(idx);
+        const size_t x = idx % width;
+        const size_t y = idx / width;
+        const MapLoc& current = Map[y][x];
 
-        // Explore neighbors
-        for (auto& dir : Paths)
+        for (const auto& dir : NEIGHBOURS)
         {
-            int nx = static_cast<int>(x) + dir.first;
-            int ny = static_cast<int>(y) + dir.second;
-
-            // Check bounds
-            if (nx < 0 || ny < 0 || nx >= static_cast<int>(Width) || ny >= static_cast<int>(Height))
-            {
+            const int nx = static_cast<int>(x) + dir.first;
+            const int ny = static_cast<int>(y) + dir.second;
+            if (nx < 0 || ny < 0 || nx >= static_cast<int>(width) || ny >= static_cast<int>(height))
                 continue;
-            }
 
-            size_t nxu = static_cast<size_t>(nx);
-            size_t nyu = static_cast<size_t>(ny);
-            size_t nIndex = toIndex(nxu, nyu);
-
-            // If visited or obstacle, skip
-            MapLoc& Adjacent = Map[nyu][nxu];
-            if (Adjacent.MapT == MapObstacle || Visited[nIndex])
-            {
+            const size_t nIndex = toIndex(nx, ny);
+            MapLoc& adjacent = Map[ny][nx];
+            if (adjacent.MapT == MapObstacle || visited[nIndex])
                 continue;
-            }
 
-            // Current cell is Board->Field.Map[y][x]
-            MapLoc& Current = Map[y][x];
-
-            // Calculate new distance
-            Vec2 diff = Current.Location - Adjacent.Location;
-            float newDist =
-                    Distance[idx] + diff.GetMagnitude(); // or 1.414f if uniform diagonals, etc.
-
-            // If found a shorter path to neighbor
-            if (newDist < Distance[nIndex])
+            const float newDistance =
+                    distance[idx] + (current.Location - adjacent.Location).GetMagnitude();
+            if (newDistance < distance[nIndex])
             {
-                Distance[nIndex] = newDist;
-                // Store "parent" pointer or coordinate so we can reconstruct or use NextX / NextY
-                Adjacent.NextX = x;
-                Adjacent.NextY = y;
-                // Push updated distance into the queue
-                pq.push({nIndex, newDist});
+                distance[nIndex] = newDistance;
+                adjacent.NextX = static_cast<int>(x);
+                adjacent.NextY = static_cast<int>(y);
+                queue.push({nIndex, newDistance});
             }
         }
     }
@@ -145,29 +114,23 @@ void VectorField::CalculateVectorField(Transform& Target)
 
 void VectorField::CreateVectorField(Vec3& Location)
 {
-    LocationVectorField = Location;
+    const float startX = Location.X - HalfWidth;
+    const float cellWidth = HalfWidth * 2.0f / static_cast<float>(GridCountWidth);
+    const float cellHeight = HalfHeight * 2.0f / static_cast<float>(GridCountHeight);
+    float curY = Location.Z - HalfHeight;
 
-    float StartX = Location.X - HalfWidth;
-    float StartY = Location.Z - HalfHeight;
-    float GridWidth = HalfWidth * 2.0f / static_cast<float>(GridCountWidth);
-    float GridHeight = HalfHeight * 2.0f / static_cast<float>(GridCountHeight);
-    float CurY = StartY;
-
-    for (size_t Y = 0; Y < GridCountHeight; Y++)
+    for (size_t y = 0; y < GridCountHeight; y++)
     {
-        float CurX = StartX;
-        std::vector<MapLoc> Row;
-        std::vector<Entity> Track;
-        for (size_t X = 0; X < GridCountWidth; X++)
+        float curX = startX;
+        std::vector<MapLoc> row;
+        for (size_t x = 0; x < GridCountWidth; x++)
         {
-            Vec2 Start = Vec2(CurX, CurY);
-            Row.push_back({Start, 0, 0, EmptySpace});
-            Track.push_back(NULL_ENTITY);
-            CurX += GridWidth;
+            row.push_back({Vec2(curX, curY), 0, 0, EmptySpace});
+            curX += cellWidth;
         }
-        ObstacleTracker.push_back(Track);
-        Map.push_back(Row);
-        CurY += GridHeight;
+        ObstacleTracker.push_back(std::vector<Entity>(GridCountWidth, NULL_ENTITY));
+        Map.push_back(row);
+        curY += cellHeight;
     }
 }
 
@@ -177,15 +140,14 @@ void VectorField::SetObstacles(std::set<Entity>& Obstacles)
     {
         AIObstacle& obstacle = ECS.GetComponent<AIObstacle>(e);
         Transform& t = ECS.GetComponent<Transform>(e);
-        std::vector<Coords> Locations = GetLocationObstacle(t, obstacle);
-        for (const Coords c : Locations)
+        for (const Coords& c : GetLocationObstacle(t, obstacle))
         {
-            const float X = c.first;
-            const float Y = c.second;
-            ObstacleTracker[Y][X] = e;
-            Map[Y][X].MapT = MapObstacle;
-            Map[Y][X].NextX = -1;
-            Map[Y][X].NextY = -1;
+            const size_t x = c.first;
+            const size_t y = c.second;
+            ObstacleTracker[y][x] = e;
+            Map[y][x].MapT = MapObstacle;
+            Map[y][x].NextX = -1;
+            Map[y][x].NextY = -1;
         }
     }
 }
@@ -194,17 +156,16 @@ void VectorField::RemoveObstacles(std::set<Entity>& Obstacles)
 {
     for (Entity e : Obstacles)
     {
-        for (size_t Y = 0; Y < GridCountHeight; Y++)
+        for (size_t y = 0; y < GridCountHeight; y++)
         {
-            for (size_t X = 0; X < GridCountWidth; X++)
+            for (size_t x = 0; x < GridCountWidth; x++)
             {
-                if (ObstacleTracker[Y][X] == e)
-                {
-                    Map[Y][X].MapT = EmptySpace;
-                    Map[Y][X].NextX = -1;
-                    Map[Y][X].NextY = -1;
-                    ObstacleTracker[Y][X] = NULL_ENTITY;
-                }
+                if (ObstacleTracker[y][x] != e)
+                    continue;
+                Map[y][x].MapT = EmptySpace;
+                Map[y][x].NextX = -1;
+                Map[y][x].NextY = -1;
+                ObstacleTracker[y][x] = NULL_ENTITY;
             }
         }
     }
@@ -219,31 +180,23 @@ void VectorField::SetGridCount(size_t Height, size_t Width)
 std::vector<Coords> VectorField::GetLocationObstacle(Transform& T, AIObstacle& obstacle)
 {
     assert(!Map.empty() && "Create Vector Field must be called first");
-    std::vector<Coords> Locations;
-    size_t Height = Map.size();
-    size_t Width = Map[0].size();
-    float CurX = T.GetWorldPosition().X;
-    float CurZ = T.GetWorldPosition().Z;
+    const Vec3 position = T.GetWorldPosition();
+    const Vec2 maxPoint(position.X + obstacle.Width, position.Z + obstacle.Height);
+    const Vec2 minPoint(position.X - obstacle.Width, position.Z - obstacle.Height);
 
-    Vec2 maxPoint = Vec2(CurX + obstacle.Width, CurZ + obstacle.Height);
-
-    Vec2 minPoint = Vec2(CurX - obstacle.Width, CurZ - obstacle.Height);
-
-    for (size_t Y = 0; Y < Height; Y++)
+    std::vector<Coords> locations;
+    for (size_t y = 0; y < Map.size(); y++)
     {
-        for (size_t X = 0; X < Width; X++)
+        for (size_t x = 0; x < Map[0].size(); x++)
         {
-            MapLoc& Loc = Map[Y][X];
-            if (Loc.MapT == MapObstacle)
+            const MapLoc& loc = Map[y][x];
+            if (loc.MapT == MapObstacle)
                 continue;
 
-            if (Loc.Location.X <= maxPoint.X && minPoint.X <= Loc.Location.X &&
-                Loc.Location.Y <= maxPoint.Y && minPoint.Y <= Loc.Location.Y)
-            {
-                Locations.push_back({X, Y});
-            }
+            if (loc.Location.X <= maxPoint.X && minPoint.X <= loc.Location.X &&
+                loc.Location.Y <= maxPoint.Y && minPoint.Y <= loc.Location.Y)
+                locations.push_back({x, y});
         }
     }
-
-    return Locations;
+    return locations;
 }

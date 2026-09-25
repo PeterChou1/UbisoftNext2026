@@ -8,24 +8,24 @@
 
 #include "AppSettings.h"
 #include "Mat4.h"
-#include "MeshInstance.h"
 #include "Resource.h"
+#include "Transform.h"
+#include "Vec2.h"
 
 class Camera : public Resource
 {
   public:
-    // Camera Projection Matrix used during the rendering process
+    // Projection matrix used by the render pipeline
     Mat4 Proj{};
-    // Camera Transform specifies controls
-    // Camera Position and Orientation
+    // Camera position and orientation
     Transform CamTransform{};
     Vec3 Position{};
-    // Backward Vector pointing away from where the camera is pointing
+    // Unit vector pointing away from where the camera looks
     Vec3 Backward{};
-    // Up Vector pointing up in the camera current orientation
+    // What the camera considers "up"
     Vec3 Up{};
 
-    // -- Default camera values used to construct OpenGL matrix --
+    // Perspective projection parameters (Fov in degrees)
     float Nearplane = 0.1f;
     float Farplane = 1000.0f;
     float Fov = 90.0;
@@ -35,64 +35,28 @@ class Camera : public Resource
 
     Camera() = default;
 
-    /**
-     * \brief Sets camera to perspective mode
-     */
+    /// Rebuild Proj from Fov, AspectRatio and the near / far planes
     void SetProjectionPerspective();
 
-    /**
-     * \brief Reset camera position and orientation
-     * \param camPos where the camera is located at
-     * \param camTarget postion of where the camera is looking at
-     * \param camUp what the camera considers is "up"
-     */
     void SetPositionAndOrientation(Vec3 camPos, Vec3 camTarget, Vec3 camUp);
 
-    /**
-     * \brief Translate Clip Space Point to Raster Space used in the
-     *        Render pipeline during clipping
-     */
+    /// Clip space point (after perspective division) to whole screen
+    /// pixels, clamped to the screen
     void ToRasterSpace(Vec4& point);
 
-    /**
-     * \brief A Debug Version of ToRasterSpace without the safety
-     *        Checks used by Debugging systems not intended for
-     *        gameplay use
-     */
+    /// ToRasterSpace without the clamping
     void ToRasterSpaceUnclamped(Vec4& point);
 
-    /**
-     * \brief A Camera is a resources but resetting it does nothing
-     */
     void ResetResource() override {}
 
-    /**
-     * \brief Translates a point from camera space to world space
-     */
     Vec3 CameraToWorld(const Vec3& point);
-
-    /**
-     * \brief Translates a point from world space to camera space
-     */
     Vec3 WorldToCamera(const Vec3& point);
 
-    /**
-     * \brief Translates a mouse position to a world space plane this
-     *        method essentially raycast from a camera to a point
-     *        if the raycast fails it will return zero vector
-     * \param x Mouse Position X
-     * \param y Mouse Position Y
-     * \param planePt A point on the plane you want to raycast to
-     * \param planeNormal plane normal of the plane
-     * \return point on the plane
-     */
+    /// Where the ray through screen point (x, y) hits the plane through
+    /// planePt with normal planeNormal. Zero vector when it misses (parallel,
+    /// or the plane is behind the camera)
     Vec3 ScreenSpaceToWorldPoint(float x, float y, Vec3& planePt, Vec3& planeNormal);
 
-    /**
-     * \brief The exact opposite of screen space to world point
-     *        Translate a world point to a point on the screen
-     * \param point
-     * \return
-     */
+    /// Screen point of a world point (the inverse of ScreenSpaceToWorldPoint)
     Vec2 WorldPointToScreenSpace(Vec3 point);
 };

@@ -1,17 +1,73 @@
 #include "Utils.h"
 
-#include "ECSManager.h"
 #include "Log.h"
-#include "RigidBody.h"
-#include "stdafx.h"
 
+#include <cmath>
+#include <cstdlib>
 #include <fstream>
-#include <random>
 #include <sstream>
 #include <unordered_map>
-#include <vector>
 
-extern ECSManager ECS;
+namespace
+{
+    /// Reads the materials of an .mtl file (Ka, Kd, Ks, Ns) into
+    /// materials, and their index there by name into materialIDs
+    bool LoadMTLFile(const std::string& directory,
+                     const std::string& filename,
+                     std::vector<Material>& materials,
+                     std::unordered_map<std::string, size_t>& materialIDs)
+    {
+        std::ifstream file(filename);
+        if (!file.is_open())
+            return false;
+
+        std::string line;
+        Vec3 ambient, diffuse, specular;
+        float highlight;
+        std::string textureFilename;
+        std::string name;
+        auto addMaterial = [&]() {
+            materialIDs[name] = materials.size();
+            materials.emplace_back(ambient, diffuse, specular, highlight);
+        };
+        while (getline(file, line))
+        {
+            std::istringstream iss(line);
+            std::string keyword;
+            iss >> keyword;
+
+            if (keyword == "newmtl")
+            {
+                // Save the previous material
+                if (!name.empty())
+                {
+                    addMaterial();
+                    textureFilename.clear();
+                }
+                iss >> name;
+            }
+            else if (keyword == "Ka")
+                iss >> ambient.X >> ambient.Y >> ambient.Z;
+            else if (keyword == "Kd")
+                iss >> diffuse.X >> diffuse.Y >> diffuse.Z;
+            else if (keyword == "Ks")
+                iss >> specular.X >> specular.Y >> specular.Z;
+            else if (keyword == "Ns")
+                iss >> highlight; // Specular exponent
+            else if (keyword == "map_Kd")
+            {
+                // Diffuse texture (textures are not loaded, see the last material below)
+                iss >> textureFilename;
+                textureFilename = directory + textureFilename;
+            }
+        }
+
+        // The last material
+        if (!textureFilename.empty() || !name.empty())
+            addMaterial();
+        return true;
+    }
+} // namespace
 
 Vec2 Utils::PointToLineSegment(Vec2 point, Vec2 a, Vec2 b)
 {
@@ -23,32 +79,10 @@ Vec2 Utils::PointToLineSegment(Vec2 point, Vec2 a, Vec2 b)
     float d = proj / lengthSquared;
 
     if (d <= 0)
-    {
         return a;
-    }
     if (d >= 1)
-    {
         return b;
-    }
-
     return a + a2b * d;
-}
-
-std::vector<Vec2>
-Utils::TranslatePoints(const std::vector<Vec2>& points, const float angle, const Vec2& position)
-{
-    std::vector<Vec2> translatedPolygon;
-    int polySize = static_cast<int>(points.size());
-    Mat2 matrix =
-            Mat2(Vec2(std::cos(angle), -std::sin(angle)), Vec2(std::sin(angle), std::cos(angle)));
-
-    for (int i = 0; i < polySize; i++)
-    {
-        Vec2 point = points[i];
-        Vec2 translated = matrix * point + position;
-        translatedPolygon.push_back(translated);
-    }
-    return translatedPolygon;
 }
 
 Mat2 Utils::RotationMatrix(const float angle)
@@ -57,28 +91,15 @@ Mat2 Utils::RotationMatrix(const float angle)
 }
 
 void Utils::TranslatePointsInto(const std::vector<Vec2>& points,
-                                const float angle,
-                                const Vec2& position,
-                                std::vector<Vec2>& out)
-{
-    TranslatePointsInto(points, RotationMatrix(angle), position, out);
-}
-
-void Utils::TranslatePointsInto(const std::vector<Vec2>& points,
                                 Mat2 matrix,
                                 const Vec2& position,
                                 std::vector<Vec2>& out)
 {
-    const std::size_t polySize = points.size();
-    out.resize(polySize);
-    for (std::size_t i = 0; i < polySize; i++)
-    {
-        Vec2 point = points[i];
-        out[i] = matrix * point + position;
-    }
+    out.resize(points.size());
+    for (std::size_t i = 0; i < points.size(); i++)
+        out[i] = matrix * points[i] + position;
 }
 
-/// Not the cleanest code but it gets the job done
 bool Utils::LoadInstance(std::string filename,
                          MeshInstance& mesh,
                          std::vector<Material>& textureList)
@@ -130,8 +151,10 @@ bool Utils::LoadInstance(std::string filename,
             ss >> mtlfilename;
             std::string mtlfilepath = directory + mtlfilename;
             if (!LoadMTLFile(directory, mtlfilepath, textureList, textureIDs))
-                LOG_WARN("Assets", "%s: material library %s not found, using the default material",
-                         filename.c_str(), mtlfilepath.c_str());
+                LOG_WARN("Assets",
+                         "%s: material library %s not found, using the default material",
+                         filename.c_str(),
+                         mtlfilepath.c_str());
         }
         else if (prefix == "usemtl")
         {
@@ -247,91 +270,10 @@ bool Utils::LoadInstance(std::string filename,
             }
         }
     }
-    file.close();
     if (skippedFaces > 0)
-        LOG_WARN("Assets", "%s: skipped %zu faces with missing or invalid indices", filename.c_str(), skippedFaces);
-    return true;
-}
-
-bool Utils::LoadMTLFile(const std::string& directory,
-                        const std::string& filename,
-                        std::vector<Material>& textureList,
-                        std::unordered_map<std::string, size_t>& textureIDs)
-{
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        return false;
-    }
-
-    std::string line;
-    Vec3 ambient, diffuse, specular;
-    float highlight;
-    std::string textureFilename;
-    std::string textureName;
-    while (getline(file, line))
-    {
-        std::istringstream iss(line);
-        std::string keyword;
-        iss >> keyword;
-
-        if (keyword == "newmtl")
-        {
-            // Handle new material - save the previous material if it exists
-            if (!textureFilename.empty() && !textureName.empty())
-            {
-                textureIDs[textureName] = textureList.size();
-                textureList.emplace_back(ambient, diffuse, specular, highlight);
-                textureFilename.clear();
-            }
-            // material does not have a texture use alternate constructor
-            else if (!textureName.empty())
-            {
-                textureIDs[textureName] = textureList.size();
-                textureList.emplace_back(ambient, diffuse, specular, highlight);
-            }
-            iss >> textureName;
-        }
-        else if (keyword == "Ka")
-        {
-            // Ambient color
-            iss >> ambient.X >> ambient.Y >> ambient.Z;
-        }
-        else if (keyword == "Kd")
-        {
-            // Diffuse color
-            iss >> diffuse.X >> diffuse.Y >> diffuse.Z;
-        }
-        else if (keyword == "Ks")
-        {
-            // Specular color
-            iss >> specular.X >> specular.Y >> specular.Z;
-        }
-        else if (keyword == "Ns")
-        {
-            // Specular highlight, exponent
-            iss >> highlight;
-        }
-        else if (keyword == "map_Kd")
-        {
-            // Diffuse texture map
-            iss >> textureFilename;
-            textureFilename = directory + textureFilename;
-        }
-    }
-
-    // Handle the last material
-    if (!textureFilename.empty())
-    {
-        textureIDs[textureName] = textureList.size();
-        textureList.emplace_back(ambient, diffuse, specular, highlight);
-    }
-    else if (!textureName.empty())
-    {
-        textureIDs[textureName] = textureList.size();
-        textureList.emplace_back(ambient, diffuse, specular, highlight);
-    }
-
-    file.close();
+        LOG_WARN("Assets",
+                 "%s: skipped %zu faces with missing or invalid indices",
+                 filename.c_str(),
+                 skippedFaces);
     return true;
 }

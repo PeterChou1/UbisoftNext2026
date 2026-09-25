@@ -13,7 +13,12 @@ class Mat3
 {
   public:
     float Determinant() const;
-    Vec3& operator[](int i);
+
+    Vec3& operator[](int i)
+    {
+        assert(i >= 0 && i < 3);
+        return Rows[i];
+    }
 
     /// Rotation matrix of a quaternion
     static Mat3 FromQuat(const Quat& q);

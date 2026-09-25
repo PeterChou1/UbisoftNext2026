@@ -7,7 +7,6 @@
 #pragma once
 
 #include "Transform.h"
-#include "Vec3.h"
 
 enum LightType
 {
@@ -19,7 +18,6 @@ enum LightType
 
 struct DirectionalLight
 {
-
     Mat4 Proj{};
     Transform LightTransform{};
     Vec3 Position;
@@ -43,14 +41,12 @@ struct DirectionalLight
 
     void SetPositionAndTarget(Vec3& Pos, Vec3& Target);
 
+    /// Spot light: perspective projection (fov in degrees)
     void SetLightPerspective(float fov, float aspect, float near, float far);
 
-    /**
-     * \brief Parallel light: an orthographic box in light space (the light
-     *        looks down its -Z axis; near / far are distances along it)
-     */
+    /// Parallel light: an orthographic box in light space (the light looks
+    /// down its -Z axis; near / far are distances along it)
     void SetOrthographic(float left, float right, float bottom, float top, float near, float far);
 
     Vec3 WorldToLightSpace(Vec3& Pos);
-
 };

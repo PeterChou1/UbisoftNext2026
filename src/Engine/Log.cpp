@@ -7,13 +7,13 @@
 #include <vector>
 
 #if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
+#    ifndef NOMINMAX
+#        define NOMINMAX
+#    endif
+#    ifndef WIN32_LEAN_AND_MEAN
+#        define WIN32_LEAN_AND_MEAN
+#    endif
+#    include <windows.h>
 #endif
 
 namespace Log
@@ -64,25 +64,25 @@ namespace Log
             OutputDebugStringA((line + "\n").c_str());
 #endif
         }
-    } // namespace
 
-    const char* LevelName(Level level)
-    {
-        switch (level)
+        const char* LevelName(Level level)
         {
-        case Level::Trace:
-            return "TRACE";
-        case Level::Info:
-            return "INFO ";
-        case Level::Warning:
-            return "WARN ";
-        case Level::Error:
-            return "ERROR";
-        case Level::Off:
-        default:
-            return "OFF  ";
+            switch (level)
+            {
+            case Level::Trace:
+                return "TRACE";
+            case Level::Info:
+                return "INFO ";
+            case Level::Warning:
+                return "WARN ";
+            case Level::Error:
+                return "ERROR";
+            case Level::Off:
+            default:
+                return "OFF  ";
+            }
         }
-    }
+    } // namespace
 
     void SetLevel(Level minimum)
     {
@@ -128,9 +128,14 @@ namespace Log
 
         // [ seconds] LEVEL Category | message
         double seconds =
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - state.Start).count();
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - state.Start)
+                        .count();
         char prefix[64];
-        std::snprintf(prefix, sizeof(prefix), "[%9.3f] %s %-8s | ", seconds, LevelName(level),
+        std::snprintf(prefix,
+                      sizeof(prefix),
+                      "[%9.3f] %s %-8s | ",
+                      seconds,
+                      LevelName(level),
                       category != nullptr ? category : "");
         std::string line = std::string(prefix) + message.data();
 

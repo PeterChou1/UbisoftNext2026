@@ -1,7 +1,5 @@
 #include "Lights.h"
 
-#include "stdafx.h"
-
 #include <cmath>
 
 void DirectionalLight::SetPositionAndTarget(Vec3& Pos, Vec3& Target)
@@ -24,7 +22,8 @@ void DirectionalLight::SetLightPerspective(float fov, float aspect, float near, 
     Proj.PerspectiveOpenGL(fov, aspect, near, far);
 }
 
-void DirectionalLight::SetOrthographic(float left, float right, float bottom, float top, float near, float far)
+void DirectionalLight::SetOrthographic(
+        float left, float right, float bottom, float top, float near, float far)
 {
     lightType = ParallelLight;
     // (Mat4::OrthogonalOpenGL takes bottom, left, top, right)

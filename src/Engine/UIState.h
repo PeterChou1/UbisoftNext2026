@@ -6,28 +6,26 @@
 class UIState : public Resource
 {
   public:
+    // Mouse position in virtual screen units (y up)
     float mouseX;
     float mouseY;
-    // whether mouse is held down
+    // Mouse buttons held down
     bool mouseLeftDown = false;
     bool mouseRightDown = false;
 
-    // whether mouse left is clicked
+    // Mouse button went down this frame
     bool leftClick = false;
-    // whether mouse right is click
     bool rightClick = false;
 
-    // whether mouse is held down (previous frame)
+    // Mouse buttons held down in the previous frame
     bool mouseLeftDownPrevFrame = false;
     bool mouseRightDownPrevFrame = false;
 
-    // track if UI item is hot. an item is "hot" when the user is about to
-    // interact with it e.g when a user hovers over a button
+    // Widget the user is about to interact with (hovered), -1: none
     int hotItem = -1;
-    // track if UI item is active, an item is "active" when the user interact with
-    // it e.g when a user
+    // Widget the user interacts with (clicked this frame), -1: none
     int activeItem = -1;
-    // id of the drop down list
+    // Open drop down list (0: none)
     int openDropDownId = 0;
 
     // Text field being edited (0 = none) and its text so far

@@ -10,13 +10,13 @@
 #include "Vec3.h"
 #include "Vec4.h"
 
-#include <iostream>
+#include <string>
 
 struct Vertex
 {
     // Fragment Shader ID of this vertex
     size_t FragShaderID = 0;
-    // Vertex ID of this vertex
+    // Vertex shader ID of this vertex
     size_t VertexShaderID = 0;
 
     // texture ID of the texture that shade this vertex
@@ -43,19 +43,6 @@ struct Vertex
 
     Vertex() = default;
 
-    Vertex(const Vec3& pos)
-        : LocalPosition(pos)
-        , Position(pos)
-    {
-    }
-
-    Vertex(const Vec3& pos, const Vec2& tex)
-        : UV(tex)
-        , LocalPosition(pos)
-        , Position(pos)
-    {
-    }
-
     Vertex(const Vec3& pos, const Vec3& normal, const Vec2& tex)
         : UV(tex)
         , LocalPosition(pos)
@@ -81,6 +68,7 @@ struct Vertex
         UV *= InverseW;
     }
 
+    // Interpolation (clipping): Position, UV and Normal only
     Vertex operator*(const float t) const
     {
         auto copy = *this;
@@ -93,17 +81,9 @@ struct Vertex
     Vertex operator+(const Vertex& v) const
     {
         auto copy = *this;
-
         copy.Position += v.Position;
         copy.UV += v.UV;
         copy.Normal += v.Normal;
-
         return copy;
-    }
-
-    bool operator==(const Vertex& rhs) const
-    {
-        return UV == rhs.UV && Normal == rhs.Normal && Position == rhs.Position &&
-               InverseW == rhs.InverseW && TextureID == rhs.TextureID;
     }
 };

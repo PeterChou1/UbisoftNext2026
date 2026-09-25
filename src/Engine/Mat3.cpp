@@ -2,14 +2,6 @@
 
 #include "Quat.h"
 
-#include <cassert>
-
-Vec3& Mat3::operator[](const int i)
-{
-    assert(i >= 0 && i < 3);
-    return Rows[i];
-}
-
 Mat3 Mat3::FromQuat(const Quat& q)
 {
     const float xx = q.X * q.X, xy = q.X * q.Y, xz = q.X * q.Z, xw = q.X * q.W;
