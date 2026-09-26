@@ -1,0 +1,435 @@
+//---------------------------------------------------------------------------------
+// SceneEditorScene.h
+//---------------------------------------------------------------------------------
+//
+// GUI of the generic scene editor, in the style of Unity's editor, built on
+// the engine's immediate mode widgets. All editing logic lives in
+// Editor::SceneEditor; this class turns mouse / keyboard input into editor
+// calls and draws the interface (layout in EditorStyle.h):
+//
+//   - Toolbar: scene list, New / Revert / Save / Undo / Redo, Play, the
+//     Scene settings toggle and the scene's name. In the prefab editor: the
+//     prefab's name, Save Prefab, Undo / Redo and Back to Scene.
+//   - Hierarchy (left, top): the scene's objects as a tree of Transforms.
+//     Drag rows to parent them; "+" and right clicks create objects.
+//   - Assets (left, bottom): prefabs and models. Click one, then click the
+//     field to place it (or drag it onto the field). New Prefab, Import .obj.
+//   - Scene view (middle): the 3D renderer. Click / drag objects; right
+//     click opens the context menu (create here, or the object's actions).
+//   - Inspector (right): the selected object as one scrollable list of
+//     component sections (Transform, Shape2D or Mesh, RigidBody, Script, the
+//     project's components, Prefab), with Add Component at the bottom.
+//
+// Prefab editor: "Edit Prefab" (on an instance or an asset) or "New Prefab"
+// puts the scene aside and opens the prefab alone on an empty stage. Save
+// Prefab writes data/prefabs/<name>.ubprefab; Back to Scene brings the scene
+// back and updates its instances of the prefab.
+//
+// Play runs the scene's C++ scripts inside the editor, seen through the
+// scene's game camera object. Stop restores the scene exactly as it was
+// before Play, and the editor's own view.
+//
+// Cameras: the scene view has its own camera (m_View: WASD, arrows, E / V,
+// Z / C, Home). The game camera is an object of the scene (SceneCamera.h),
+// drawn as a gizmo and edited like any object. So is the scene's light
+// (SceneLight.h): a sun marker with its beam and cone.
+//
+// Tutorials: docs/EditorTutorial.md (the editor), docs/Controls.md (every
+// control, also the in-editor Controls panel: H), docs/ComponentsTutorial.md
+// (writing components).
+//
+#pragma once
+
+#include "ContextMenu.h"
+#include "Scene.h"
+#include "SceneEditor.h"
+#include "app.h"
+
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+
+class Camera;
+struct Color;
+class Lighting;
+class GameOptions;
+class UIState;
+
+class SceneEditorScene : public Scene
+{
+  public:
+    void Start() override;
+    void Setup() override;
+    void Update(float deltaTime) override;
+    void Render() override;
+
+    // The world only simulates (physics, scripts) while playing
+    bool SimulatesWorld() const override { return m_Editor.IsPlaying(); }
+
+    Editor::SceneEditor& GetEditor() { return m_Editor; }
+
+    /**
+     * \brief Folder holding the scene files (default data/scenes). Takes
+     *        effect on the next Setup
+     */
+    void SetSceneDirectory(const std::string& directory) { m_SceneDirectory = directory; }
+
+    /**
+     * \brief Folder holding the prefab files (default data/prefabs)
+     */
+    void SetPrefabDirectory(const std::string& directory);
+
+    // Where the editor looks for .obj files typed by name
+    static constexpr const char* IMPORT_DIRECTORY = "data/import";
+
+    /**
+     * \brief Import a model (what the Assets' Import box does). The model is
+     *        then ready to place
+     */
+    bool Import(const std::string& path)
+    {
+        m_ImportPath = path;
+        ImportModel();
+        return !m_StatusIsError;
+    }
+
+    // -- Scene documents (also used by the tests) ---------------------------------------
+    const std::string& SceneName() const { return m_DocName; }
+    const std::vector<std::string>& SceneNames() const { return m_SceneNames; }
+    std::string ScenePath(const std::string& name) const;
+    /**
+     * \brief Create a new empty scene named scene_<n>, save it and open it
+     */
+    void NewDocument();
+    bool OpenScene(const std::string& name);
+    bool SaveDocument();
+    /**
+     * \brief Rename the open scene and its file
+     */
+    bool RenameDocument(const std::string& newName);
+
+    // -- Prefabs --------------------------------------------------------------------------
+    /**
+     * \brief Save an object and its children as a new prefab (named after the
+     *        object) and make the object an instance of it
+     */
+    bool SaveAsPrefab(Entity root);
+    /**
+     * \brief Open the prefab editor on a prefab file / on a new prefab
+     */
+    bool EditPrefab(const std::string& name);
+    bool NewPrefab();
+    bool SavePrefab();
+    /**
+     * \brief Leave the prefab editor. With unsaved changes the first call
+     *        only warns (false); a second call discards them
+     */
+    bool BackToScene();
+    bool InPrefabMode() const { return m_PrefabMode; }
+    const std::string& PrefabName() const { return m_PrefabName; }
+
+    /**
+     * \brief Start placing a prefab / model: the next click on the field
+     *        places it ("" stops)
+     */
+    void StartPlacingPrefab(const std::string& name);
+    void StartPlacingModel(const std::string& name);
+    const std::string& PlacingAsset() const { return m_PlaceName; }
+
+    // -- Context menus (also used by the tests) ------------------------------------------
+    ContextMenu& Menu() { return m_Menu; }
+    /**
+     * \brief Items of the "create" menu: new objects at `position`, children
+     *        of `parent` when given
+     */
+    std::vector<MenuItem> CreateItems(const Vec3& position, Entity parent);
+    /**
+     * \brief Items of an object's menu
+     */
+    std::vector<MenuItem> ObjectItems(Entity entity);
+
+    // -- Editor view (also used by the tests) ---------------------------------------------
+    //
+    // The scene view has its own camera: WASD pans, the arrow keys orbit (left
+    // / right) and tilt (up / down), E / V move it up / down, Z / C zoom and
+    // Home resets it. It never changes the scene's game camera, which is an
+    // object of the scene (see SceneCamera.h).
+    const SceneCamera::View& EditorView() const { return m_View; }
+    void SetEditorView(const SceneCamera::View& view);
+    static SceneCamera::View DefaultView();
+    /**
+     * \brief The Controls panel (toolbar "Controls" or H) lists every control
+     */
+    bool ControlsOpen() const { return m_ShowControls; }
+    void ToggleControls() { m_ShowControls = !m_ShowControls; }
+    // Every body's collider outline (the selected object's is always shown)
+    bool CollidersShown() const { return m_ShowColliders; }
+    void ToggleColliders() { m_ShowColliders = !m_ShowColliders; }
+    struct Control
+    {
+        const char* Keys;
+        const char* Action;
+    };
+    struct ControlGroup
+    {
+        const char* Title;
+        std::vector<Control> Controls;
+    };
+    static const std::vector<ControlGroup>& Controls();
+
+    // -- Hierarchy ----------------------------------------------------------------------
+    /**
+     * \brief Rows of the hierarchy tree as drawn: object and depth (collapsed
+     *        branches are left out)
+     */
+    std::vector<std::pair<Entity, int>> HierarchyRows() const;
+    /**
+     * \brief Inspector scroll offset (0 = top) and the height of its content
+     */
+    float InspectorScroll() const { return m_InspectorScroll; }
+    float InspectorContentHeight() const { return m_InspectorContent; }
+
+  private:
+    // -- Input ---------------------------------------------------------------------
+    void UpdateCamera(float deltaSeconds);
+    void UpdateShortcuts();
+    void UpdateViewportMouse();
+    void BeginDrag(Entity entity, float height);
+    bool MouseOverUI() const;
+    bool MouseAtHeight(float height, Vec3& point) const;
+    bool MouseToGround(Vec3& groundPoint) const { return MouseAtHeight(0.0f, groundPoint); }
+    Entity PickUnderMouse(float* hitHeight = nullptr) const;
+    Vec3 SnapPoint(const Vec3& point) const;
+    Vec3 ViewCenter() const;
+    void OpenViewportMenu();
+
+    // -- Actions -------------------------------------------------------------------
+    void RevertScene();
+    void TogglePlay();
+    void DeleteSelected();
+    void DuplicateSelected();
+    void RotateSelected(float degrees);
+    void RaiseSelected(float amount);
+    void CreateObject(Editor::ObjectKind kind,
+                      const Vec3& position,
+                      Entity parent,
+                      const std::string& model = "");
+    void PlaceAsset(const Vec3& position);
+    void StopPlacing();
+    // Load a prefab file, with an error in the status bar when it fails
+    bool LoadPrefab(const std::string& name, Prefab::Data& data);
+    // Prefab instance actions (context menu and inspector)
+    void ResetInstance(Entity root);
+    void UnpackInstance(Entity root);
+    // Put the scene aside and show a prefab (null: a new one) on its own stage
+    void EnterPrefabMode(const Prefab::Data* prefab, const std::string& name);
+    void RefreshSceneList();
+    void RefreshAssets();
+    std::string UniqueSceneName() const;
+    std::string UniquePrefabName(const std::string& base) const;
+    /**
+     * \brief Import the .obj named in the import box (a path, or a file name
+     *        in data/import/)
+     */
+    void ImportModel();
+    void SetStatus(const std::string& message, bool error = false);
+
+    // -- Drawing -------------------------------------------------------------------
+    bool RenderToolbar();
+    void RenderSceneList();
+    void RenderStatusBar();
+    void RenderOverlay();
+    // Points behind the editor's view can not be drawn
+    bool InFront(const Vec3& point) const;
+    void DrawWorldLine(const Vec3& a, const Vec3& b, const Color& color);
+    // Only when both ends are in front of the view
+    void DrawVisibleLine(const Vec3& a, const Vec3& b, const Color& color);
+    void DrawOutline(Entity entity, const Color& color);
+    void DrawCross(Entity entity, const Color& color, float size);
+    void DrawCameraGizmo(Entity entity, bool selected);
+    void DrawLightGizmo(Entity entity, bool selected);
+    // Physics debug outline of a body's collider (PhysicsGizmos)
+    void DrawColliderGizmo(Entity entity);
+    void DrawColliders();
+    void RenderControlsPanel();
+
+    // Left panel (EditorLeftPanel.cpp)
+    void RenderLeftPanel();
+    void RenderHierarchy(float top, float bottom);
+    void RenderAssets(float top, float bottom);
+
+    // Inspector (EditorInspector.cpp)
+    void RenderInspector();
+    void RenderObjectInspector(Entity e, float x, float width);
+    void RenderSceneInspector(float x, float width);
+    void RenderPlayingInspector(float x, float width);
+    /**
+     * \brief Next row of the scrolling inspector: `y` gets its bottom. True
+     *        when the row is fully visible (draw it); hidden rows only take
+     *        their place
+     */
+    bool Row(float height, float& y);
+    /**
+     * \brief Foldable section header with an optional Remove button. True
+     *        when the section is open. `removed` is set when Remove was clicked
+     */
+    bool Section(const std::string& title,
+                 const std::string& summary,
+                 bool removable,
+                 float x,
+                 float width,
+                 bool& removed);
+    /**
+     * \brief Widget(s) of one reflected field, generated from its FieldInfo
+     */
+    void RenderField(Entity e,
+                     const std::string& component,
+                     const Reflection::FieldInfo& field,
+                     float x,
+                     float width);
+
+    // Widgets
+    /**
+     * \brief "label [<][>]" row: -1 / +1 when a button was clicked
+     */
+    int Stepper(float x, float y, float width, const std::string& label);
+    /**
+     * \brief The two step buttons ending at `right`: -1 / +1 when clicked
+     */
+    int StepButtons(float right, float y, const char* minus, const char* plus);
+    /**
+     * \brief "Label [typed value] [-][+]": true when the value was typed or
+     *        stepped (value updated)
+     */
+    bool NumberRow(float x,
+                   float y,
+                   float width,
+                   const std::string& label,
+                   int fieldId,
+                   float& value,
+                   float step,
+                   const char* format = "%.2f");
+    /**
+     * \brief "Label [typed text]": true when an edit was committed
+     */
+    bool TextRow(float x,
+                 float y,
+                 float width,
+                 const std::string& label,
+                 int fieldId,
+                 std::string& text,
+                 size_t maxChars = 32);
+    /**
+     * \brief "Label" and the colour swatches: index of the clicked one, -1 for none
+     */
+    int ColorRow(float x, float y, float width, const std::string& label, const Vec3& current);
+    /**
+     * \brief Vertical scrollbar on [x, bottom .. top]. `scroll` goes from 0
+     *        (top) to content - view. Drag the thumb or click the track
+     */
+    void Scrollbar(int id, float x, float bottom, float top, float content, float& scroll);
+    int NextId() { return m_NextId++; }
+    // Fixed ids of reflected fields' text boxes, in drawing order
+    int NextFieldId();
+    // A text field with this id was drawn this frame
+    void FieldDrawn(int id) { m_DrawnFields.insert(id); }
+
+    Editor::SceneEditor m_Editor;
+    ContextMenu m_Menu;
+    bool m_ShowScene = false;
+    bool m_Snap = true;
+    int m_NextId = 0;
+
+    bool m_Dragging = false;
+    bool m_DragRecorded = false;
+    bool m_DragMoved = false;
+    float m_DragHeight = 0.0f;
+    Vec3 m_DragOffset;
+    // Object whose values the inspector's text fields show
+    Entity m_FieldsEntity = NULL_ENTITY;
+
+    // -- Placing assets (prefabs / models) -----------------------------------------------
+    enum class AssetKind
+    {
+        None,
+        Prefab,
+        Model
+    };
+    void StartPlacing(AssetKind kind, const std::string& name);
+    AssetKind m_PlaceKind = AssetKind::None;
+    std::string m_PlaceName;
+    // An asset row is being dragged onto the scene view
+    bool m_AssetDrag = false;
+
+    // -- Inspector ------------------------------------------------------------------------
+    // Sections folded away (by component name)
+    std::set<std::string> m_Folded;
+    // Component picked in the Add Component picker
+    int m_AddIndex = 0;
+    int m_NextFieldId = 0;
+    std::set<int> m_DrawnFields;
+    // Tooltip of the field under the mouse (status bar)
+    std::string m_Hint;
+    float m_InspectorScroll = 0.0f;
+    float m_InspectorContent = 0.0f;
+    // Row layout of the inspector being drawn
+    float m_RowCursor = 0.0f;
+    float m_ViewTop = 0.0f;
+    float m_ViewBottom = 0.0f;
+
+    // -- Scrollbars -----------------------------------------------------------------------
+    int m_ScrollDragId = 0;
+    float m_ScrollGrab = 0.0f;
+
+    // -- Hierarchy ------------------------------------------------------------------------
+    std::set<Entity> m_Collapsed;
+    float m_TreeScroll = 0.0f;
+    Entity m_TreePressed = NULL_ENTITY;
+    bool m_TreeDragging = false;
+    float m_TreePressX = 0.0f;
+    float m_TreePressY = 0.0f;
+    // Selection the tree last showed (to reveal a newly selected object)
+    Entity m_TreeSelected = NULL_ENTITY;
+
+    // -- Assets ---------------------------------------------------------------------------
+    std::vector<std::string> m_Prefabs;
+    std::vector<std::string> m_Models;
+    std::string m_ImportPath;
+    float m_AssetScroll = 0.0f;
+
+    // -- Cameras --------------------------------------------------------------------------
+    // The editor's own view, separate from the scene's game camera object
+    SceneCamera::View m_View = DefaultView();
+    // While playing, the renderer shows the game camera
+    SceneCamera::Follower m_PlayCamera;
+    bool m_ShowControls = false;
+    bool m_ShowColliders = false;
+
+    // -- Documents ------------------------------------------------------------------------
+    std::string m_SceneDirectory;
+    std::string m_PrefabDirectory = Prefab::DIRECTORY;
+    std::vector<std::string> m_SceneNames;
+    int m_SceneIndex = 0;
+    std::string m_DocName;
+    // Scene picked while the open one had unsaved changes (-1 = none)
+    int m_PendingSceneIndex = -1;
+
+    // -- Prefab editor --------------------------------------------------------------------
+    bool m_PrefabMode = false;
+    std::string m_PrefabName;
+    Editor::SceneEditor::Session m_Session;
+    bool m_PrefabSaved = false;
+    bool m_ExitPending = false;
+    // The scene's view while the prefab stage is shown
+    SceneCamera::View m_SceneView = DefaultView();
+
+    std::string m_Status;
+    bool m_StatusIsError = false;
+    float m_StatusTimer = 0.0f;
+
+    std::shared_ptr<Camera> m_Cam;
+    std::shared_ptr<Lighting> m_Light;
+    std::shared_ptr<GameOptions> m_Options;
+    std::shared_ptr<UIState> m_UI;
+};

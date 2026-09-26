@@ -1,0 +1,2 @@
+# Save files are compared byte for byte by the tests, never convert them
+*.ubsave binary

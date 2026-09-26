@@ -1,0 +1,161 @@
+//---------------------------------------------------------------------------------
+// RigidBody.h
+//---------------------------------------------------------------------------------
+//
+// A body of the 2D physics system: a circle or a convex polygon. Collider
+// provides category pair callbacks (see ColliderCallbackSystem)
+//
+#pragma once
+
+#include "AABB.h"
+#include "ColliderCategory.h"
+#include "ECSManager.h"
+#include "Shape.h"
+#include "Transform.h"
+#include "Vec2.h"
+#include "Vec3.h"
+
+#include <vector>
+
+class RigidBody
+{
+  public:
+    RigidBody() = default;
+
+    /**
+     * \brief Circle body
+     */
+    RigidBody(float radius);
+
+    /**
+     * \brief Rectangle body, its mass multiplied by weightMultiplier
+     */
+    RigidBody(float width, float height, float weightMultiplier = 1.0f);
+
+    /**
+     * \brief Convex polygon body (points around the body origin)
+     */
+    RigidBody(std::vector<Vec2> polygons);
+
+    /**
+     * \brief Give the body infinite mass
+     */
+    void SetStatic();
+
+    /**
+     * \brief True for bodies with infinite mass (walls, obstacles)
+     */
+    bool IsStatic() const { return m_InvMass == 0.0f; }
+
+    void SyncTransform(Transform& transform);
+
+    void ForwardTransform(Transform& transform) const;
+
+    /**
+     * \brief Write only the position to the transform (the physics system
+     *        adds the rotation separately, see PhysicsSystem::ForwardTransform)
+     */
+    void ForwardPosition(Transform& transform) const;
+
+    /**
+     * \brief Axis the body turns around for a transform plane
+     */
+    static Vec3 RotationAxis(SlicePlane plane);
+
+    /**
+     * \brief How much the transform turns for a change of Angular (the XZ
+     *        plane reads Angular = -pitch, see SyncTransform)
+     */
+    static float TransformTurn(SlicePlane plane, float angularDelta);
+
+    /**
+     * \brief Collider points, edge normals and bounding box at the current
+     *        position and angle (one rotation matrix for both)
+     */
+    void RecomputeGeometry();
+
+    void ApplyImpulseAngular(const Vec2& impulse, const Vec2& contactVector);
+
+    void IntegrateVelocityAngular(float deltaTime);
+
+    float InvMass() const { return m_InvMass; }
+
+    float InvInertia() const { return m_InvInertia; }
+
+    float Restitution() const { return m_Restitution; }
+
+    // specify if rigid body is intersecting with any other rigidbody
+    bool IsIntersecting = false;
+    // use to sync rigid body with their transform
+    bool Initialized = false;
+    // specify if a rigid body is collidable
+    bool Collidable = true;
+    ColliderCategory Category = Default;
+    // used for debugging
+    Vec3 Color{};
+    // mutable states
+    AABB RigidBodyAABB{};
+    Shape Shape{};
+    Vec2 Position{};
+    Vec2 Velocity{};
+    Vec2 Force{};
+    float Angular{};
+    float AngularVelocity{};
+    float AngularDelta{};
+    float StaticFriction{};
+    float DynamicFriction{};
+
+  private:
+    // Grants the save system access to private state (see EngineSerialization.h)
+    friend struct SerializationAccess;
+
+    /**
+     * \brief Mass, inertia and the default material
+     */
+    void SetMassProperties(float mass, float inertia);
+
+    // immutable states
+    float m_InvInertia{};
+    float m_InvMass{};
+    float m_Restitution{};
+
+    static constexpr float DEFAULT_STATIC_FRICTION = 0.6f;
+    static constexpr float DEFAULT_DYNAMIC_FRICTION = 0.1f;
+    static constexpr float DEFAULT_DENSITY = 1.0f;
+    static constexpr float DEFAULT_RESTITUTION = 0.2f;
+};
+
+/**
+ * \brief A Collider Provides Custom Hooks for developers to interact
+ *        with rigid bodies during collision
+ */
+class Collider
+{
+  public:
+    Collider(ColliderCategory A, ColliderCategory B)
+        : m_Pair({A, B})
+    {
+    }
+
+    virtual ~Collider() = default;
+
+    /**
+     * \brief Called in the middle of collision
+     */
+    virtual void OnCollide(Entity self, Entity other, RigidBody& selfRB, RigidBody& otherRB) {}
+
+    /**
+     * \brief Called on initial collide
+     */
+    virtual void OnCollideEnter(Entity self, Entity other, RigidBody& selfRB, RigidBody& otherRB) {}
+
+    /**
+     * \brief Called on first frame of collision separation
+     */
+    virtual void OnCollideExit(Entity self, Entity other, RigidBody& selfRB, RigidBody& otherRB) {}
+
+    CollisionPair GetCollisionPair() const { return m_Pair; }
+
+  private:
+    CollisionPair m_Pair;
+};

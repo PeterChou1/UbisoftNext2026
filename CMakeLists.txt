@@ -33,6 +33,13 @@ target_compile_definitions(Common INTERFACE
 	GL_SILENCE_DEPRECATION
 )
 
+# <windows.h> defines min / max as macros, which breaks std::min / std::max
+# (and members called min / max) in every file that includes app.h. Define
+# NOMINMAX for all targets instead of relying on the include order
+if (CMAKE_SYSTEM_NAME MATCHES Windows)
+	target_compile_definitions(Common INTERFACE NOMINMAX)
+endif()
+
 #homebrew installs to /usr/local on intel macs and /opt/homebrew on apple chip macs
 #This sets it up to find SDL3 and link it
 if (CMAKE_SYSTEM_NAME MATCHES Apple)
@@ -138,55 +145,118 @@ if (CMAKE_SYSTEM_NAME MATCHES Windows)
 endif()
 
 ###############################################################################
-# Game Project
-# This configures the game project, where participants will write their code
+# Engine library
+# ECS, math, physics, 3D renderer, UI widgets, serialization, scene objects and
+# the C++ scripting system. Shared by the SceneEditor, the Game and the tests
 ###############################################################################
 
-file(GLOB_RECURSE GAME_INC_FILES ${PROJECT_SOURCE_DIR}/src/Game/*.h)
-file(GLOB_RECURSE GAME_SRC_FILES ${PROJECT_SOURCE_DIR}/src/Game/*.cpp)
-
-add_executable(Game WIN32
-	${GAME_INC_FILES} 
-	${GAME_SRC_FILES}
+file(GLOB_RECURSE ENGINE_FILES
+	${PROJECT_SOURCE_DIR}/src/Engine/*.h
+	${PROJECT_SOURCE_DIR}/src/Engine/*.cpp
 )
 
-target_include_directories(Game PRIVATE 
-	"${PROJECT_SOURCE_DIR}/src/Game"
+add_library(Engine STATIC ${ENGINE_FILES})
+
+target_include_directories(Engine PUBLIC
+	"${PROJECT_SOURCE_DIR}/src/Engine"
 	"${FREE_GLUT_INC_DIR}"
 )
 
-# Link our contest API
-target_link_libraries(Game PRIVATE Common ContestAPI)
+target_link_libraries(Engine PUBLIC Common ContestAPI)
 
-# Add custom command 'run' for makefiles to run the output exe
-# This allows us to write 'make run' in the terminal and have it run in the correct directory pointing to data
+###############################################################################
+# GameScripts library
+# The project's C++ scripts (object behaviours + scene scripts). Linked by the
+# Game (to run scenes) and by the SceneEditor (to attach / play them)
+###############################################################################
+
+file(GLOB_RECURSE GAME_SCRIPT_FILES
+	${PROJECT_SOURCE_DIR}/src/Game/Scripts/*.h
+	${PROJECT_SOURCE_DIR}/src/Game/Scripts/*.cpp
+)
+
+add_library(GameScripts STATIC
+	${GAME_SCRIPT_FILES}
+	"${PROJECT_SOURCE_DIR}/src/Game/GameScripts.h"
+	"${PROJECT_SOURCE_DIR}/src/Game/GameScripts.cpp"
+)
+
+target_include_directories(GameScripts PUBLIC "${PROJECT_SOURCE_DIR}/src/Game")
+target_link_libraries(GameScripts PUBLIC Engine)
+
+###############################################################################
+# Game executable: plays the scenes in data/scenes with the scripts
+###############################################################################
+
+add_executable(Game WIN32
+	"${PROJECT_SOURCE_DIR}/src/Game/GameMain.cpp"
+	"${PROJECT_SOURCE_DIR}/src/Game/SceneMenu.h"
+	"${PROJECT_SOURCE_DIR}/src/Game/SceneMenu.cpp"
+)
+
+target_link_libraries(Game PRIVATE GameScripts)
+
+###############################################################################
+# SceneEditor executable: authors scenes (2D shapes / models, scripts)
+###############################################################################
+
+file(GLOB EDITOR_FILES
+	${PROJECT_SOURCE_DIR}/src/Editor/*.h
+	${PROJECT_SOURCE_DIR}/src/Editor/*.cpp
+)
+
+add_executable(SceneEditor WIN32 ${EDITOR_FILES})
+
+target_include_directories(SceneEditor PRIVATE "${PROJECT_SOURCE_DIR}/src/Editor")
+target_link_libraries(SceneEditor PRIVATE GameScripts)
+
+# Both programs run from the repository root so they find data/
+set(APP_TARGETS Game SceneEditor)
+
+# 'make run' / 'make run_editor' on MacOS
 if (CMAKE_SYSTEM_NAME MATCHES Apple)
-
-	add_custom_target(run 
-		DEPENDS Game 
-		COMMAND "./build/macos/Game"
+	add_custom_target(run
+		DEPENDS Game
+		COMMAND "$<TARGET_FILE:Game>"
 		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 	)
-
+	add_custom_target(run_editor
+		DEPENDS SceneEditor
+		COMMAND "$<TARGET_FILE:SceneEditor>"
+		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+	)
 endif()
 
 if (CMAKE_SYSTEM_NAME MATCHES Windows)
-	#Sets the game to run in the root working directory
-	set_target_properties( Game PROPERTIES
-		VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-	)
-
-	message(STATUS "Project Runtime DLLS: $<TARGET_RUNTIME_DLLS:Game>")
-
-	# Add commands to copy runtime DLLS to output directories, only needed on windows
-	if (CMAKE_IMPORT_LIBRARY_SUFFIX)
-		add_custom_command(
-			TARGET ContestAPI POST_BUILD 
-			COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_RUNTIME_DLLS:Game>" "$<TARGET_FILE_DIR:Game>"
-			COMMAND_EXPAND_LISTS
+	foreach(APP ${APP_TARGETS})
+		#Sets the program to run in the root working directory
+		set_target_properties(${APP} PROPERTIES
+			VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 		)
-	endif()
-	
-	#Sets the VS startup project to be the Game one. If this is not called then the startup project is ALL_BUILD which results in an error in VS
+		# Copy runtime DLLS (freeglut) next to the executable
+		if (CMAKE_IMPORT_LIBRARY_SUFFIX)
+			add_custom_command(
+				TARGET ${APP} POST_BUILD
+				COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_RUNTIME_DLLS:${APP}>" "$<TARGET_FILE_DIR:${APP}>"
+				COMMAND_EXPAND_LISTS
+			)
+		endif()
+	endforeach()
+
+	#Sets the VS startup project. If this is not called then the startup project is ALL_BUILD which results in an error in VS
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Game)
+endif()
+
+###############################################################################
+# Unit tests (optional)
+# Enable with: cmake -B build/tests-root -DBUILD_TESTS=ON
+# The tests are headless (no OpenGL/GLUT/SDL) and can also be built on their
+# own from the tests/ directory, see tests/CMakeLists.txt
+###############################################################################
+
+option(BUILD_TESTS "Build the engine / editor / script unit tests" OFF)
+
+if (BUILD_TESTS)
+	enable_testing()
+	add_subdirectory(tests)
 endif()

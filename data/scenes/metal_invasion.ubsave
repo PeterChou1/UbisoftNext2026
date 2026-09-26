@@ -1,0 +1,34 @@
+UBSV-TEXT 1
+# Plain text save. Each record lists its values in the order of the type's
+# Serialize function, [n] = number of elements that follow. No checksum:
+# the file may be edited by hand, it is fully validated when loaded.
+meta [3] "Name" "metal_invasion" "Scene" "Play" "Tool" "SceneEditor 2"
+entities 5000 [4] 1..4 [4995] 5..4999
+component "Transform" 1 [4]
+1: 0 [0] 0 -0.05 0 1 1 1 1 0 0 0 1 0 0 0 0 1 0 -0.05 0 0 1 0 0 0 0 1 1 0 0 -0 0 1 0 0.05 0 0 1 -0 0 0 0 1 1 false
+2: 0 [0] 0 0 -2 1 1 1 1 0 0 0 1 0 0 0 0 1 0 0 0 0 1 -2 0 0 0 1 1 0 0 -0 0 1 0 -0 0 0 1 2 0 0 0 1 1 true
+3: 0 [0] 0 25 -5 1 1 1 1 0 0 0 1 0 0 0 0 1 0 25 0 0 1 -5 0 0 0 1 1 0 0 -0 0 1 0 -25 0 0 1 5 0 0 0 1 1 false
+4: 0 [0] 0 0 0 3 3 3 1 0 0 0 3 0 0 0 0 3 0 0 0 0 3 0 0 0 0 1 3 0 0 -0 0 3 0 -0 0 0 3 -0 0 0 0 1 1 true
+component "RigidBody" 1 [1]
+4: false false true 0 0 0 0 1.5 1.5 -1.5 -1.5 1.5 1.5 -1.5 -1.5 0 0 0 1.5 [0] [0] [0] 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0.1 0 0 0.2
+component "Mesh" 1 [1]
+4: "PlayerBase"
+component "FragShaderTag" 1 [2]
+1: 8
+4: 1
+component "SceneObject" 1 [4]
+1: "Field" "Field"
+2: "Main Camera" "Camera"
+3: "Directional Light" "Light"
+4: "PlayerBase" "Base"
+component "Shape2D" 1 [1]
+1: 0 54 54 6 0.05 0.3 0.34 0.28
+component "ScriptComponent" 1 [1]
+4: "MIBase" [0]
+component "GameCamera" 1 [1]
+2: [3] Distance:f 16 Pitch:f 61.19 FieldOfView:f 90
+component "SceneLight" 1 [1]
+3: [7] Type:e 0 Color:v3 1 1 1 Intensity:f 1 Ambient:f 0.45 Pitch:f 78.69 Spread:f 120 Shadows:b true
+resource "SceneSettings" 1
+: "metal_invasion" "MetalInvasion" [0] 54 54 0 0 -2 16
+end
